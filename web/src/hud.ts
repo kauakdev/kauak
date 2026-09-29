@@ -1,14 +1,16 @@
 // HTML HUD around the canvas: top bar stats, roster, activity feed. Everything
-// here is driven by snapshot pushes (no per-frame polling); only the relative
-// timestamps are refreshed on a slow timer.
+// here is driven by bridge pushes (no per-frame polling); only the relative
+// timestamps are refreshed on a slow timer. Stats, roster and feed span every
+// floor; the connection chip and the empty state describe the floor on screen.
 
+import { floorOf, floorProblem, type Floor } from "./floors";
 import type { AgentStatus, PaneInfo, Snapshot } from "./types";
 
 const ORDER: AgentStatus[] = ["working", "idle", "blocked", "done", "unknown"];
 const MAX_FEED = 40;
 
 interface Tracked { status: AgentStatus; agent: string | null; since: number; room: string }
-interface FeedItem { at: number; text: string; status: AgentStatus; paneId: string }
+interface FeedItem { at: number; text: string; status: AgentStatus; paneId: string; floor: string }
 
 export interface HudHandlers {
   onSelect(paneId: string): void;
@@ -26,7 +28,11 @@ export class Hud {
   /** Set by main: true while the terminal panel owns the keyboard. */
   isTyping: () => boolean = () => false;
   private items: FeedItem[] = [];
-  private snapshot: Snapshot | null = null;
+  private floors: Floor[] = [];
+  private current = "";
+  private bridgeUp = false;
+  /** Floors whose first snapshot arrived; panes already there at start are not news. */
+  private seen = new Set<string>();
   private selected: string | null = null;
   private order: string[] = [];
 
@@ -49,12 +55,10 @@ export class Hud {
     setInterval(() => this.refreshTimes(), 10_000);
   }
 
-  setStatus(ok: boolean, text: string) {
-    const conn = document.getElementById("conn")!;
-    conn.classList.toggle("ok", ok);
-    conn.classList.toggle("bad", !ok);
-    document.getElementById("conn-text")!.textContent = text;
-    if (!ok) this.showEmpty("Herdr is unreachable", text);
+  /** Whether the WebSocket to the bridge is up. */
+  setBridge(up: boolean) {
+    this.bridgeUp = up;
+    this.renderConn();
   }
 
   setSelected(paneId: string | null) {
@@ -62,37 +66,50 @@ export class Hud {
     for (const el of this.roster.querySelectorAll<HTMLElement>(".pane")) el.classList.toggle("selected", el.dataset.pane === paneId);
   }
 
-  setSnapshot(s: Snapshot) {
+  setFloors(floors: Floor[], current: string) {
+    this.floors = floors;
+    this.current = current;
     const now = Date.now();
-    const prevSnap = this.snapshot;
-    this.snapshot = s;
-    const roomOf = new Map(s.workspaces.map((w) => [w.workspace_id, w.label || w.worktree?.repo_name || w.workspace_id]));
     const live = new Set<string>();
-    for (const p of s.panes) {
-      live.add(p.pane_id);
-      const room = roomOf.get(p.workspace_id) ?? "?";
-      const t = this.tracked.get(p.pane_id);
-      const who = p.agent ?? "shell";
-      if (!t) {
-        this.tracked.set(p.pane_id, { status: p.agent_status, agent: p.agent ?? null, since: now, room });
-        if (prevSnap && p.agent) this.push({ at: now, text: `${who} joined ${room}`, status: p.agent_status, paneId: p.pane_id });
-      } else {
-        if ((t.agent ?? null) !== (p.agent ?? null) && p.agent) this.push({ at: now, text: `${p.agent} sat down in ${room}`, status: p.agent_status, paneId: p.pane_id });
-        if (t.status !== p.agent_status) {
-          t.since = now;
-          this.push({ at: now, text: `${who} in ${room} is now ${p.agent_status}`, status: p.agent_status, paneId: p.pane_id });
+    const present = new Set(floors.map((f) => f.info.id));
+    for (const f of floors) {
+      const s = f.snapshot;
+      if (!s) continue;
+      const fresh = !this.seen.has(f.info.id);
+      this.seen.add(f.info.id);
+      const roomOf = new Map(s.workspaces.map((w) => [w.workspace_id, w.label || w.worktree?.repo_name || w.workspace_id]));
+      for (const p of s.panes) {
+        live.add(p.pane_id);
+        const room = roomOf.get(p.workspace_id) ?? "?";
+        const t = this.tracked.get(p.pane_id);
+        const who = p.agent ?? "shell";
+        const item = (text: string, status: AgentStatus) => this.push({ at: now, text, status, paneId: p.pane_id, floor: f.info.id });
+        if (!t) {
+          this.tracked.set(p.pane_id, { status: p.agent_status, agent: p.agent ?? null, since: now, room });
+          if (!fresh && p.agent) item(`${who} joined ${room}`, p.agent_status);
+        } else {
+          if ((t.agent ?? null) !== (p.agent ?? null) && p.agent) item(`${p.agent} sat down in ${room}`, p.agent_status);
+          if (t.status !== p.agent_status) {
+            t.since = now;
+            item(`${who} in ${room} is now ${p.agent_status}`, p.agent_status);
+          }
+          t.status = p.agent_status; t.agent = p.agent ?? null; t.room = room;
         }
-        t.status = p.agent_status; t.agent = p.agent ?? null; t.room = room;
       }
     }
     for (const [id, t] of [...this.tracked]) {
-      if (!live.has(id)) { this.tracked.delete(id); if (t.agent) this.push({ at: now, text: `${t.agent} left ${t.room}`, status: "unknown", paneId: id }); }
+      if (live.has(id)) continue;
+      this.tracked.delete(id);
+      // A removed floor takes its panes along quietly.
+      const floor = floorOf(id);
+      if (t.agent && present.has(floor)) this.push({ at: now, text: `${t.agent} left ${t.room}`, status: "unknown", paneId: id, floor });
     }
-    this.renderStats(s);
-    this.renderRoster(s);
+    for (const id of [...this.seen]) if (!present.has(id)) this.seen.delete(id);
+    const panes = floors.flatMap((f) => f.snapshot?.panes ?? []);
+    this.renderStats(panes);
+    this.renderRoster();
     this.renderFeed();
-    if (s.panes.length === 0) this.showEmpty("The office is empty", "Open a workspace or pane in Herdr and it will appear here.");
-    else this.empty.hidden = true;
+    this.renderConn();
   }
 
   // ------------------------------------------------------------ pieces
@@ -108,11 +125,39 @@ export class Hud {
     if (this.items.length > MAX_FEED) this.items.length = MAX_FEED;
   }
 
-  private renderStats(s: Snapshot) {
+  /** Connection chip and empty state, both about the floor on screen. */
+  private renderConn() {
+    const conn = document.getElementById("conn")!;
+    const f = this.floors.find((x) => x.info.id === this.current);
+    let ok = false, text: string;
+    if (!this.bridgeUp) {
+      text = "bridge offline · retrying";
+      this.showEmpty("The bridge is offline", "Start it with pnpm dev (or pnpm bridge). This page reconnects on its own.");
+    } else if (!f) {
+      text = "connecting…";
+      this.empty.hidden = true;
+    } else if (f.info.state === "down") {
+      text = `${f.info.label} unreachable`;
+      this.showEmpty(`Floor ${f.number} · ${f.info.label} is unreachable`, `${(f.info.message || "Herdr did not answer").replace(/\.?$/, ".")} Retrying on its own.`);
+    } else if (!f.snapshot) {
+      text = "connecting…";
+      this.showEmpty(`Taking the elevator to ${f.info.label}…`, f.info.message || "Waiting for Herdr.");
+    } else {
+      ok = f.info.state === "live";
+      text = `${f.number}F · herdr ${f.snapshot.version}`;
+      if (f.snapshot.panes.length === 0) this.showEmpty(`Floor ${f.number} is empty`, `Open a workspace or pane in Herdr${f.info.ssh ? ` on ${f.info.label}` : ""} and it will appear here.`);
+      else this.empty.hidden = true;
+    }
+    conn.classList.toggle("ok", ok);
+    conn.classList.toggle("bad", !ok);
+    document.getElementById("conn-text")!.textContent = text;
+  }
+
+  private renderStats(panes: PaneInfo[]) {
     const counts: Record<AgentStatus, number> = { working: 0, idle: 0, blocked: 0, done: 0, unknown: 0 };
     let agents = 0;
-    for (const p of s.panes) if (p.agent) { agents++; counts[p.agent_status]++; }
-    const chips = [`<span class="chip"><b>${agents}</b> agent${agents === 1 ? "" : "s"} · <b>${s.panes.length}</b> pane${s.panes.length === 1 ? "" : "s"}</span>`];
+    for (const p of panes) if (p.agent) { agents++; counts[p.agent_status]++; }
+    const chips = [`<span class="chip"><b>${agents}</b> agent${agents === 1 ? "" : "s"} · <b>${panes.length}</b> pane${panes.length === 1 ? "" : "s"}</span>`];
     for (const st of ORDER) {
       if (st === "unknown" && counts[st] === 0) continue;
       chips.push(`<span class="chip st-${st} ${counts[st] === 0 ? "zero" : ""}"><i class="dot"></i>${counts[st]} ${st}</span>`);
@@ -121,11 +166,27 @@ export class Hud {
     document.title = counts.blocked > 0 ? `(${counts.blocked} blocked) Agent Office` : "Agent Office";
   }
 
-  private renderRoster(s: Snapshot) {
+  private renderRoster() {
+    this.order = [];
+    const many = this.floors.length > 1;
+    const html: string[] = [];
+    // Top floor first, like the elevator.
+    for (const f of [...this.floors].reverse()) {
+      const state = floorProblem(f.info);
+      if (many) {
+        html.push(`<h2 class="floor-h conn-${f.info.state} ${f.info.id === this.current ? "current" : ""}"><span class="fn">${f.number}F</span>` +
+          `<span class="name">${esc(f.info.label)}</span>${state ? `<span class="state" title="${esc(f.info.message)}">${esc(state)}</span>` : ""}</h2>`);
+      }
+      if (f.snapshot) html.push(`<div class="floor-body conn-${f.info.state}">${this.rosterGroups(f.snapshot)}</div>`);
+    }
+    this.roster.innerHTML = html.join("");
+    for (const el of this.roster.querySelectorAll<HTMLElement>(".pane")) el.addEventListener("click", () => this.h.onSelect(el.dataset.pane!));
+  }
+
+  private rosterGroups(s: Snapshot): string {
     const byWs = new Map<string, PaneInfo[]>();
     for (const p of s.panes) byWs.set(p.workspace_id, [...(byWs.get(p.workspace_id) ?? []), p]);
     const groups = new Map<string, { name: string; rows: string[] }>();
-    this.order = [];
     for (const ws of [...s.workspaces].sort((a, b) => a.number - b.number)) {
       const panes = byWs.get(ws.workspace_id) ?? [];
       const key = ws.worktree?.repo_key ?? `dir:${panes[0]?.cwd ?? ws.label}`;
@@ -144,16 +205,20 @@ export class Hud {
       }
       groups.set(key, g);
     }
-    this.roster.innerHTML = [...groups.values()].map((g) => `<section><h3>${esc(g.name)}</h3>${g.rows.join("")}</section>`).join("");
-    for (const el of this.roster.querySelectorAll<HTMLElement>(".pane")) el.addEventListener("click", () => this.h.onSelect(el.dataset.pane!));
+    return [...groups.values()].map((g) => `<section><h3>${esc(g.name)}</h3>${g.rows.join("")}</section>`).join("");
   }
 
   private renderFeed() {
     if (this.items.length === 0) { this.feed.innerHTML = `<div class="quiet">Quiet so far. Status changes show up here.</div>`; return; }
-    this.feed.innerHTML = this.items.slice(0, 12).map((it) =>
-      `<button class="ev st-${it.status}" data-pane="${esc(it.paneId)}"><i class="dot"></i><span>${esc(it.text)}</span><time data-since="${it.at}">${ago(it.at)}</time></button>`).join("");
+    const many = this.floors.length > 1;
+    const numberOf = new Map(this.floors.map((f) => [f.info.id, f.number]));
+    this.feed.innerHTML = this.items.slice(0, 12).map((it) => {
+      const n = numberOf.get(it.floor);
+      const tag = many && n ? `<b class="fl">${n}F</b>` : "";
+      return `<button class="ev st-${it.status}" data-pane="${esc(it.paneId)}"><i class="dot"></i><span>${tag}${esc(it.text)}</span><time data-since="${it.at}">${ago(it.at)}</time></button>`;
+    }).join("");
     for (const el of this.feed.querySelectorAll<HTMLElement>(".ev")) el.addEventListener("click", () => {
-      if (this.snapshot?.panes.some((p) => p.pane_id === el.dataset.pane)) this.h.onSelect(el.dataset.pane!);
+      if (this.tracked.has(el.dataset.pane!)) this.h.onSelect(el.dataset.pane!);
     });
   }
 

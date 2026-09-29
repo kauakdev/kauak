@@ -34,6 +34,8 @@ interface CameraTarget { x: number; y: number; scale: number }
 
 export class OfficeScene {
   readonly app = new Application();
+  /** Carries the world in when the elevator arrives at a floor; the camera moves `world`. */
+  private lift = new Container();
   readonly world = new Container();
   private ground = new Container();
   private platforms = new Container();
@@ -53,6 +55,8 @@ export class OfficeScene {
   private selectedId: string | null = null;
   private hoveredId: string | null = null;
   private camTarget: CameraTarget | null = null;
+  private floorId: string | null = null;
+  private arrival: { at: number; dir: number } | null = null;
   private moteList: { g: Graphics; vx: number; vy: number }[] = [];
   private bounds = { minX: -200, maxX: 200, minY: -200, maxY: 200 };
   onSelectPane: (pane: PaneInfo) => void = () => {};
@@ -65,7 +69,8 @@ export class OfficeScene {
     this.world.addChild(this.ground, this.platforms, this.floor, this.objects, this.overlay, this.labels, this.motes);
     this.overlay.addChild(this.hoverRing, this.plumbob);
     this.drawPlumbob();
-    this.app.stage.addChild(this.world);
+    this.lift.addChild(this.world);
+    this.app.stage.addChild(this.lift);
     this.setupCamera();
     this.app.ticker.add((tk) => this.tick(tk.deltaMS / 1000));
   }
@@ -118,7 +123,8 @@ export class OfficeScene {
     const visible = (id: string) => { const el = document.getElementById(id); return el && getComputedStyle(el).opacity !== "0" && getComputedStyle(el).display !== "none" ? el.getBoundingClientRect() : null; };
     const roster = visible("roster");
     const left = roster && roster.right < sw * 0.5 ? roster.right + 8 : 0;
-    const right = document.body.classList.contains("panel-open") ? Math.min(920, sw * 0.62) : 0;
+    const floors = visible("floors");
+    const right = document.body.classList.contains("panel-open") ? Math.min(920, sw * 0.62) : floors && sw >= 900 && floors.left > sw * 0.5 ? sw - floors.left + 8 : 0;
     const top = 52, bottom = 40;
     const w = Math.max(200, sw - left - right), h = Math.max(200, sh - top - bottom);
     return { w, h, cx: left + w / 2, cy: top + h / 2 };
@@ -172,7 +178,21 @@ export class OfficeScene {
 
   // ------------------------------------------------------------ building
 
-  setSnapshot(snap: Snapshot) {
+  /**
+   * Show one floor. Changing floors refits the camera and slides the new floor
+   * in from above (`dir` 1, going up) or below (-1).
+   */
+  showFloor(floorId: string, snap: Snapshot, dir = 0) {
+    if (floorId !== this.floorId) {
+      this.floorId = floorId;
+      this.fitted = false;
+      this.camTarget = null;
+      if (dir !== 0) this.arrival = { at: performance.now(), dir };
+    }
+    this.setSnapshot(snap);
+  }
+
+  private setSnapshot(snap: Snapshot) {
     const office = buildOffice(snap);
     this.office = office;
     const now = performance.now();
@@ -398,6 +418,13 @@ export class OfficeScene {
     for (const m of this.moteList) {
       m.g.x += m.vx * dt; m.g.y += m.vy * dt;
       if (m.g.y < this.bounds.minY) { m.g.y = this.bounds.maxY; m.g.x = this.bounds.minX + Math.random() * (this.bounds.maxX - this.bounds.minX); }
+    }
+    if (this.arrival) {
+      const t = Math.min(1, (now - this.arrival.at) / 420);
+      const e = 1 - Math.pow(1 - t, 3);
+      this.lift.alpha = e;
+      this.lift.y = (1 - e) * -60 * this.arrival.dir;
+      if (t >= 1) { this.arrival = null; this.lift.y = 0; this.lift.alpha = 1; }
     }
     if (this.camTarget) {
       const k = 1 - Math.exp(-dt * 6);

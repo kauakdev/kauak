@@ -72,13 +72,26 @@ export interface Snapshot {
   layouts: LayoutInfo[];
 }
 
+/** One Herdr server; the office shows each as a floor. */
+export interface MachineInfo {
+  id: string;
+  label: string;
+  /** SSH destination for a remote machine, null for this one. */
+  ssh: string | null;
+  state: "connecting" | "live" | "down";
+  message: string;
+  version: string | null;
+}
+
 export type BridgeMessage =
-  | { type: "snapshot"; snapshot: Snapshot }
-  | { type: "event"; event: string; data: unknown }
-  | { type: "herdr_down"; message: string }
-  | { type: "pane_output"; pane_id: string; text: string; revision: number; truncated: boolean; seq?: number }
-  | { type: "input_ack"; pane_id: string; id?: number }
-  | { type: "error"; pane_id?: string; id?: number; message: string };
+  | { type: "machines"; machines: MachineInfo[] }
+  | { type: "machine_added"; machine: string }
+  | { type: "machine_error"; message: string }
+  | { type: "snapshot"; machine: string; snapshot: Snapshot }
+  | { type: "event"; machine: string; event: string; data: unknown }
+  | { type: "pane_output"; machine: string; pane_id: string; text: string; revision: number; truncated: boolean; seq?: number }
+  | { type: "input_ack"; machine: string; pane_id: string; id?: number }
+  | { type: "error"; machine?: string; pane_id?: string; id?: number; message: string };
 
 /** One unit of terminal input: literal text or named keys (Herdr `pane.send_keys` names). */
 export type InputOp = { text: string } | { keys: string[] };

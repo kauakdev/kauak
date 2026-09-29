@@ -33,13 +33,23 @@ Around the canvas:
   during this session. Click an entry to jump to the desk.
 
 Hover a desk for the terminal title and cwd. Click a desk (or a roster row) to
-select it: a plumbob appears over it, the camera glides to it and a read-only
-mirror of the pane's terminal opens in a side panel (xterm.js, refreshed only
-when Herdr reports new output). "Focus in Herdr" switches your Herdr window to
-the pane. `?pane=w1:p1` in the URL opens a pane on load.
+select it: a plumbob appears over it, the camera glides to it and the pane's
+terminal opens in a side panel (xterm.js, polled a few times a second and
+redrawn only when the viewport text changes). The terminal is live: anything you type there is sent to the pane, so
+you can answer an agent's question or run a command without leaving the office.
+Printable text goes through Herdr's `pane.send_text`; Enter, Esc, arrows,
+Tab, Backspace, function keys and Ctrl/Alt combos go through `pane.send_keys`,
+so the pane's own key encoding (bracketed paste, application cursor keys) is
+honored. Herdr reports no cursor position, so the caret is a best guess: it
+sits at the end of the row that changed most recently, which is the input line
+while you type. The "Live input" button toggles the panel back to read-only. "Focus
+in Herdr" switches your Herdr window to the pane. `?pane=w1:p1` in the URL
+opens a pane on load.
 
 Keys: `J`/`K` next/previous desk, `F` fit the office, `R` toggle roster,
-`+`/`-` zoom, `Esc` close the panel. Drag to pan, wheel to zoom.
+`+`/`-` zoom, `Esc` close the panel. While the terminal has keyboard focus
+these shortcuts are off and every key, including `Esc`, goes to the pane;
+click outside the terminal to get them back. Drag to pan, wheel to zoom.
 
 ## Run
 
@@ -62,8 +72,13 @@ Environment variables:
 request per connection) and keeps one long-lived `events.subscribe` connection.
 On every event it re-fetches `session.snapshot` and broadcasts it to browser
 clients over WebSocket. Clients send `{ "type": "focus", "pane_id": "w1:p1" }`
-to focus a pane and `{ "type": "read", "pane_id": "w1:p1" }` to get the pane's
-visible viewport as ANSI text (`pane.read`).
+to focus a pane, `{ "type": "read", "pane_id": "w1:p1" }` to get the pane's
+visible viewport as ANSI text (`pane.read`), and
+`{ "type": "input", "pane_id": "w1:p1", "ops": [{ "text": "ls" }, { "keys": ["enter"] }] }`
+to type into it. The bridge runs the ops in order (`pane.send_text` /
+`pane.send_keys`), serialized per pane, and answers with `input_ack`, after
+which the client re-reads the viewport. `web/src/keys.ts` translates the bytes
+xterm.js emits for keystrokes into those ops.
 
 `web/src/layout.ts` turns a snapshot into a floor plan in tile units.
 `web/src/scene.ts` renders it with PixiJS in layers (ground, platforms, floor

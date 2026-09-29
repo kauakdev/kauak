@@ -125,7 +125,15 @@
       #panel header button:hover { background: #2e3350; } #panel header button.primary { background: #3b4470; border-color: #55609a; }
       #panel-term { flex: 1; overflow: auto; padding: 8px; }
       #panel-term .xterm { opacity: .97; }
-      #panel-hint { font-size: 11px; opacity: .5; padding: 6px 12px; border-top: 1px solid var(--line); }
+      #panel-hint { font-size: 11px; opacity: .5; padding: 6px 12px; border-top: 1px solid var(--line); transition: color .15s ease; }
+      #panel-hint.warn { opacity: 1; color: var(--blocked); }
+      #panel-lock { display: inline-flex; align-items: center; gap: 6px; }
+      #panel-lock::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--unknown); }
+      #panel:not(.locked) #panel-lock::before { background: var(--working); }
+      #panel.typing:not(.locked) #panel-lock::before { box-shadow: 0 0 0 0 #5ad87a99; animation: ping-green 1.4s infinite; }
+      #panel.typing:not(.locked) #panel-term { box-shadow: inset 0 0 0 1px #5ad87a55; }
+      #panel.locked #panel-term { cursor: default; }
+      @keyframes ping-green { 0% { box-shadow: 0 0 0 0 #5ad87a99; } 100% { box-shadow: 0 0 0 6px #5ad87a00; } }
 
       @media (max-width: 900px) {
         :root { --panel-w: 100vw; }
@@ -183,7 +191,7 @@
       <span style="--c:#ffd166">done</span>
       <span style="--c:#7a7f93">unknown</span>
     </div>
-    <div id="hint">click a desk to watch its terminal · drag to pan · wheel to zoom · <kbd>J</kbd>/<kbd>K</kbd> next desk · <kbd>F</kbd> fit · <kbd>R</kbd> roster · <kbd>Esc</kbd> close</div>
+    <div id="hint">click a desk to open its terminal · drag to pan · wheel to zoom · <kbd>J</kbd>/<kbd>K</kbd> next desk · <kbd>F</kbd> fit · <kbd>R</kbd> roster · <kbd>Esc</kbd> close</div>
     <div id="tip"></div>
     <div id="empty" class="card" hidden><h2></h2><p></p></div>
 
@@ -193,11 +201,12 @@
         <span id="panel-kind">shell</span>
         <div class="text"><div id="panel-title">—</div><div id="panel-meta"></div></div>
         <span id="panel-status"></span>
+        <button id="panel-lock" aria-pressed="true" title="Typing here sends keystrokes to the pane. Click to make it read-only.">Live input</button>
         <button id="panel-focus" class="primary" title="Switch Herdr to this pane">Focus in Herdr</button>
         <button id="panel-close" title="Close (Esc)">✕</button>
       </header>
       <div id="panel-term"></div>
-      <div id="panel-hint">read-only mirror of the pane's viewport · refreshes when Herdr reports new output</div>
+      <div id="panel-hint">keystrokes go to the pane · Esc, arrows and Ctrl combos are forwarded · click outside the terminal, then Esc to close</div>
     </aside>
     <script type="module" src="/src/main.ts"></script>
   </body>

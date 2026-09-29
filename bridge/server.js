@@ -127,11 +127,42 @@ wss.on("connection", async (ws) => {
       } catch (err) {
         ws.send(JSON.stringify({ type: "error", pane_id: msg.pane_id, message: err.message }));
       }
+    } else if (msg.type === "input" && typeof msg.pane_id === "string" && Array.isArray(msg.ops)) {
+      // Keystrokes from the browser terminal. `ops` is an ordered list of
+      // { text } (literal bytes, pane.send_text) and { keys } (named keys such
+      // as "enter" or "ctrl+c", pane.send_keys). Per-pane queue keeps order.
+      const paneId = msg.pane_id;
+      const ops = msg.ops.slice(0, MAX_INPUT_OPS);
+      enqueueInput(paneId, async () => {
+        try {
+          for (const op of ops) {
+            if (typeof op.text === "string" && op.text.length > 0) {
+              await herdrRequest("pane.send_text", { pane_id: paneId, text: op.text.slice(0, MAX_INPUT_TEXT) });
+            } else if (Array.isArray(op.keys) && op.keys.length > 0) {
+              const keys = op.keys.filter((k) => typeof k === "string" && k.length <= 24).slice(0, 64);
+              if (keys.length) await herdrRequest("pane.send_keys", { pane_id: paneId, keys });
+            }
+          }
+          ws.send(JSON.stringify({ type: "input_ack", pane_id: paneId }));
+        } catch (err) {
+          ws.send(JSON.stringify({ type: "error", pane_id: paneId, message: err.message }));
+        }
+      });
     } else if (msg.type === "refresh") {
       scheduleRefresh();
     }
   });
 });
+
+// Serialize input per pane so fast typing cannot reorder across connections.
+const MAX_INPUT_OPS = 256;
+const MAX_INPUT_TEXT = 64 * 1024;
+const inputQueues = new Map();
+function enqueueInput(paneId, job) {
+  const prev = inputQueues.get(paneId) ?? Promise.resolve();
+  const next = prev.then(job, job).finally(() => { if (inputQueues.get(paneId) === next) inputQueues.delete(paneId); });
+  inputQueues.set(paneId, next);
+}
 
 // ---------------------------------------------------------------- event stream
 

@@ -37,10 +37,14 @@ const bridge = new Bridge({
   },
   onStatus: (ok, text) => hud.setStatus(ok, text),
   onPaneOutput: (id, text, rev) => panel.receive(id, text, rev),
+  onInputAck: (id) => panel.inputAcked(id),
+  onError: (message, id) => { if (id) panel.inputFailed(id, message); },
 });
 
 scene.onSelectPane = (pane) => select(pane.pane_id);
 panel.onRead = (id) => bridge.readPane(id);
+panel.onInput = (id, ops) => bridge.sendInput(id, ops);
+hud.isTyping = () => panel.isTyping();
 panel.onFocus = (id) => bridge.focusPane(id);
 panel.onClose = () => { scene.setSelected(null); hud.setSelected(null); };
 }

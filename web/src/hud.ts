@@ -23,6 +23,8 @@ export class Hud {
   private clock = document.getElementById("clock")!;
   private empty = document.getElementById("empty")!;
   private tracked = new Map<string, Tracked>();
+  /** Set by main: true while the terminal panel owns the keyboard. */
+  isTyping: () => boolean = () => false;
   private items: FeedItem[] = [];
   private snapshot: Snapshot | null = null;
   private selected: string | null = null;
@@ -34,7 +36,7 @@ export class Hud {
     document.getElementById("btn-zoom-out")!.addEventListener("click", () => h.onZoom(0.8));
     document.getElementById("btn-roster")!.addEventListener("click", () => document.body.classList.toggle("roster-hidden"));
     addEventListener("keydown", (e) => {
-      if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || this.isTyping() || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "f") h.onFit();
       else if (e.key === "r") document.body.classList.toggle("roster-hidden");
       else if (e.key === "j" || e.key === "k" || e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); this.step(e.key === "j" || e.key === "ArrowDown" ? 1 : -1); }

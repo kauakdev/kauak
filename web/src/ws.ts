@@ -1,9 +1,10 @@
-import type { BridgeMessage, Snapshot } from "./types";
+import type { BridgeMessage, InputOp, Snapshot } from "./types";
 
 export interface BridgeHandlers {
   onSnapshot(s: Snapshot): void;
   onStatus(connected: boolean, text: string): void;
   onPaneOutput(pane_id: string, text: string, revision: number): void;
+  onInputAck?(pane_id: string): void;
   onError?(message: string, pane_id?: string): void;
 }
 
@@ -27,6 +28,8 @@ export class Bridge {
         this.handlers.onStatus(false, `herdr unreachable: ${msg.message}`);
       } else if (msg.type === "pane_output") {
         this.handlers.onPaneOutput(msg.pane_id, msg.text, msg.revision);
+      } else if (msg.type === "input_ack") {
+        this.handlers.onInputAck?.(msg.pane_id);
       } else if (msg.type === "error") {
         console.warn("[bridge]", msg.message);
         this.handlers.onError?.(msg.message, msg.pane_id);
@@ -45,5 +48,12 @@ export class Bridge {
 
   readPane(pane_id: string) {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: "read", pane_id, source: "visible" }));
+  }
+
+  /** Send keystrokes to a pane. Returns false if the bridge is offline (input is dropped, not queued). */
+  sendInput(pane_id: string, ops: InputOp[]): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN || ops.length === 0) return false;
+    this.ws.send(JSON.stringify({ type: "input", pane_id, ops }));
+    return true;
   }
 }

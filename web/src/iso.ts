@@ -23,3 +23,28 @@ export function shade(color: number, factor: number): number {
   const b = Math.min(255, Math.max(0, (color & 0xff) * factor));
   return (r << 16) | (g << 8) | b;
 }
+
+/** Linear blend of two 0xRRGGBB colors; k=0 → a, k=1 → b. */
+export function mix(a: number, b: number, k: number): number {
+  const ch = (s: number) => Math.round(((a >> s) & 0xff) * (1 - k) + ((b >> s) & 0xff) * k);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
+/** FNV-1a string hash → uint32. Stable across reloads, used to seed props. */
+export function hashStr(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h >>> 0;
+}
+
+/** Tiny seeded PRNG (mulberry32). */
+export function rng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}

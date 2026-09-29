@@ -20,6 +20,7 @@ export class TerminalPanel {
 
   onRead: (paneId: string) => void = () => {};
   onFocus: (paneId: string) => void = () => {};
+  onClose: () => void = () => {};
 
   constructor() {
     this.term = new Terminal({
@@ -52,6 +53,7 @@ export class TerminalPanel {
     const switching = this.pane?.pane_id !== pane.pane_id;
     this.pane = pane;
     this.el.classList.add("open");
+    document.body.classList.add("panel-open");
     this.renderHeader();
     if (switching) { this.revision = -1; this.term.reset(); this.resizeToPane(); }
     if (this.timer === null) {
@@ -61,8 +63,11 @@ export class TerminalPanel {
   }
 
   close() {
+    const wasOpen = this.pane !== null;
     this.el.classList.remove("open");
+    document.body.classList.remove("panel-open");
     this.pane = null;
+    if (wasOpen) this.onClose();
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null; }
   }
 
@@ -81,9 +86,12 @@ export class TerminalPanel {
   private renderHeader() {
     if (!this.pane) return;
     const p = this.pane;
-    const who = p.agent ? `${p.agent} · ${p.agent_status}` : "shell";
     this.titleEl.textContent = p.terminal_title_stripped || p.terminal_title || p.pane_id;
-    this.metaEl.textContent = `${who} · ${p.pane_id} · ${(p.foreground_cwd || p.cwd).replace(/^\/home\/[^/]+/, "~")}`;
+    this.metaEl.textContent = `${p.pane_id} · ${(p.foreground_cwd || p.cwd).replace(/^\/home\/[^/]+/, "~")}`;
+    const kind = document.getElementById("panel-kind")!;
+    kind.textContent = p.agent ?? "shell";
+    kind.dataset.kind = p.agent ?? "";
+    document.getElementById("panel-status")!.textContent = p.agent ? p.agent_status : "no agent";
     this.el.dataset.status = p.agent_status;
   }
 

@@ -17,11 +17,29 @@ Agent lifecycle states drive the animation:
 - **done**: `✓` bubble hops until the pane is seen
 - **unknown**: greyed out
 
-Hover a desk for the terminal title and cwd. Click a desk to open a read-only
-mirror of that pane's terminal in a side panel (xterm.js, refreshed only when
-Herdr reports new output). "Focus in Herdr" switches your Herdr window to the
-pane; `Esc` closes the panel. `?pane=w1:p1` in the URL opens a pane on load.
-Drag to pan, wheel to zoom.
+Each room is a raised platform with windows, a whiteboard or poster, a rug,
+plants, a bookshelf and a lounge in any spare desk cell. Wings get a floor tint
+and a sign with room/desk/agent counts; room plaques show one status dot per
+desk. Monitors show scrolling code while an agent works and a blinking prompt
+when the desk is empty.
+
+Around the canvas:
+
+- **Top bar**: connection state, live counts per status (the tab title shows
+  a `(N blocked)` prefix), clock, zoom and fit buttons.
+- **Roster** (left): every pane grouped by repository and workspace, with the
+  time spent in its current status. Click a row to jump to that desk.
+- **Activity** (bottom right): status changes, arrivals and departures seen
+  during this session. Click an entry to jump to the desk.
+
+Hover a desk for the terminal title and cwd. Click a desk (or a roster row) to
+select it: a plumbob appears over it, the camera glides to it and a read-only
+mirror of the pane's terminal opens in a side panel (xterm.js, refreshed only
+when Herdr reports new output). "Focus in Herdr" switches your Herdr window to
+the pane. `?pane=w1:p1` in the URL opens a pane on load.
+
+Keys: `J`/`K` next/previous desk, `F` fit the office, `R` toggle roster,
+`+`/`-` zoom, `Esc` close the panel. Drag to pan, wheel to zoom.
 
 ## Run
 
@@ -48,5 +66,9 @@ to focus a pane and `{ "type": "read", "pane_id": "w1:p1" }` to get the pane's
 visible viewport as ANSI text (`pane.read`).
 
 `web/src/layout.ts` turns a snapshot into a floor plan in tile units.
-`web/src/scene.ts` renders it with PixiJS; every visual is drawn procedurally
-today so sprites can replace the `draw*` helpers one at a time.
+`web/src/scene.ts` renders it with PixiJS in layers (ground, platforms, floor
+and walls, depth-sorted objects, selection overlay, labels, dust). Furniture
+lives in `web/src/props.ts` and desks/people in `web/src/character.ts`; every
+visual is drawn procedurally today so sprites can replace the helpers one at a
+time. `web/src/hud.ts` owns the HTML roster, stats and activity feed, and only
+updates when a new snapshot arrives.

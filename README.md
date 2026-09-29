@@ -40,9 +40,11 @@ you can answer an agent's question or run a command without leaving the office.
 Printable text goes through Herdr's `pane.send_text`; Enter, Esc, arrows,
 Tab, Backspace, function keys and Ctrl/Alt combos go through `pane.send_keys`,
 so the pane's own key encoding (bracketed paste, application cursor keys) is
-honored. Herdr reports no cursor position, so the caret is a best guess: it
-sits at the end of the row that changed most recently, which is the input line
-while you type. The "Live input" button toggles the panel back to read-only. "Focus
+honored. Herdr reports no cursor position and every request takes ~100 ms, so
+the panel tracks the caret from your keystrokes and echoes text typed at the
+end of the line right away, until the pane's own echo arrives
+(`web/src/caret.ts`). The terminal keeps the pane's exact size and shrinks its
+font to fit the panel. The "Live input" button toggles the panel back to read-only. "Focus
 in Herdr" switches your Herdr window to the pane. `?pane=w1:p1` in the URL
 opens a pane on load.
 

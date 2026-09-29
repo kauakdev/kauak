@@ -76,9 +76,9 @@ export type BridgeMessage =
   | { type: "snapshot"; snapshot: Snapshot }
   | { type: "event"; event: string; data: unknown }
   | { type: "herdr_down"; message: string }
-  | { type: "pane_output"; pane_id: string; text: string; revision: number; truncated: boolean }
-  | { type: "input_ack"; pane_id: string }
-  | { type: "error"; pane_id?: string; message: string };
+  | { type: "pane_output"; pane_id: string; text: string; revision: number; truncated: boolean; seq?: number }
+  | { type: "input_ack"; pane_id: string; id?: number }
+  | { type: "error"; pane_id?: string; id?: number; message: string };
 
 /** One unit of terminal input: literal text or named keys (Herdr `pane.send_keys` names). */
 export type InputOp = { text: string } | { keys: string[] };

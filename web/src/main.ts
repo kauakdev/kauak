@@ -36,14 +36,14 @@ const bridge = new Bridge({
     if (want && !panel.selectedPaneId && s.panes.some((x) => x.pane_id === want)) select(want);
   },
   onStatus: (ok, text) => hud.setStatus(ok, text),
-  onPaneOutput: (id, text, rev) => panel.receive(id, text, rev),
-  onInputAck: (id) => panel.inputAcked(id),
-  onError: (message, id) => { if (id) panel.inputFailed(id, message); },
+  onPaneOutput: (id, text, seq) => panel.receive(id, text, seq),
+  onInputAck: (id, inputId) => panel.inputAcked(id, inputId),
+  onError: (message, id, inputId) => { if (id) panel.inputFailed(id, message, inputId); },
 });
 
 scene.onSelectPane = (pane) => select(pane.pane_id);
-panel.onRead = (id) => bridge.readPane(id);
-panel.onInput = (id, ops) => bridge.sendInput(id, ops);
+panel.onRead = (id, seq) => bridge.readPane(id, seq);
+panel.onInput = (id, ops, inputId) => bridge.sendInput(id, ops, inputId);
 hud.isTyping = () => panel.isTyping();
 panel.onFocus = (id) => bridge.focusPane(id);
 panel.onClose = () => { scene.setSelected(null); hud.setSelected(null); };

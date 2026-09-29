@@ -108,7 +108,9 @@ wss.on("connection", async (ws) => {
         ws.send(JSON.stringify({ type: "error", message: err.message }));
       }
     } else if (msg.type === "read" && typeof msg.pane_id === "string") {
-      // Read-only terminal view. `visible` = the pane's rendered viewport.
+      // Terminal view. `visible` = the pane's rendered viewport. Reads run in
+      // parallel (each Herdr request takes ~100 ms); `seq` is echoed so the
+      // client can drop replies that arrive out of order.
       try {
         const res = await herdrRequest("pane.read", {
           pane_id: msg.pane_id,
@@ -123,6 +125,7 @@ wss.on("connection", async (ws) => {
           text: res.read.text,
           revision: res.read.revision,
           truncated: res.read.truncated,
+          seq: typeof msg.seq === "number" ? msg.seq : undefined,
         }));
       } catch (err) {
         ws.send(JSON.stringify({ type: "error", pane_id: msg.pane_id, message: err.message }));
@@ -130,38 +133,65 @@ wss.on("connection", async (ws) => {
     } else if (msg.type === "input" && typeof msg.pane_id === "string" && Array.isArray(msg.ops)) {
       // Keystrokes from the browser terminal. `ops` is an ordered list of
       // { text } (literal bytes, pane.send_text) and { keys } (named keys such
-      // as "enter" or "ctrl+c", pane.send_keys). Per-pane queue keeps order.
-      const paneId = msg.pane_id;
-      const ops = msg.ops.slice(0, MAX_INPUT_OPS);
-      enqueueInput(paneId, async () => {
-        try {
-          for (const op of ops) {
-            if (typeof op.text === "string" && op.text.length > 0) {
-              await herdrRequest("pane.send_text", { pane_id: paneId, text: op.text.slice(0, MAX_INPUT_TEXT) });
-            } else if (Array.isArray(op.keys) && op.keys.length > 0) {
-              const keys = op.keys.filter((k) => typeof k === "string" && k.length <= 24).slice(0, 64);
-              if (keys.length) await herdrRequest("pane.send_keys", { pane_id: paneId, keys });
-            }
-          }
-          ws.send(JSON.stringify({ type: "input_ack", pane_id: paneId }));
-        } catch (err) {
-          ws.send(JSON.stringify({ type: "error", pane_id: paneId, message: err.message }));
-        }
-      });
+      // as "enter" or "ctrl+c", pane.send_keys).
+      queueInput(ws, msg.pane_id, msg.ops.slice(0, MAX_INPUT_OPS), typeof msg.id === "number" ? msg.id : undefined);
     } else if (msg.type === "refresh") {
       scheduleRefresh();
     }
   });
 });
 
-// Serialize input per pane so fast typing cannot reorder across connections.
+// Input is serialized per pane so fast typing cannot reorder across
+// connections. Every Herdr request takes ~100 ms, so keystrokes that arrive
+// while a batch is in flight are merged into the next one ("hello" typed fast
+// becomes one send_text). `input_ack` carries the id of the last message sent.
 const MAX_INPUT_OPS = 256;
 const MAX_INPUT_TEXT = 64 * 1024;
+const MAX_KEYS_PER_CALL = 64;
 const inputQueues = new Map();
+const openBatches = new Map(); // paneId → batch still waiting for its turn
+
 function enqueueInput(paneId, job) {
   const prev = inputQueues.get(paneId) ?? Promise.resolve();
   const next = prev.then(job, job).finally(() => { if (inputQueues.get(paneId) === next) inputQueues.delete(paneId); });
   inputQueues.set(paneId, next);
+}
+
+function queueInput(ws, paneId, ops, id) {
+  let batch = openBatches.get(paneId);
+  if (!batch || batch.ws !== ws) {
+    batch = { ws, ops: [], id };
+    openBatches.set(paneId, batch);
+    const b = batch;
+    enqueueInput(paneId, async () => {
+      if (openBatches.get(paneId) === b) openBatches.delete(paneId); // closed to merging once it runs
+      try {
+        for (const op of b.ops) {
+          if ("text" in op) await herdrRequest("pane.send_text", { pane_id: paneId, text: op.text });
+          else for (let i = 0; i < op.keys.length; i += MAX_KEYS_PER_CALL) {
+            await herdrRequest("pane.send_keys", { pane_id: paneId, keys: op.keys.slice(i, i + MAX_KEYS_PER_CALL) });
+          }
+        }
+        b.ws.send(JSON.stringify({ type: "input_ack", pane_id: paneId, id: b.id }));
+      } catch (err) {
+        b.ws.send(JSON.stringify({ type: "error", pane_id: paneId, id: b.id, message: err.message }));
+      }
+    });
+  }
+  batch.id = id;
+  for (const op of ops) {
+    const last = batch.ops[batch.ops.length - 1];
+    if (typeof op?.text === "string" && op.text.length > 0) {
+      const text = op.text.slice(0, MAX_INPUT_TEXT);
+      if (last && "text" in last && last.text.length + text.length <= MAX_INPUT_TEXT) last.text += text;
+      else batch.ops.push({ text });
+    } else if (Array.isArray(op?.keys)) {
+      const keys = op.keys.filter((k) => typeof k === "string" && k.length > 0 && k.length <= 24);
+      if (!keys.length) continue;
+      if (last && "keys" in last) last.keys.push(...keys);
+      else batch.ops.push({ keys });
+    }
+  }
 }
 
 // ---------------------------------------------------------------- event stream

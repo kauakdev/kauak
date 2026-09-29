@@ -124,7 +124,7 @@
       #panel header button { background: #232739; color: var(--text); border: 1px solid var(--line-2); border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
       #panel header button:hover { background: #2e3350; } #panel header button.primary { background: #3b4470; border-color: #55609a; }
       #panel-term { flex: 1; overflow: auto; padding: 8px; }
-      #panel-term .xterm { opacity: .97; }
+      #panel-term .xterm { opacity: .97; overflow: hidden; } /* xterm's hidden input box can sit outside the screen after a font change */
       #panel-hint { font-size: 11px; opacity: .5; padding: 6px 12px; border-top: 1px solid var(--line); transition: color .15s ease; }
       #panel-hint.warn { opacity: 1; color: var(--blocked); }
       #panel-lock { display: inline-flex; align-items: center; gap: 6px; }

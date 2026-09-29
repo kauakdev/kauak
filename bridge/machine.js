@@ -222,8 +222,11 @@ export class Machine extends EventEmitter {
     fs.chmodSync(TUNNEL_DIR, 0o700); // the tunnel socket reaches a remote shell; keep it ours
     const remote = this.remoteSocket ?? await this.probeRemoteSocket();
     try { fs.unlinkSync(this.socketPath); } catch {}
+    // ControlPath=none: with ControlMaster in ~/.ssh/config, `ssh -N -L` would
+    // hand the forward to the shared master and exit 0 right away, leaving us
+    // nothing to watch or kill. The tunnel gets its own connection instead.
     const child = spawn(SSH, [
-      ...SSH_OPTS, "-N", "-o", "ExitOnForwardFailure=yes", "-o", "StreamLocalBindUnlink=yes",
+      ...SSH_OPTS, "-o", "ControlPath=none", "-N", "-o", "ExitOnForwardFailure=yes", "-o", "StreamLocalBindUnlink=yes",
       "-L", `${this.socketPath}:${remote}`, "--", this.ssh,
     ], { stdio: ["ignore", "ignore", "pipe"] });
     this.tunnel = child;

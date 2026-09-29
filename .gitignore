@@ -1,3 +1,5 @@
 node_modules
 dist
+dist-demo
+*.tgz
 .vite

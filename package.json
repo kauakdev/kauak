@@ -1,25 +1,35 @@
 {
-  "name": "agent-office",
+  "name": "agentoffice",
   "version": "0.1.0",
-  "private": true,
+  "description": "A Sims-style isometric office that shows what your Herdr coding agents are doing, live",
+  "keywords": ["herdr", "coding-agents", "claude-code", "codex", "terminal", "multiplexer", "dashboard", "isometric", "pixijs"],
+  "homepage": "https://github.com/agustinrbeltran/agent-office#readme",
+  "bugs": "https://github.com/agustinrbeltran/agent-office/issues",
+  "repository": { "type": "git", "url": "git+https://github.com/agustinrbeltran/agent-office.git" },
+  "license": "Apache-2.0",
+  "author": "Agustin Renteria Beltran",
   "type": "module",
-  "description": "Sims-style isometric office that visualizes Herdr coding agents",
+  "bin": { "agentoffice": "bin/agentoffice.js" },
+  "files": ["bin", "bridge", "dist"],
+  "engines": { "node": ">=20" },
   "scripts": {
     "dev": "concurrently -k -n bridge,web -c blue,magenta \"node bridge/server.js\" \"vite\"",
     "bridge": "node bridge/server.js",
     "web": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "build:demo": "vite build --mode demo",
+    "start": "node bin/agentoffice.js",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run build"
   },
   "dependencies": {
-    "@xterm/xterm": "^6.0.0",
-    "pixi.js": "^8.6.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/ws": "^8.5.12",
+    "@xterm/xterm": "^6.0.0",
     "concurrently": "^9.1.0",
+    "pixi.js": "^8.6.0",
     "typescript": "^5.6.0",
     "vite": "^6.0.0"
   }

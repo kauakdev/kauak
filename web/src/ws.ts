@@ -13,11 +13,23 @@ export interface BridgeHandlers {
   onMachineError?(message: string): void;
 }
 
+/** What the page needs from a bridge: the real one below, or the simulated one in demo.ts. */
+export interface BridgeApi {
+  focusPane(pane: string): void;
+  readPane(pane: string, seq: number): void;
+  sendInput(pane: string, ops: InputOp[], id: number): boolean;
+  addMachine(ssh: string, label: string): boolean;
+  removeMachine(machine: string): void;
+}
+
 // The bridge only listens on 127.0.0.1 by default; "localhost" may resolve to ::1 first.
 const HOST = ["localhost", "::1", "[::1]"].includes(location.hostname) ? "127.0.0.1" : location.hostname;
-const URL = `ws://${HOST}:${import.meta.env.VITE_BRIDGE_PORT ?? 7788}`;
+// A built page is served by the bridge itself (`npx agentoffice`), so it connects
+// back to the port it came from; the Vite dev server has a port of its own.
+const PORT = import.meta.env.VITE_BRIDGE_PORT ?? (import.meta.env.DEV ? 7788 : location.port);
+const URL = `ws://${HOST}:${PORT}`;
 
-export class Bridge {
+export class Bridge implements BridgeApi {
   private ws: WebSocket | null = null;
   constructor(private handlers: BridgeHandlers) { this.connect(); }
 

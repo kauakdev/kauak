@@ -5,10 +5,16 @@
 // ~/.config/agent-office/machines.json. The bridge keeps things simple and
 // robust: on every Herdr event it re-fetches that machine's full
 // `session.snapshot` (a few KB) and broadcasts it to all clients.
+//
+// The same port also serves the built office page (dist/, `pnpm build`), so
+// `npx agentoffice` is one process and one URL. `pnpm dev` serves the page
+// from Vite instead.
 
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { LOCAL_SOCKET, Machine } from "./machine.js";
 
@@ -74,11 +80,46 @@ function machineInfos() {
   return [...machines.values()].map((m) => m.info);
 }
 
+// ---------------------------------------------------------------- page
+
+const DIST_DIR = fileURLToPath(new URL("../dist/", import.meta.url));
+const HAS_PAGE = fs.existsSync(path.join(DIST_DIR, "index.html"));
+const CONTENT_TYPES = {
+  ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".json": "application/json", ".woff2": "font/woff2",
+};
+
+/** Static files from dist/. Nothing here is secret; the WebSocket is what needs guarding. */
+function servePage(req, res) {
+  if (req.method !== "GET" && req.method !== "HEAD") return res.writeHead(405).end();
+  let rel;
+  try { rel = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname); } catch { return res.writeHead(400).end(); }
+  if (rel.endsWith("/")) rel += "index.html";
+  const file = path.resolve(DIST_DIR, "." + rel);
+  if (!file.startsWith(DIST_DIR)) return res.writeHead(404).end();
+  fs.stat(file, (err, st) => {
+    if (err || !st.isFile()) {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      return res.end(HAS_PAGE ? "Not found\n" : "The office page is not built. Run `pnpm build`, or `pnpm dev` for the Vite dev server.\n");
+    }
+    res.writeHead(200, {
+      "content-type": CONTENT_TYPES[path.extname(file)] ?? "application/octet-stream",
+      "content-length": st.size,
+      // Vite puts a content hash in every asset name; index.html must always be fresh.
+      "cache-control": rel.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache",
+      "x-content-type-options": "nosniff",
+    });
+    if (req.method === "HEAD") return res.end();
+    fs.createReadStream(file).pipe(res);
+  });
+}
+
 // ---------------------------------------------------------------- WS server
 
+const server = http.createServer(servePage);
+
 const wss = new WebSocketServer({
-  host: WS_HOST,
-  port: WS_PORT,
+  server,
   // Browsers let any web page open a WebSocket to 127.0.0.1; only accept our own page.
   verifyClient: ({ origin }) => {
     if (!origin) return true; // not a browser
@@ -233,12 +274,29 @@ function queueInput(ws, machine, paneId, ops, id) {
 // ---------------------------------------------------------------- shutdown
 
 // SSH tunnels are child processes; take them down with the bridge.
-function shutdown() {
+function shutdown(code = 0) {
   for (const m of machines.values()) m.stop();
-  process.exit(0);
+  process.exit(code);
 }
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+process.on("SIGINT", () => shutdown());
+process.on("SIGTERM", () => shutdown());
 process.on("exit", () => { for (const m of machines.values()) m.stop(); });
 
-console.log(`[bridge] websocket listening on ws://${WS_HOST}:${WS_PORT} · ${machines.size} floor${machines.size === 1 ? "" : "s"} (${CONFIG_PATH})`);
+// ---------------------------------------------------------------- listen
+
+/** Resolves with the office's URL once the port is open (null when dist/ is not built). */
+export const ready = new Promise((resolve) => {
+  // ws re-emits the HTTP server's errors (EADDRINUSE…) on the WebSocket server.
+  wss.once("error", (err) => {
+    console.error(err.code === "EADDRINUSE"
+      ? `[bridge] port ${WS_PORT} is already in use. Is the office already running? Pick another port with --port or AGENT_OFFICE_PORT.`
+      : `[bridge] cannot listen on ${WS_HOST}:${WS_PORT}: ${err.message}`);
+    shutdown(1);
+  });
+  server.listen(WS_PORT, WS_HOST, () => {
+    const host = WS_HOST.includes(":") ? `[${WS_HOST}]` : WS_HOST;
+    const floors = `${machines.size} floor${machines.size === 1 ? "" : "s"} (${CONFIG_PATH})`;
+    console.log(`[bridge] websocket listening on ws://${host}:${WS_PORT} · ${floors}`);
+    resolve(HAS_PAGE ? `http://${host === "0.0.0.0" || host === "[::]" ? "127.0.0.1" : host}:${WS_PORT}/` : null);
+  });
+});

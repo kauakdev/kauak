@@ -2,6 +2,9 @@
 
 A Sims-style isometric office that shows what your [Herdr](https://herdr.dev) coding agents are doing.
 
+**[Try the demo](https://agustinrbeltran.github.io/agent-office/)** (simulated agents, nothing to install),
+or run it on your own agents with `npx agentoffice`.
+
 | Herdr object | In the office |
 |---|---|
 | Machine running Herdr | Floor (this machine is 1F) |
@@ -68,6 +71,15 @@ click outside the terminal to get them back. Drag to pan, wheel to zoom.
 Requires a running Herdr server (0.9.x, protocol 22) and Node 20+.
 
 ```sh
+npx agentoffice
+```
+
+That starts the bridge and opens the office at http://127.0.0.1:7788. Options:
+`--port <n>`, `--no-open`, and `--demo` (simulated agents, no Herdr needed).
+
+From a checkout:
+
+```sh
 pnpm install
 pnpm dev        # bridge on ws://localhost:7788 + Vite on http://localhost:5178
 ```
@@ -75,17 +87,17 @@ pnpm dev        # bridge on ws://localhost:7788 + Vite on http://localhost:5178
 Environment variables:
 
 - `HERDR_SOCKET_PATH`: path to this machine's Herdr socket (default `~/.config/herdr/herdr.sock`; `HERDR_SOCKET` also works)
-- `AGENT_OFFICE_PORT`: bridge WebSocket port (default `7788`)
+- `AGENT_OFFICE_PORT`: port of the bridge and the page it serves (default `7788`; `--port` sets it too)
 - `AGENT_OFFICE_HOST`: interface the bridge listens on (default `127.0.0.1`, this computer only)
 - `AGENT_OFFICE_ORIGINS`: extra page hostnames allowed to connect, comma separated (default: only `localhost`/`127.0.0.1`)
 - `AGENT_OFFICE_CONFIG`: saved floors (default `~/.config/agent-office/machines.json`)
-- `VITE_BRIDGE_PORT`: port the browser connects to (default `7788`)
+- `VITE_BRIDGE_PORT`: port the page connects to (default: `7788` under `pnpm dev`, else the port the page was served from)
 
 The bridge can type into your terminals and open SSH connections, so it only
 listens on 127.0.0.1 and refuses WebSocket connections from other web pages.
 To open the office from another device, set `AGENT_OFFICE_HOST=0.0.0.0` and
-`AGENT_OFFICE_ORIGINS=<the hostname you browse to>`, run Vite with `--host`,
-and keep it on a network you trust.
+`AGENT_OFFICE_ORIGINS=<the hostname you browse to>` (under `pnpm dev`, also run
+Vite with `--host`), and keep it on a network you trust.
 
 ## Remote machines (floors)
 
@@ -115,8 +127,21 @@ reconnects on its own with backoff. Floors are saved in
 `remoteSocket` skips the lookup on the remote machine; `socket` adds a local
 Herdr socket (another Herdr session on this machine) as its own floor.
 
+## Demo
+
+`?demo` in the URL (or `npx agentoffice --demo`) swaps the bridge for a
+simulated one (`web/src/demo.ts`): two floors of made-up agents that work, get
+blocked and finish on their own. The terminal panel works there too: Enter or
+Esc answers a blocked agent, a typed task puts an idle one to work, and shell
+panes run a few commands (`help`, `git status`, `claude`…). "+ Add floor"
+adds a made-up machine. `pnpm build:demo` builds it as a static site in
+`dist-demo/`, and `.github/workflows/demo.yml` publishes that to GitHub Pages
+on every push to `main`.
+
 ## How it works
 
+`bridge/server.js` also serves the built page (`dist/`) on the same port,
+so `npx agentoffice` (`bin/agentoffice.js`) is one process and one URL.
 `bridge/machine.js` is one Herdr server: it talks to its unix socket
 (newline-delimited JSON, one request per connection) directly or through the
 SSH tunnel, keeps one long-lived `events.subscribe` connection, and on every
@@ -144,3 +169,9 @@ lives in `web/src/props.ts` and desks/people in `web/src/character.ts`; every
 visual is drawn procedurally today so sprites can replace the helpers one at a
 time. `web/src/hud.ts` owns the HTML roster, stats and activity feed, and only
 updates when the bridge pushes something new.
+
+## License
+
+[Apache 2.0](LICENSE).
+
+Agent Office is an independent project. It is not affiliated with or endorsed by Herdr.

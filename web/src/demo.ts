@@ -1,0 +1,557 @@
+// Demo mode: a stand-in for the bridge with made-up floors and agents, so the
+// office runs in any browser with no Herdr and no bridge (`?demo`, or the
+// static demo build, `pnpm build:demo`). Agents move through their statuses on
+// their own, and the terminal panel works: Enter / Esc answers a blocked agent,
+// a typed task puts an idle one to work, and shell panes run a few commands
+// (including `claude` or `codex`, which sits an agent down at that desk).
+
+import { kindColor } from "./character";
+import { splitKey } from "./floors";
+import type { AgentStatus, InputOp, MachineInfo, PaneInfo, Snapshot } from "./types";
+import type { BridgeApi, BridgeHandlers } from "./ws";
+
+const COLS = 100;
+const ROWS = 30;
+const TICK_MS = 1000;
+const MAX_LOG = 200;
+const MAX_BLOCKED = 3;
+const INSTALL = "npx agentoffice";
+// Same rule as the bridge: `host`, `user@host` or an ~/.ssh/config alias.
+const SSH_TARGET = /^[A-Za-z0-9_][A-Za-z0-9._@-]{0,127}$/;
+
+// ---------------------------------------------------------------- script
+
+type RoomSeed = { repo: string; branch: string; panes: [agent: string | null, status?: AgentStatus][] };
+
+const FLOORS: { id: string; label: string; ssh: string | null; host: string; rooms: RoomSeed[] }[] = [
+  { id: "local", label: "local", ssh: null, host: "laptop", rooms: [
+    { repo: "agent-office", branch: "main", panes: [["claude", "working"], [null]] },
+    { repo: "agent-office", branch: "feat/elevator", panes: [["codex", "blocked"]] },
+    { repo: "agent-office", branch: "fix/caret-drift", panes: [["claude", "done"], ["gemini", "working"]] },
+    { repo: "billing-api", branch: "main", panes: [["codex", "idle"], [null]] },
+    { repo: "billing-api", branch: "feat/refunds", panes: [["claude", "working"], ["opencode", "working"]] },
+    { repo: "docs-site", branch: "main", panes: [["cursor", "idle"]] },
+  ] },
+  { id: "gpu-box", label: "gpu-box", ssh: "dev@gpu-box", host: "gpu-box", rooms: [
+    { repo: "llm-evals", branch: "main", panes: [["claude", "working"], ["codex", "blocked"], [null]] },
+    { repo: "llm-evals", branch: "exp/long-context", panes: [["aider", "working"]] },
+    { repo: "data-pipeline", branch: "main", panes: [["claude", "idle"], ["gemini", "done"]] },
+  ] },
+];
+
+const AGENTS = ["claude", "codex", "gemini", "opencode", "aider", "cursor"];
+const EXTRA_REPOS = ["web-app", "mobile", "infra", "search-service", "cli", "design-system"];
+const BRANCHES = ["feat/onboarding", "fix/timeouts", "chore/deps", "feat/export", "fix/flaky-ci"];
+
+const TASKS = [
+  "Fix the flaky login test", "Add pagination to /invoices", "Refactor the elevator animation",
+  "Document the SSH floors", "Speed up the snapshot diff", "Add retries to the webhook sender",
+  "Move config to TOML", "Remove unused CSS", "Add a dark mode toggle", "Find the memory leak in the worker",
+  "Bump dependencies and fix what breaks", "Test the caret tracker", "Split scene.ts into modules",
+  "Handle SIGTERM gracefully", "Profile the eval runner", "Cache tokenizer results", "Add refunds to the ledger",
+];
+const FILES = [
+  "src/server.ts", "src/routes/invoices.ts", "web/src/scene.ts", "web/src/elevator.ts", "web/src/caret.ts",
+  "test/login.test.ts", "README.md", "src/worker/queue.ts", "src/config.ts", "package.json",
+  "db/migrations/0042_refunds.sql", "src/api/client.ts", "evals/runner.py",
+];
+const COMMANDS: [string, string][] = [
+  ["pnpm test", "✓ 214 passed (3.1s)"], ["pnpm typecheck", "No errors"], ["git diff --stat", "4 files changed, 61 insertions(+), 18 deletions(-)"],
+  ["rg \"TODO\" src", "7 matches in 4 files"], ["pnpm lint --fix", "Fixed 3 problems"], ["python -m pytest -q", "58 passed in 4.02s"],
+  ["cargo check", "Finished dev profile in 2.4s"],
+];
+const CODE = [
+  "const retries = opts.retries ?? 3;", "await queue.drain();", "if (!session) return null;", "return rows.map(toInvoice);",
+  "timeout: 30_000,", "logger.warn(\"slow snapshot\", { ms });", "export function fit(scene: Scene) {", "clock = options.clock ?? Date;",
+];
+const THOUGHTS = [
+  "I'll start by reading how the snapshot is built.", "The failing test depends on wall-clock time; I'll inject a clock.",
+  "Let me check where this config value is read.", "Running the tests to confirm the fix.",
+  "That covers the happy path; now the error cases.", "The call sites need the new argument too.",
+];
+const SEARCHES = ["retries", "session.snapshot", "TODO", "fitToPanel", "webhook", "clock"];
+const ASKS: [what: string, detail: string][] = [
+  ["Bash command", "pnpm test --filter scene"], ["Bash command", "git push origin HEAD"], ["Edit file", "src/config.ts"],
+  ["Bash command", "rm -rf node_modules/.cache"], ["Fetch", "https://registry.npmjs.org/ws"], ["Bash command", "docker compose up -d db"],
+];
+const SUMMARIES = [
+  "Done. All tests pass and the diff is ready for review.", "Finished: 3 files changed, 48 insertions, 12 deletions. Tests are green.",
+  "Done. I left two TODOs where the spec is unclear.", "All set. Typecheck and lint are clean.",
+  "Done. The fix is in, with a regression test for it.",
+];
+const VERBS = ["Thinking", "Reading", "Editing", "Testing", "Refactoring", "Pondering", "Wiring", "Tidying"];
+const SPINNER = ["·", "✢", "✳", "✶", "✻", "✽"];
+const COMMITS = [
+  "Merge pull request #42 from feat/refunds", "Retry webhooks with backoff", "Fix the session timer race",
+  "Add pagination to invoices", "Bump ws to 8.18",
+];
+
+// ---------------------------------------------------------------- model
+
+interface DemoPane {
+  id: string;
+  agent: string | null;
+  status: AgentStatus;
+  task: string;
+  verb: string;
+  placeholder: string;
+  log: string[];
+  input: string;
+  ask: [string, string] | null;
+  startedAt: number;
+  /** When the pane may change status on its own. */
+  next: number;
+}
+
+interface DemoRoom { id: string; number: number; repo: string; branch: string; dir: string; panes: DemoPane[] }
+
+interface DemoFloor { info: MachineInfo; host: string; rooms: DemoRoom[]; focused: string | null }
+
+const pick = <T>(xs: readonly T[]): T => xs[Math.floor(Math.random() * xs.length)]!;
+const between = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo));
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const clip = (s: string, n: number) => ([...s].length > n ? [...s].slice(0, n - 1).join("") + "…" : s);
+
+const sgr = (code: string) => (s: string) => `\x1b[${code}m${s}\x1b[0m`;
+const gray = sgr("90"), green = sgr("32"), red = sgr("31"), yellow = sgr("33"), blue = sgr("34"), bold = sgr("1");
+// Dim is how agents draw placeholders; the caret tracker treats it as blank (caret.ts).
+const dim = sgr("2");
+const rgb = (c: number) => sgr(`38;2;${c >> 16};${(c >> 8) & 255};${c & 255}`);
+
+/** Codex and aider draw "•" bullets and a "›" prompt; the rest look more like Claude Code. */
+const codexy = (p: DemoPane) => p.agent === "codex" || p.agent === "aider";
+
+// ---------------------------------------------------------------- bridge
+
+export class DemoBridge implements BridgeApi {
+  private floors: DemoFloor[] = [];
+
+  constructor(private h: BridgeHandlers) {
+    const now = Date.now();
+    for (const f of FLOORS) {
+      this.floors.push(this.makeFloor(f.id, f.label, f.ssh, f.host, f.rooms, now));
+    }
+    showCard();
+    // Answer the way the bridge does: right after "connecting".
+    setTimeout(() => {
+      this.h.onStatus(true);
+      this.pushMachines();
+      for (const f of this.floors) this.pushSnapshot(f);
+    }, 0);
+    setInterval(() => this.tick(), TICK_MS);
+  }
+
+  focusPane(key: string) {
+    const found = this.find(key);
+    if (!found) return;
+    found.floor.focused = found.pane.id;
+    this.pushSnapshot(found.floor);
+  }
+
+  readPane(key: string, seq: number) {
+    const found = this.find(key);
+    if (!found) return;
+    const p = found.pane;
+    // A finished agent goes back to idle once someone has looked at it.
+    if (p.status === "done") p.next = Math.min(p.next, Date.now() + 3000);
+    setTimeout(() => this.h.onPaneOutput(key, screen(p, found.floor, found.room), seq), 20);
+  }
+
+  sendInput(key: string, ops: InputOp[], id: number): boolean {
+    const found = this.find(key);
+    if (!found) return false;
+    const { floor, room, pane } = found;
+    const before = snapshotKey(pane);
+    for (const op of ops) {
+      if ("text" in op) this.type(pane, op.text);
+      else for (const k of op.keys) this.key(pane, room, floor, k);
+    }
+    if (snapshotKey(pane) !== before) this.pushSnapshot(floor);
+    setTimeout(() => this.h.onInputAck?.(key, id), 30);
+    return true;
+  }
+
+  addMachine(ssh: string, label: string): boolean {
+    setTimeout(() => {
+      if (!SSH_TARGET.test(ssh)) return this.h.onMachineError?.("Use an SSH host, user@host, or a Host alias from ~/.ssh/config.");
+      if (this.floors.some((f) => f.info.ssh === ssh)) return this.h.onMachineError?.(`${ssh} already has a floor.`);
+      const name = (label || ssh.split("@").pop() || ssh).slice(0, 40);
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "machine";
+      let id = slug;
+      for (let n = 2; this.floors.some((f) => f.info.id === id); n++) id = `${slug}-${n}`;
+      const now = Date.now();
+      const floor = this.makeFloor(id, name, ssh, ssh.split("@").pop()!, randomRooms(), now);
+      floor.info.state = "connecting";
+      floor.info.message = `ssh ${ssh}…`;
+      this.floors.push(floor);
+      this.pushMachines();
+      this.h.onMachineAdded?.(id);
+      // Pretend to open the tunnel.
+      setTimeout(() => {
+        if (!this.floors.includes(floor)) return;
+        floor.info.state = "live";
+        floor.info.message = "";
+        this.pushMachines();
+        this.pushSnapshot(floor);
+      }, 1400);
+    }, 250);
+    return true;
+  }
+
+  removeMachine(id: string) {
+    if (id === "local") return;
+    this.floors = this.floors.filter((f) => f.info.id !== id);
+    this.pushMachines();
+  }
+
+  // ------------------------------------------------------------ plumbing
+
+  private pushMachines() {
+    this.h.onMachines(this.floors.map((f) => ({ ...f.info })));
+  }
+
+  private pushSnapshot(f: DemoFloor) {
+    if (f.info.state === "live") this.h.onSnapshot(f.info.id, snapshotOf(f));
+  }
+
+  private find(key: string) {
+    const { machine, id } = splitKey(key);
+    const floor = this.floors.find((f) => f.info.id === machine);
+    for (const room of floor?.rooms ?? []) {
+      const pane = room.panes.find((p) => p.id === id);
+      if (pane) return { floor: floor!, room, pane };
+    }
+    return null;
+  }
+
+  private makeFloor(id: string, label: string, ssh: string | null, host: string, seeds: RoomSeed[], now: number): DemoFloor {
+    const rooms = seeds.map((s, i): DemoRoom => {
+      const n = i + 1;
+      const room: DemoRoom = {
+        id: `w${n}`, number: n, repo: s.repo, branch: s.branch, panes: [],
+        dir: s.branch === "main" ? `/home/dev/code/${s.repo}` : `/home/dev/code/${s.repo}/.worktrees/${s.branch.split("/").pop()}`,
+      };
+      room.panes = s.panes.map(([agent, status], j) => newPane(`w${n}:p${j + 1}`, agent, status ?? "idle", room, host, now));
+      return room;
+    });
+    return { info: { id, label, ssh, state: "live", message: "", version: "demo" }, host, rooms, focused: rooms[0]?.panes[0]?.id ?? null };
+  }
+
+  // ------------------------------------------------------------ life
+
+  private tick() {
+    const now = Date.now();
+    let blocked = this.floors.flatMap((f) => f.rooms.flatMap((r) => r.panes)).filter((p) => p.status === "blocked").length;
+    for (const f of this.floors) {
+      let changed = false;
+      for (const p of f.rooms.flatMap((r) => r.panes)) {
+        if (!p.agent) continue;
+        if (p.status === "working" && Math.random() < 0.4) addLog(p, action(p));
+        if (now < p.next) continue;
+        changed = true;
+        if (p.status === "working") {
+          const r = Math.random();
+          if (r < 0.25 && blocked < MAX_BLOCKED) { block(p, now); blocked++; }
+          else if (r < 0.7) finish(p, now);
+          else p.next = now + between(4000, 9000);
+        } else if (p.status === "blocked") answer(p, true, now);
+        else if (p.status === "done") setStatus(p, "idle", now);
+        else startTask(p, pick(TASKS), now);
+      }
+      if (changed) this.pushSnapshot(f);
+    }
+  }
+
+  private type(p: DemoPane, text: string) {
+    if (text.includes("\x1b")) return; // Home/End & co: not worth simulating
+    if (p.agent && p.status === "blocked") {
+      const t = text.trim().toLowerCase();
+      if (t === "1" || t === "y") answer(p, true, Date.now());
+      else if (t === "2" || t === "n") answer(p, false, Date.now());
+      return;
+    }
+    p.input = clip(p.input + text, 300);
+  }
+
+  private key(p: DemoPane, room: DemoRoom, floor: DemoFloor, k: string) {
+    const now = Date.now();
+    if (k === "backspace") p.input = [...p.input].slice(0, -1).join("");
+    else if (k === "ctrl+u") p.input = "";
+    else if (k === "enter") {
+      if (!p.agent) runShell(p, room, floor);
+      else if (p.status === "blocked") answer(p, true, now);
+      else submit(p, room, floor, now);
+    } else if (k === "esc" || k === "ctrl+c") {
+      if (!p.agent) {
+        if (k === "ctrl+c") { addLog(p, [shellPrompt(room, floor.host) + p.input + "^C"]); p.input = ""; }
+      } else if (p.status === "blocked") answer(p, false, now);
+      else if (k === "ctrl+c" && p.input) p.input = "";
+      else if (p.status === "working") {
+        addLog(p, [gray(`  ⎿  Interrupted · what should ${p.agent} do instead?`)]);
+        setStatus(p, "idle", now);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------- panes
+
+function newPane(id: string, agent: string | null, status: AgentStatus, room: DemoRoom, host: string, now: number): DemoPane {
+  const p: DemoPane = {
+    id, agent, status: agent ? status : "unknown", task: "", verb: pick(VERBS), placeholder: pick(TASKS),
+    log: [], input: "", ask: null, startedAt: now - between(3000, 90_000), next: 0,
+  };
+  if (!agent) {
+    p.log = [shellPrompt(room, host) + "git pull", "Already up to date.", shellPrompt(room, host) + "git status --short", gray(" M src/config.ts")];
+    return p;
+  }
+  // Every agent is partway through (or just past) a task, so the roster has something to say.
+  p.log = agentHeader(p, room);
+  p.task = pick(TASKS);
+  addLog(p, ["", bold(`▎ ${p.task}`), "", ...action(p), "", ...action(p)]);
+  if (status === "blocked") block(p, now);
+  else if (status === "done" || status === "idle") { finish(p, now); setStatus(p, status, now); }
+  else schedule(p, now);
+  // Stagger the first changes so the floor does not move in lockstep.
+  p.next = now + between(2000, p.next - now + 2000);
+  return p;
+}
+
+function agentHeader(p: DemoPane, room: DemoRoom): string[] {
+  const where = `${room.dir.replace(/^\/home\/[^/]+/, "~")} (${room.branch})`;
+  return [`${rgb(kindColor(p.agent))(bold(`✻ ${p.agent}`))} ${gray(`· ${where}`)}`, ""];
+}
+
+function schedule(p: DemoPane, now: number) {
+  const [lo, hi] = p.status === "working" ? [7000, 18_000] : p.status === "blocked" ? [30_000, 50_000]
+    : p.status === "done" ? [8000, 18_000] : [8000, 25_000];
+  p.next = now + between(lo, hi);
+}
+
+function setStatus(p: DemoPane, status: AgentStatus, now: number) {
+  p.status = status;
+  if (status !== "blocked") p.ask = null;
+  schedule(p, now);
+}
+
+function addLog(p: DemoPane, rows: string[]) {
+  p.log.push(...rows);
+  if (p.log.length > MAX_LOG) p.log.splice(0, p.log.length - MAX_LOG);
+}
+
+function startTask(p: DemoPane, task: string, now: number) {
+  p.task = clip(task, 80);
+  p.verb = pick(VERBS);
+  p.startedAt = now;
+  addLog(p, ["", bold(`▎ ${clip(task, COLS - 4)}`), ""]);
+  setStatus(p, "working", now);
+}
+
+function block(p: DemoPane, now: number) {
+  p.ask = pick(ASKS);
+  const [what, detail] = p.ask;
+  const call = what === "Bash command" ? `Bash(${detail})` : what === "Edit file" ? `Update(${detail})` : `Fetch(${detail})`;
+  addLog(p, ["", `${bullet(p, true)} ${call}`]);
+  setStatus(p, "blocked", now);
+}
+
+function answer(p: DemoPane, yes: boolean, now: number) {
+  if (yes) {
+    const [what, detail] = p.ask ?? ["", ""];
+    const result = what === "Edit file" ? `Updated ${detail} with ${plural(between(1, 9), "addition")}`
+      : what === "Fetch" ? "Received 12.4KB (200 OK)" : pick(COMMANDS)[1];
+    addLog(p, [gray(`  ⎿  ${result}`)]);
+    setStatus(p, "working", now);
+  } else {
+    addLog(p, [gray(`  ⎿  Rejected · tell ${p.agent} what to do instead`)]);
+    setStatus(p, "idle", now);
+  }
+}
+
+function finish(p: DemoPane, now: number) {
+  addLog(p, ["", `${bullet(p, false)} ${pick(SUMMARIES)}`]);
+  setStatus(p, "done", now);
+}
+
+function submit(p: DemoPane, room: DemoRoom, floor: DemoFloor, now: number) {
+  const text = p.input.trim();
+  p.input = "";
+  if (!text) return;
+  if (text === "/exit" || text === "/quit") {
+    p.agent = null;
+    p.status = "unknown";
+    p.log = [shellPrompt(room, floor.host)];
+    return;
+  }
+  if (text === "/clear") { p.log = agentHeader(p, room); return; }
+  // A message typed while the agent works is queued in the transcript.
+  if (p.status === "working") addLog(p, ["", bold(`▎ ${clip(text, COLS - 4)}`)]);
+  else startTask(p, text, now);
+}
+
+function bullet(p: DemoPane, tool: boolean): string {
+  const b = codexy(p) ? "•" : "⏺";
+  return tool ? green(b) : b;
+}
+
+/** A few transcript rows of the agent at work. */
+function action(p: DemoPane): string[] {
+  const b = bullet(p, true), f = pick(FILES), cx = codexy(p);
+  const add = between(1, 40), del = between(0, 15);
+  switch (between(0, 5)) {
+    case 0: return cx ? [`${b} Explored`, gray(`  └ Read ${f}`)] : [`${b} Read(${f})`, gray(`  ⎿  Read ${between(40, 400)} lines`)];
+    case 1: return [
+      cx ? `${b} Edited ${f} (${green(`+${add}`)} ${red(`-${del}`)})` : `${b} Update(${f})`,
+      ...(cx ? [] : [gray(`  ⎿  Updated ${f} with ${plural(add, "addition")} and ${plural(del, "removal")}`)]),
+      red(`      - ${pick(CODE)}`), green(`      + ${pick(CODE)}`),
+    ];
+    case 2: { const [cmd, out] = pick(COMMANDS); return cx ? [`${b} Ran ${cmd}`, gray(`  └ ${out}`)] : [`${b} Bash(${cmd})`, gray(`  ⎿  ${out}`)]; }
+    case 3: { const s = pick(SEARCHES), n = between(2, 14); return cx ? [`${b} Explored`, gray(`  └ Search ${s}`)] : [`${b} Search(pattern: "${s}")`, gray(`  ⎿  Found ${n} files`)]; }
+    default: return [`${bullet(p, false)} ${pick(THOUGHTS)}`];
+  }
+}
+
+// ---------------------------------------------------------------- shell
+
+function shellPrompt(room: DemoRoom, host: string): string {
+  return `${green(`dev@${host}`)}:${blue(room.dir.replace(/^\/home\/dev/, "~"))} ${yellow(`(${room.branch})`)}$ `;
+}
+
+function runShell(p: DemoPane, room: DemoRoom, floor: DemoFloor) {
+  const line = p.input;
+  p.input = "";
+  addLog(p, [shellPrompt(room, floor.host) + line]);
+  const [cmd = "", ...args] = line.trim().split(/\s+/);
+  const out = (...rows: string[]) => addLog(p, rows);
+  if (!cmd) return;
+  if (AGENTS.includes(cmd)) {
+    // Starting an agent sits someone down at this desk.
+    p.agent = cmd;
+    p.log = agentHeader(p, room);
+    p.placeholder = pick(TASKS);
+    setStatus(p, "idle", Date.now());
+    p.next = Date.now() + 60_000; // leave the new agent for the visitor to instruct
+    return;
+  }
+  switch (cmd) {
+    case "clear": p.log = []; return;
+    case "ls": return out(`README.md  package.json  pnpm-lock.yaml  ${blue("src")}  ${blue("test")}  tsconfig.json`);
+    case "pwd": return out(room.dir);
+    case "whoami": return out("dev");
+    case "date": return out(new Date().toString());
+    case "echo": return out(args.join(" "));
+    case "exit": return out("There is no way out of the office.");
+    case "sudo": return out("dev is not in the sudoers file. This incident will be reported.");
+    case "npx": return out(args[0] === "agentoffice" ? "You are already in the office. Run it on your own machine to see your real agents." : `npx: ${args[0] ?? ""}: not in this demo`);
+    case "help": return out("This is a demo shell. Try ls, git status, git log or clear,", `or start an agent: ${AGENTS.join(", ")}.`);
+    case "git":
+      if (args[0] === "status") return out(`On branch ${room.branch}`, `Your branch is up to date with 'origin/${room.branch}'.`, "", "Changes not staged for commit:", red("\tmodified:   src/config.ts"));
+      if (args[0] === "log") return out(...COMMITS.map((m, i) => `${yellow((0x5e1f3a7 * (i + 3)).toString(16).slice(0, 7))} ${m}`));
+      if (args[0] === "branch") return out(green(`* ${room.branch}`));
+      return out(`git: '${args[0] ?? ""}' is not in this demo. Try git status or git log.`);
+    default: return out(`${cmd}: command not found (this is a demo shell; try help)`);
+  }
+}
+
+// ---------------------------------------------------------------- views
+
+/** The pane's viewport as `pane.read` returns it: ROWS rows joined by CRLF. */
+function screen(p: DemoPane, floor: DemoFloor, room: DemoRoom): string {
+  const rows = p.agent ? agentScreen(p, Date.now()) : [...p.log, shellPrompt(room, floor.host) + p.input];
+  const view = rows.slice(-ROWS);
+  while (view.length < ROWS) view.push("");
+  return view.join("\r\n");
+}
+
+function agentScreen(p: DemoPane, now: number): string[] {
+  const rows = [...p.log];
+  if (p.status === "working") {
+    const secs = Math.max(1, Math.round((now - p.startedAt) / 1000));
+    const spin = SPINNER[Math.floor(now / 150) % SPINNER.length]!;
+    rows.push("", `${yellow(`${spin} ${p.verb}…`)} ${gray(`(${secs}s · ↓ ${(secs * 0.037).toFixed(1)}k tokens · esc to interrupt)`)}`);
+  }
+  rows.push("");
+  if (p.status === "blocked" && p.ask) {
+    const [what, detail] = p.ask;
+    // A selector, not a text prompt: no "❯" row, so the caret stays hidden.
+    rows.push(
+      yellow("─".repeat(COLS)), bold(` ${what}`), `   ${detail}`, "", " Do you want to proceed?",
+      ` ${yellow("▸ 1. Yes")}`, `   2. No, and tell ${p.agent} what to do differently`, "", gray(" Enter to approve · Esc to reject"),
+    );
+  } else {
+    const prompt = codexy(p) ? "›" : "❯";
+    const hint = p.status === "working" ? "type to queue a message · esc to interrupt" : "type a task and press Enter";
+    rows.push(
+      gray("─".repeat(COLS)),
+      `${prompt} ${p.input || dim(p.status === "working" ? "" : `Try "${p.placeholder.toLowerCase()}"`)}`,
+      gray("─".repeat(COLS)),
+      gray(`  ${hint}`),
+    );
+  }
+  return rows;
+}
+
+/** What the snapshot shows of a pane; the floor is re-sent only when this changes. */
+function snapshotKey(p: DemoPane): string {
+  return `${p.agent}|${p.status}|${p.task}`;
+}
+
+function snapshotOf(f: DemoFloor): Snapshot {
+  const rank: AgentStatus[] = ["blocked", "working", "done", "idle"];
+  const worst = (ps: DemoPane[]) => rank.find((s) => ps.some((p) => p.agent && p.status === s)) ?? "unknown";
+  const focusedRoom = f.rooms.find((r) => r.panes.some((p) => p.id === f.focused)) ?? null;
+  const panes: PaneInfo[] = f.rooms.flatMap((r) => r.panes.map((p) => {
+    const title = p.agent ? p.task || p.agent : `dev@${f.host}: ${r.dir.replace(/^\/home\/dev/, "~")}`;
+    return {
+      pane_id: p.id, terminal_id: `term-${p.id}`, workspace_id: r.id, tab_id: `${r.id}:t1`, focused: p.id === f.focused,
+      cwd: r.dir, foreground_cwd: r.dir, agent: p.agent, agent_status: p.agent ? p.status : "unknown",
+      terminal_title: p.agent && p.status === "working" ? `✳ ${title}` : title, terminal_title_stripped: title,
+      scroll: { offset_from_bottom: 0, max_offset_from_bottom: 0, viewport_rows: ROWS }, revision: 0,
+    };
+  }));
+  return {
+    version: "demo", protocol: 22,
+    focused_workspace_id: focusedRoom?.id ?? null, focused_tab_id: focusedRoom ? `${focusedRoom.id}:t1` : null, focused_pane_id: f.focused,
+    workspaces: f.rooms.map((r) => ({
+      workspace_id: r.id, number: r.number, label: r.branch, focused: r === focusedRoom, pane_count: r.panes.length, tab_count: 1,
+      active_tab_id: `${r.id}:t1`, agent_status: worst(r.panes),
+      worktree: { repo_key: `${f.info.id}:${r.repo}`, repo_name: r.repo, repo_root: `/home/dev/code/${r.repo}`, checkout_path: r.dir, is_linked_worktree: r.branch !== "main" },
+    })),
+    tabs: f.rooms.map((r) => ({
+      tab_id: `${r.id}:t1`, workspace_id: r.id, number: 1, label: "1", focused: r === focusedRoom, pane_count: r.panes.length, agent_status: worst(r.panes),
+    })),
+    panes,
+    layouts: f.rooms.map((r) => ({
+      workspace_id: r.id, tab_id: `${r.id}:t1`, focused_pane_id: r === focusedRoom ? f.focused : null,
+      panes: r.panes.map((p, i) => ({ pane_id: p.id, focused: p.id === f.focused, rect: { x: i * COLS, y: 0, width: COLS, height: ROWS } })),
+    })),
+  };
+}
+
+/** Rooms for a floor added from the elevator. */
+function randomRooms(): RoomSeed[] {
+  const repos = [...EXTRA_REPOS].sort(() => Math.random() - 0.5).slice(0, 2);
+  const status = (): AgentStatus => pick(["working", "working", "idle", "blocked", "done"]);
+  return repos.flatMap((repo) => ["main", pick(BRANCHES)].slice(0, between(1, 3)).map((branch) => ({
+    repo, branch, panes: Array.from({ length: between(1, 4) }, (_, i) => (i === 0 || Math.random() < 0.75 ? [pick(AGENTS), status()] : [null])) as RoomSeed["panes"],
+  })));
+}
+
+// ---------------------------------------------------------------- card
+
+/** The "this is a demo, here is how to get the real thing" card (index.html). */
+function showCard() {
+  const card = document.getElementById("demo");
+  if (!card) return;
+  card.hidden = false;
+  document.body.classList.add("demo-card");
+  const copy = card.querySelector<HTMLElement>("[data-copy] i");
+  card.querySelector("[data-copy]")?.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(INSTALL); } catch { return; }
+    if (copy) { copy.textContent = "copied"; setTimeout(() => { copy.textContent = "copy"; }, 1500); }
+  });
+  card.querySelector("[data-close]")?.addEventListener("click", () => {
+    card.hidden = true;
+    document.body.classList.remove("demo-card");
+  });
+}

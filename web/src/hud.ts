@@ -132,7 +132,7 @@ export class Hud {
     let ok = false, text: string;
     if (!this.bridgeUp) {
       text = "bridge offline · retrying";
-      this.showEmpty("The bridge is offline", "Start it with pnpm dev (or pnpm bridge). This page reconnects on its own.");
+      this.showEmpty("The bridge is offline", "Start it with npx agentoffice (or pnpm dev in a checkout). This page reconnects on its own.");
     } else if (!f) {
       text = "connecting…";
       this.empty.hidden = true;

@@ -4,6 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Agent Office</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 13v8l9-5V8z' fill='%235a6080'/%3E%3Cpath d='M12 13v8l-9-5V8z' fill='%232b2e3b'/%3E%3Cpath d='M12 3 21 8l-9 5-9-5z' fill='%23ffd166'/%3E%3C/svg%3E" />
+    <meta name="description" content="A Sims-style isometric office that shows what your Herdr coding agents are doing, live." />
+    <meta property="og:title" content="Agent Office" />
+    <meta property="og:description" content="A Sims-style isometric office that shows what your Herdr coding agents are doing, live." />
     <style>
       :root {
         color-scheme: dark;
@@ -210,6 +214,20 @@
       #hint kbd { font: inherit; padding: 0 4px; border: 1px solid var(--line-2); border-radius: 4px; background: var(--card-2); }
       body.panel-open #hint { display: none; }
 
+      /* ---- demo card (demo mode only, see demo.ts) ---- */
+      #demo { position: fixed; left: 50%; bottom: calc(40px + var(--sab)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
+        padding: 7px 6px 7px 8px; max-width: calc(100vw - 24px); font-size: 12px; z-index: 5; }
+      #demo[hidden], body.panel-open #demo { display: none; }
+      #demo .tag { font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #1a1a1a; background: var(--accent); padding: 3px 7px; border-radius: 5px; }
+      #demo .txt { color: var(--muted); white-space: nowrap; }
+      #demo .cmd { font: 600 12px var(--mono); background: #0b0d13; border: 1px solid var(--line-2); border-radius: 7px; padding: 5px 9px; cursor: pointer; white-space: nowrap; }
+      #demo .cmd span { color: var(--muted); } #demo .cmd i { font: 500 10px var(--font); font-style: normal; color: var(--muted); margin-left: 6px; }
+      #demo .cmd:hover { border-color: var(--accent); } #demo .cmd:focus-visible, #demo a:focus-visible, #demo .x:focus-visible { outline: 2px solid var(--accent); }
+      #demo a { text-decoration: none; white-space: nowrap; }
+      #demo .x { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 4px 6px; font-size: 12px; }
+      #demo .x:hover { color: var(--text); }
+      @media (max-width: 1350px) { #demo .txt { display: none; } }
+
       /* ---- tooltip ---- */
       #tip { position: fixed; pointer-events: none; background: #0f1118f2; border: 1px solid var(--line-2); border-left: 3px solid var(--unknown);
         border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.45; max-width: 340px; display: none; white-space: pre-wrap; z-index: 9; box-shadow: 0 8px 24px #0008; }
@@ -271,6 +289,10 @@
         #floors header { justify-content: center; padding: 6px; }
         #floors .floor .go { grid-template-columns: auto auto; gap: 6px; padding: 5px 6px; }
         #floors.adding { width: min(300px, calc(100vw - 24px)); }
+        /* On phones the card is a strip under the top bar, and the elevator and radio move down below it. */
+        #demo { top: calc(56px + var(--sat)); bottom: auto; left: calc(12px + var(--sal)); right: calc(12px + var(--sar)); transform: none; max-width: none; justify-content: space-between; }
+        #demo .cmd i { display: none; }
+        body.demo-card #floors, body.demo-card #radio { top: calc(102px + var(--sat)); }
       }
     </style>
   </head>
@@ -352,6 +374,13 @@
     <div id="tip"></div>
     <div id="floor-banner" aria-live="polite"></div>
     <div id="empty" class="card" hidden><h2></h2><p></p></div>
+    <aside id="demo" class="card" hidden aria-label="About this demo">
+      <span class="tag">Demo</span>
+      <span class="txt">Simulated agents. Click a desk, then type into its terminal.</span>
+      <button class="cmd" data-copy title="Copy the command that runs it on your own machine"><span>$</span> npx agentoffice<i>copy</i></button>
+      <a class="btn" href="https://github.com/agustinrbeltran/agent-office" target="_blank" rel="noopener">GitHub</a>
+      <button class="x" data-close aria-label="Hide">✕</button>
+    </aside>
 
     <aside id="panel" data-status="unknown">
       <header>

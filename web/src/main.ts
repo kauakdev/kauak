@@ -5,7 +5,7 @@ import { TerminalPanel } from "./panel";
 import { Radio } from "./radio";
 import { OfficeScene } from "./scene";
 import type { MachineInfo, Snapshot } from "./types";
-import { Bridge } from "./ws";
+import { Bridge, type BridgeApi, type BridgeHandlers } from "./ws";
 
 const FLOOR_KEY = "agent-office.floor";
 
@@ -19,6 +19,8 @@ const banner = document.getElementById("floor-banner")!;
 let machines: MachineInfo[] = [];
 const snapshots = new Map<string, Snapshot>();
 const params = new URLSearchParams(location.search);
+// Simulated floors and agents instead of the bridge: `?demo`, or the static demo build (`pnpm build:demo`).
+const demo = import.meta.env.MODE === "demo" || params.has("demo");
 let current = params.get("floor") ?? load(FLOOR_KEY) ?? "local";
 // Deep link: ?pane=w1:p1 (this machine) or ?pane=<machine>/w1:p1 opens that pane's terminal on load.
 let wantPane = params.get("pane");
@@ -76,7 +78,7 @@ const elevator = new Elevator({
   onRemove: (id) => bridge.removeMachine(id),
 });
 
-const bridge = new Bridge({
+const handlers: BridgeHandlers = {
   onMachines: (list) => {
     machines = list;
     const ids = new Set(list.map((m) => m.id));
@@ -99,7 +101,8 @@ const bridge = new Bridge({
   onError: (message, id, inputId) => { if (id) panel.inputFailed(id, message, inputId); },
   onMachineAdded: (id) => { elevator.added(); goToFloor(id); },
   onMachineError: (message) => elevator.showError(message),
-});
+};
+const bridge: BridgeApi = demo ? new (await import("./demo")).DemoBridge(handlers) : new Bridge(handlers);
 
 scene.onSelectPane = (pane) => select(pane.pane_id);
 panel.onRead = (id, seq) => bridge.readPane(id, seq);

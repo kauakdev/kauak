@@ -137,6 +137,8 @@ export class Machine extends EventEmitter {
     this.retryTimer = null;
     if (this.stopped) return;
     try {
+      // A tunnel whose socket is gone carries nothing; start it over.
+      if (this.ssh && this.tunnel && !fs.existsSync(this.socketPath)) this.closeTunnel();
       if (this.ssh && !this.tunnel) await this.openTunnel();
       this.subscribe();
     } catch (err) {
@@ -228,22 +230,31 @@ export class Machine extends EventEmitter {
     let stderr = "";
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (d) => { stderr = (stderr + d).slice(-2000); });
-    const why = () => lastLine(stderr) || "connection closed";
+    const why = (code, signal) => lastLine(stderr) || (signal ? `killed by ${signal}` : `connection closed (exit ${code})`);
 
     await new Promise((resolve, reject) => {
       const started = Date.now();
+      let settled = false;
+      // ssh died before the socket showed up: forget it so the retry spawns a new one.
+      const died = (message) => {
+        if (settled) return;
+        settled = true;
+        clearInterval(poll);
+        if (this.tunnel === child) this.closeTunnel();
+        reject(new Error(message));
+      };
       const poll = setInterval(() => {
-        if (fs.existsSync(this.socketPath)) { clearInterval(poll); resolve(); }
-        else if (Date.now() - started > TUNNEL_READY_MS) { clearInterval(poll); this.closeTunnel(); reject(new Error("ssh: timed out opening the tunnel")); }
+        if (fs.existsSync(this.socketPath)) { settled = true; clearInterval(poll); resolve(); }
+        else if (Date.now() - started > TUNNEL_READY_MS) died("ssh: timed out opening the tunnel");
       }, 100);
-      child.once("exit", () => { clearInterval(poll); reject(new Error(`ssh: ${why()}`)); });
-      child.once("error", (err) => { clearInterval(poll); reject(new Error(`ssh: ${err.message}`)); });
+      child.once("exit", (code, signal) => died(`ssh: ${why(code, signal)}`));
+      child.once("error", (err) => died(`ssh: ${err.message}`));
     });
     console.log(`[bridge] ${this.label}: tunnel up (${this.socketPath} → ${this.ssh}:${remote})`);
-    child.once("exit", () => {
+    child.once("exit", (code, signal) => {
       if (this.tunnel !== child) return;
       this.tunnel = null;
-      this.fail(`ssh tunnel closed: ${why()}`, true);
+      this.fail(`ssh tunnel closed: ${why(code, signal)}`, true);
     });
   }
 

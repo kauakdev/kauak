@@ -8,6 +8,7 @@ import type { AgentStatus, PaneInfo, Snapshot } from "./types";
 
 const ORDER: AgentStatus[] = ["working", "idle", "blocked", "done", "unknown"];
 const MAX_FEED = 40;
+const FEED_KEY = "agent-office.feed-hidden";
 
 interface Tracked { status: AgentStatus; agent: string | null; since: number; room: string }
 interface FeedItem { at: number; text: string; status: AgentStatus; paneId: string; floor: string }
@@ -41,10 +42,16 @@ export class Hud {
     document.getElementById("btn-zoom-in")!.addEventListener("click", () => h.onZoom(1.25));
     document.getElementById("btn-zoom-out")!.addEventListener("click", () => h.onZoom(0.8));
     document.getElementById("btn-roster")!.addEventListener("click", () => document.body.classList.toggle("roster-hidden"));
+    document.getElementById("btn-feed")!.addEventListener("click", () => this.toggleFeed());
+    document.getElementById("feed-hide")!.addEventListener("click", (e) => { e.stopPropagation(); this.toggleFeed(true); });
+    // On phones a hidden feed is a pill; tapping it brings the feed back.
+    document.querySelector("#feed header")!.addEventListener("click", () => { if (document.body.classList.contains("feed-hidden")) this.toggleFeed(false); });
+    this.toggleFeed(load(FEED_KEY) === "1");
     addEventListener("keydown", (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || this.isTyping() || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "f") h.onFit();
       else if (e.key === "r") document.body.classList.toggle("roster-hidden");
+      else if (e.key === "a") this.toggleFeed();
       else if (e.key === "j" || e.key === "k" || e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); this.step(e.key === "j" || e.key === "ArrowDown" ? 1 : -1); }
       else if (e.key === "+" || e.key === "=") h.onZoom(1.25);
       else if (e.key === "-") h.onZoom(0.8);
@@ -110,6 +117,13 @@ export class Hud {
     this.renderRoster();
     this.renderFeed();
     this.renderConn();
+  }
+
+  /** Shows or hides the activity feed; remembered across reloads. */
+  private toggleFeed(hide = !document.body.classList.contains("feed-hidden")) {
+    document.body.classList.toggle("feed-hidden", hide);
+    document.getElementById("btn-feed")!.setAttribute("aria-expanded", String(!hide));
+    save(FEED_KEY, hide ? "1" : "0");
   }
 
   // ------------------------------------------------------------ pieces
@@ -242,6 +256,14 @@ function ago(ts: number): string {
   if (m < 60) return `${m}m`;
   const h = Math.round(m / 60);
   return h < 48 ? `${h}h` : `${Math.round(h / 24)}d`;
+}
+
+// localStorage can be missing or throw (private windows, blocked site data).
+function load(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function save(key: string, value: string) {
+  try { localStorage.setItem(key, value); } catch {}
 }
 
 function esc(s: string): string {

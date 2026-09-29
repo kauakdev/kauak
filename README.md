@@ -80,7 +80,7 @@ The new desk's terminal opens as soon as Herdr has the pane. Nothing is ever
 closed or removed from here.
 
 Keys: `J`/`K` next/previous desk, `1`–`9` go to that floor, `PgUp`/`PgDn` one
-floor up/down, `F` fit the office, `R` toggle roster, `B` build mode, `+`/`-`
+floor up/down, `F` fit the office, `R` toggle roster, `A` toggle the activity feed, `B` build mode, `+`/`-`
 zoom, `Esc` close the build form, the add-floor form or the panel, then leave
 build mode. While the terminal has keyboard focus
 these shortcuts are off and every key, including `Esc`, goes to the pane;

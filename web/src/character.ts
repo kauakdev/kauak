@@ -168,7 +168,7 @@ export function makeCharacter(desk: Desk, state: CharState): DeskNode {
   const body = new Graphics();
   body.ellipse(p.x, p.y - 15, 9.5, 12).fill(color).stroke({ color: shade(color, 0.6), width: 1 });   // torso
   body.circle(p.x, p.y - 33, 7.5).fill(skin).stroke({ color: shade(skin, 0.7), width: 1 });         // head
-  body.arc(p.x, p.y - 34, 8, Math.PI, Math.PI * 2).fill(hair);                                        // hair
+  body.moveTo(p.x - 8, p.y - 34).arc(p.x, p.y - 34, 8, Math.PI, Math.PI * 2).closePath().fill(hair); // hair (explicit moveTo: arc() would otherwise start from a stale point)
   body.circle(p.x - 2.6, p.y - 33, 1).fill(0x222222);
   body.circle(p.x + 2.6, p.y - 33, 1).fill(0x222222);
   root.addChild(body);

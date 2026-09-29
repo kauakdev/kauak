@@ -2,6 +2,7 @@ import { Elevator } from "./elevator";
 import { EMPTY_SNAPSHOT, floorOf, keyOf, mergeSnapshots, namespaceSnapshot, type Floor } from "./floors";
 import { Hud } from "./hud";
 import { TerminalPanel } from "./panel";
+import { Radio } from "./radio";
 import { OfficeScene } from "./scene";
 import type { MachineInfo, Snapshot } from "./types";
 import { Bridge } from "./ws";
@@ -105,6 +106,8 @@ panel.onRead = (id, seq) => bridge.readPane(id, seq);
 panel.onInput = (id, ops, inputId) => bridge.sendInput(id, ops, inputId);
 hud.isTyping = () => panel.isTyping();
 elevator.isTyping = () => panel.isTyping();
+const radio = new Radio();
+radio.isTyping = () => panel.isTyping();
 panel.onFocus = (id) => bridge.focusPane(id);
 panel.onClose = () => { scene.setSelected(null); hud.setSelected(null); };
 }

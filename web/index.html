@@ -57,7 +57,7 @@
       #roster { position: fixed; left: calc(12px + var(--sal)); top: calc(60px + var(--sat)); bottom: calc(60px + var(--sab)); width: 280px;
         display: flex; flex-direction: column; z-index: 4; transition: transform .2s ease, opacity .2s ease; }
       body.roster-hidden #roster { transform: translateX(-20px); opacity: 0; pointer-events: none; }
-      #roster header, #feed header, #floors header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 8px;
+      #roster header, #feed header, #floors header, #radio header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 8px;
         font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
       #roster-body { overflow: auto; padding: 6px; flex: 1; }
       #roster section + section { margin-top: 8px; }
@@ -89,9 +89,10 @@
       body.panel-open #floors:not(.adding) header > span, body.panel-open #floors:not(.adding) .floor .txt { display: none; }
       body.panel-open #floors:not(.adding) header { justify-content: center; padding: 6px; }
       body.panel-open #floors:not(.adding) .floor .go { grid-template-columns: auto auto; gap: 6px; padding: 5px 6px; }
-      #floors header .mini { background: var(--card-2); border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 600;
+      #floors header .mini, #radio header .mini { background: var(--card-2); border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 600;
         letter-spacing: 0; text-transform: none; color: var(--text); cursor: pointer; }
-      #floors header .mini:hover { background: #2e3350; } #floors header .mini:focus-visible { outline: 2px solid var(--accent); }
+      #floors header .mini:hover, #radio header .mini:hover { background: #2e3350; }
+      #floors header .mini:focus-visible, #radio header .mini:focus-visible { outline: 2px solid var(--accent); }
       #floors.adding header .mini { background: #ffd16622; border-color: #ffd16666; }
       #floor-list { overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 3px; }
       .floor { position: relative; }
@@ -135,6 +136,58 @@
       #floor-banner b { color: #1a1a1a; background: var(--accent); border-radius: 999px; padding: 2px 9px; font-size: 12px; }
       #floor-banner.show { animation: banner 1.6s ease forwards; }
       @keyframes banner { 0% { opacity: 0; transform: translate(-50%, -6px); } 15%, 70% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+
+      /* ---- radio ---- */
+      #btn-radio { display: inline-flex; align-items: center; gap: 6px; }
+      #btn-radio .eq { display: inline-flex; align-items: flex-end; gap: 1.5px; height: 10px; }
+      #btn-radio .eq i { width: 2px; height: 3px; border-radius: 1px; background: var(--muted); }
+      #btn-radio .eq i:nth-child(1) { height: 5px; } #btn-radio .eq i:nth-child(2) { height: 9px; } #btn-radio .eq i:nth-child(3) { height: 6px; }
+      #btn-radio.on .eq i { background: var(--accent); }
+      #btn-radio.playing .eq i { animation: eq .8s ease-in-out infinite alternate; }
+      #btn-radio.playing .eq i:nth-child(2) { animation-delay: -.5s; } #btn-radio.playing .eq i:nth-child(3) { animation-delay: -.25s; }
+      @keyframes eq { from { height: 3px; } to { height: 10px; } }
+      #radio { position: fixed; top: calc(56px + var(--sat)); right: calc(12px + var(--sar)); width: 300px; z-index: 7; transition: right .18s ease; }
+      #radio[hidden] { display: none; }
+      body.panel-open #radio { right: calc(var(--panel-w) + 12px); }
+      #radio header .mini { display: inline-flex; align-items: center; gap: 6px; }
+      #radio .led { width: 7px; height: 7px; border-radius: 50%; background: #555a70; }
+      #radio-power[aria-pressed="true"] .led { background: var(--blocked); box-shadow: 0 0 6px var(--blocked); }
+      /* Backlit dial window: amber when on, dark when off. */
+      #radio-dial { --lit: #ffd166; position: relative; height: 58px; margin: 12px 12px 0; border-radius: 8px; overflow: hidden; cursor: ew-resize; touch-action: none;
+        background: linear-gradient(#2e2615, #1c180f); border: 1px solid #4d3f22; box-shadow: inset 0 2px 10px #000a; transition: background .3s, border-color .3s; }
+      #radio[data-state="off"] #radio-dial { --lit: #6b6f80; background: linear-gradient(#1b1d25, #14151b); border-color: var(--line-2); }
+      #radio-scale { position: absolute; inset: 0 16px; }
+      #radio-scale .tick { position: absolute; bottom: 8px; width: 1px; height: 5px; background: var(--lit); opacity: .4; }
+      #radio-scale .tick.major { height: 10px; opacity: .7; }
+      #radio-scale .num { position: absolute; top: 7px; transform: translateX(-50%); font: 600 10px var(--mono); color: var(--lit); opacity: .75; }
+      #radio-scale .st { position: absolute; bottom: 22px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: var(--lit); }
+      #radio:not([data-state="off"]) #radio-scale .st { box-shadow: 0 0 6px var(--lit); }
+      #radio-needle { position: absolute; top: 4px; bottom: 4px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--blocked); box-shadow: 0 0 6px #ff6b6bcc; z-index: 1; }
+      #radio .readout { display: flex; align-items: center; gap: 10px; padding: 10px 14px 0; }
+      #radio .freq { font: 600 11px var(--mono); color: var(--muted); }
+      #radio .freq b { font-size: 22px; color: var(--text); font-variant-numeric: tabular-nums; }
+      #radio .lamp { margin-left: auto; font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 2px 6px; border-radius: 4px;
+        border: 1px solid var(--line-2); color: var(--unknown); transition: color .2s, border-color .2s, box-shadow .2s; }
+      #radio[data-state="locked"] .lamp { color: var(--working); border-color: #5ad87a66; box-shadow: 0 0 8px #5ad87a33; }
+      #radio .bars { display: flex; align-items: flex-end; gap: 2px; height: 14px; }
+      #radio .bars i { width: 3px; border-radius: 1px; background: #ffffff1a; }
+      #radio .bars i:nth-child(1) { height: 25%; } #radio .bars i:nth-child(2) { height: 50%; } #radio .bars i:nth-child(3) { height: 75%; } #radio .bars i:nth-child(4) { height: 100%; }
+      #radio .bars i.lit { background: var(--working); }
+      #radio .station { display: flex; flex-direction: column; gap: 1px; padding: 2px 14px 0; min-width: 0; }
+      #radio-name, #radio-info { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #radio-name { font-size: 13px; } #radio-info { font-size: 11px; color: var(--muted); min-height: 1.3em; }
+      #radio .controls { display: flex; align-items: center; gap: 8px; padding: 12px 14px 14px; }
+      /* Tuning knob: the knurled cap turns with the frequency, the lighting stays put. */
+      #radio-knob { position: relative; width: 44px; height: 44px; flex: none; border-radius: 50%; cursor: grab; touch-action: none;
+        background: radial-gradient(circle at 35% 30%, #4a5070, #1f2233 70%); border: 1px solid var(--line-2); box-shadow: 0 3px 8px #0008, inset 0 1px 0 #ffffff22; }
+      #radio-knob:active { cursor: grabbing; } #radio-knob:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      #radio-knob i { position: absolute; inset: 2px; border-radius: 50%; transform: rotate(var(--turn, 0deg));
+        background: repeating-conic-gradient(#ffffff12 0 5deg, transparent 5deg 10deg); -webkit-mask: radial-gradient(circle, transparent 58%, #000 60%); mask: radial-gradient(circle, transparent 58%, #000 60%); }
+      #radio-knob::after { content: ""; position: absolute; inset: 2px; border-radius: 50%; transform: rotate(var(--turn, 0deg));
+        background: linear-gradient(var(--accent), var(--accent)) 50% 3px / 3px 11px no-repeat; }
+      #radio .vol { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); }
+      #radio .vol input { width: 90px; accent-color: var(--accent); }
+      @media (prefers-reduced-motion: reduce) { #btn-radio.playing .eq i { animation: none; } }
 
       /* ---- activity feed ---- */
       #feed { position: fixed; right: calc(12px + var(--sar)); bottom: calc(12px + var(--sab)); width: 340px; max-height: 260px; display: flex; flex-direction: column; z-index: 4;
@@ -209,7 +262,10 @@
         #tools { margin-left: auto; }
         #roster { width: min(280px, 80vw); bottom: calc(80px + var(--sab)); }
         #feed { width: min(340px, calc(100vw - 24px)); max-height: 160px; bottom: calc(40px + var(--sab)); }
-        body.panel-open #feed, body.panel-open #roster, body.panel-open #floors { display: none; }
+        body.panel-open #feed, body.panel-open #roster, body.panel-open #floors, body.panel-open #radio { display: none; }
+        #radio { width: min(300px, calc(100vw - 24px)); }
+        .btn kbd, #btn-radio .lbl { display: none; }
+        #btn-radio { padding: 5px 10px; height: 24px; }
         #floors { width: auto; top: calc(56px + var(--sat)); max-height: 45vh; }
         #floors header > span, #floors .floor .txt { display: none; }
         #floors header { justify-content: center; padding: 6px; }
@@ -241,8 +297,27 @@
         <button class="btn" id="btn-zoom-in" title="Zoom in (+)">+</button>
         <button class="btn" id="btn-fit" title="Fit the whole office (F)">Fit<kbd>F</kbd></button>
         <button class="btn" id="btn-roster" title="Toggle roster (R)">Roster<kbd>R</kbd></button>
+        <button class="btn" id="btn-radio" title="Radio (M: on/off)" aria-controls="radio" aria-expanded="false"><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><span class="lbl">Radio</span><kbd>M</kbd></button>
       </div>
     </div>
+
+    <section id="radio" class="card" hidden aria-label="Radio" data-state="off">
+      <header><span>Radio</span><button id="radio-power" class="mini" aria-pressed="false" title="Turn the radio on or off (M)"><i class="led"></i>Power</button></header>
+      <div id="radio-dial" title="Drag or scroll to tune"><div id="radio-scale"><i id="radio-needle"></i></div></div>
+      <div class="readout">
+        <span class="freq"><b id="radio-freq">88.3</b> FM</span>
+        <span class="lamp" title="Lit when locked on a station">Tuned</span>
+        <span class="bars" title="Signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      </div>
+      <div class="station"><b id="radio-name">—</b><span id="radio-info"></span></div>
+      <div class="controls">
+        <button class="btn" id="radio-prev" title="Seek down to the previous station" aria-label="Previous station">◀</button>
+        <div id="radio-knob" role="slider" tabindex="0" aria-label="Tuning" aria-valuemin="87.5" aria-valuemax="108"
+          title="Drag, scroll or use the arrow keys to tune · PageUp/PageDown seek"><i></i></div>
+        <button class="btn" id="radio-next" title="Seek up to the next station" aria-label="Next station">▶</button>
+        <label class="vol">Vol<input id="radio-volume" type="range" min="0" max="100" value="60" aria-label="Volume"></label>
+      </div>
+    </section>
 
     <aside id="roster" class="card">
       <header><span>Roster</span><span style="font-weight:400;letter-spacing:0;text-transform:none">j / k to cycle</span></header>
@@ -273,7 +348,7 @@
       <span style="--c:#ffd166">done</span>
       <span style="--c:#7a7f93">unknown</span>
     </div>
-    <div id="hint">click a desk to open its terminal · drag to pan · wheel to zoom · <kbd>J</kbd>/<kbd>K</kbd> next desk · <kbd>1</kbd>–<kbd>9</kbd> floor · <kbd>F</kbd> fit · <kbd>R</kbd> roster · <kbd>Esc</kbd> close</div>
+    <div id="hint">click a desk to open its terminal · drag to pan · wheel to zoom · <kbd>J</kbd>/<kbd>K</kbd> next desk · <kbd>1</kbd>–<kbd>9</kbd> floor · <kbd>F</kbd> fit · <kbd>R</kbd> roster · <kbd>M</kbd> music · <kbd>Esc</kbd> close</div>
     <div id="tip"></div>
     <div id="floor-banner" aria-live="polite"></div>
     <div id="empty" class="card" hidden><h2></h2><p></p></div>

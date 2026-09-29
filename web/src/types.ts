@@ -93,7 +93,15 @@ export type BridgeMessage =
   | { type: "event"; machine: string; event: string; data: unknown }
   | { type: "pane_output"; machine: string; pane_id: string; text: string; revision: number; truncated: boolean; seq?: number }
   | { type: "input_ack"; machine: string; pane_id: string; id?: number }
+  | { type: "created"; machine: string; id?: number; pane_id: string }
+  /** A create request failed; `pane_id` is set when the desk exists but its agent did not start. */
+  | { type: "create_error"; machine: string; id?: number; pane_id?: string; message: string }
   | { type: "error"; machine?: string; pane_id?: string; id?: number; message: string };
 
 /** One unit of terminal input: literal text or named keys (Herdr `pane.send_keys` names). */
 export type InputOp = { text: string } | { keys: string[] };
+
+/** A new room from build mode: a git worktree on a new branch, or a workspace in a folder. */
+export type RoomSpec =
+  | { kind: "worktree"; cwd: string; branch: string; base?: string; label?: string }
+  | { kind: "folder"; cwd: string; label?: string };

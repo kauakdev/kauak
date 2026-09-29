@@ -191,7 +191,7 @@ export class TerminalPanel {
     this.hintEl.classList.remove("warn");
     this.hintEl.textContent = this.locked
       ? "read-only mirror of the pane's viewport · refreshes when Herdr reports new output"
-      : "keystrokes go to the pane · Esc, arrows and Ctrl combos are forwarded · caret is a best guess · click outside the terminal, then Esc to close";
+      : "keystrokes go to the pane · Esc, arrows and Ctrl combos are forwarded · caret is a best guess · click an empty spot in the office to close";
   }
 
   private send(data: string) {

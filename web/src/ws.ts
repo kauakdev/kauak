@@ -1,5 +1,5 @@
 import { keyOf, splitKey } from "./floors";
-import type { BridgeMessage, InputOp, MachineInfo, Snapshot } from "./types";
+import type { BridgeMessage, InputOp, MachineInfo, RoomSpec, Snapshot } from "./types";
 
 /** Pane arguments and callbacks use floor keys ("machine/pane_id", see floors.ts). */
 export interface BridgeHandlers {
@@ -11,6 +11,10 @@ export interface BridgeHandlers {
   onError?(message: string, pane?: string, id?: number): void;
   onMachineAdded?(machine: string): void;
   onMachineError?(message: string): void;
+  /** A desk or room from createDesk/createRoom exists; `id` is the request's. */
+  onCreated?(pane: string, id: number | undefined): void;
+  /** It failed, or (with `pane`) the desk exists but its agent did not start. */
+  onCreateError?(message: string, id: number | undefined, pane?: string): void;
 }
 
 /** What the page needs from a bridge: the real one below, or the simulated one in demo.ts. */
@@ -20,6 +24,9 @@ export interface BridgeApi {
   sendInput(pane: string, ops: InputOp[], id: number): boolean;
   addMachine(ssh: string, label: string): boolean;
   removeMachine(machine: string): void;
+  /** Split a new desk off a room (`workspace` is a floor key), with an optional agent kind. */
+  createDesk(workspace: string, agent: string | null, id: number): boolean;
+  createRoom(machine: string, room: RoomSpec, agent: string | null, id: number): boolean;
 }
 
 // The bridge only listens on 127.0.0.1 by default; "localhost" may resolve to ::1 first.
@@ -52,6 +59,10 @@ export class Bridge implements BridgeApi {
         this.handlers.onMachineAdded?.(msg.machine);
       } else if (msg.type === "machine_error") {
         this.handlers.onMachineError?.(msg.message);
+      } else if (msg.type === "created") {
+        this.handlers.onCreated?.(keyOf(msg.machine, msg.pane_id), msg.id);
+      } else if (msg.type === "create_error") {
+        this.handlers.onCreateError?.(msg.message, msg.id, msg.pane_id ? keyOf(msg.machine, msg.pane_id) : undefined);
       } else if (msg.type === "error") {
         console.warn("[bridge]", msg.message);
         const pane = msg.machine && msg.pane_id ? keyOf(msg.machine, msg.pane_id) : undefined;
@@ -96,5 +107,15 @@ export class Bridge implements BridgeApi {
 
   removeMachine(machine: string) {
     this.send({ type: "remove_machine", machine });
+  }
+
+  /** Answered with onCreated, then onCreateError if the agent does not start; or onCreateError alone. */
+  createDesk(workspace: string, agent: string | null, id: number): boolean {
+    const { machine, id: workspaceId } = splitKey(workspace);
+    return this.send({ type: "create_desk", machine, workspace_id: workspaceId, agent, id });
+  }
+
+  createRoom(machine: string, room: RoomSpec, agent: string | null, id: number): boolean {
+    return this.send({ type: "create_room", machine, room, agent, id });
   }
 }

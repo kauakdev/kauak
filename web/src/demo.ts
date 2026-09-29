@@ -4,10 +4,11 @@
 // their own, and the terminal panel works: Enter / Esc answers a blocked agent,
 // a typed task puts an idle one to work, and shell panes run a few commands
 // (including `claude` or `codex`, which sits an agent down at that desk).
+// Build mode works too: new desks and rooms appear on the simulated floors.
 
 import { kindColor } from "./character";
-import { splitKey } from "./floors";
-import type { AgentStatus, InputOp, MachineInfo, PaneInfo, Snapshot } from "./types";
+import { keyOf, splitKey } from "./floors";
+import type { AgentStatus, InputOp, MachineInfo, PaneInfo, RoomSpec, Snapshot } from "./types";
 import type { BridgeApi, BridgeHandlers } from "./ws";
 
 const COLS = 100;
@@ -18,6 +19,8 @@ const MAX_BLOCKED = 3;
 const INSTALL = "npx agentoffice";
 // Same rule as the bridge: `host`, `user@host` or an ~/.ssh/config alias.
 const SSH_TARGET = /^[A-Za-z0-9_][A-Za-z0-9._@-]{0,127}$/;
+// Same rule as the bridge for a new branch.
+const GIT_REF = /^[A-Za-z0-9_.][A-Za-z0-9_./-]{0,199}$/;
 
 // ---------------------------------------------------------------- script
 
@@ -103,7 +106,8 @@ interface DemoPane {
   next: number;
 }
 
-interface DemoRoom { id: string; number: number; repo: string; branch: string; dir: string; panes: DemoPane[] }
+/** A workspace. A `plain` one is a folder outside git (no branch, no repository). */
+interface DemoRoom { id: string; number: number; repo: string; branch: string; dir: string; panes: DemoPane[]; label?: string; plain?: boolean }
 
 interface DemoFloor { info: MachineInfo; host: string; rooms: DemoRoom[]; focused: string | null }
 
@@ -202,6 +206,56 @@ export class DemoBridge implements BridgeApi {
     if (id === "local") return;
     this.floors = this.floors.filter((f) => f.info.id !== id);
     this.pushMachines();
+  }
+
+  createDesk(workspace: string, agent: string | null, id: number): boolean {
+    const { machine, id: roomId } = splitKey(workspace);
+    setTimeout(() => {
+      const floor = this.floors.find((f) => f.info.id === machine);
+      const room = floor?.rooms.find((r) => r.id === roomId);
+      if (!floor || !room) return this.h.onCreateError?.("That room is gone.", id);
+      const n = Math.max(0, ...room.panes.map((p) => Number(p.id.split(":p")[1]) || 0)) + 1;
+      this.addPane(floor, room, `${room.id}:p${n}`, agent, id);
+    }, 300);
+    return true;
+  }
+
+  createRoom(machine: string, spec: RoomSpec, agent: string | null, id: number): boolean {
+    setTimeout(() => {
+      const fail = (message: string) => this.h.onCreateError?.(message, id);
+      const floor = this.floors.find((f) => f.info.id === machine);
+      if (!floor) return fail("That floor is gone.");
+      const cwd = spec.cwd.trim().replace(/(.)\/+$/, "$1");
+      if (!cwd.startsWith("/")) return fail("Use an absolute path, like /home/dev/code/project.");
+      const checkout = floor.rooms.find((r) => !r.plain && repoRoot(r) === cwd);
+      const number = Math.max(0, ...floor.rooms.map((r) => r.number)) + 1;
+      const base = { id: `w${number}`, number, panes: [], label: spec.label?.trim() || undefined };
+      let room: DemoRoom;
+      if (spec.kind === "worktree") {
+        const branch = spec.branch.trim();
+        if (!checkout) return fail(`fatal: not a git repository: ${cwd}`);
+        if (!GIT_REF.test(branch)) return fail("Enter a branch name like feat/my-change.");
+        if (floor.rooms.some((r) => r.repo === checkout.repo && r.branch === branch)) return fail(`fatal: a branch named '${branch}' already exists`);
+        const slug = branch.replace(/\//g, "-");
+        room = { ...base, repo: checkout.repo, branch, dir: `/home/dev/.herdr/worktrees/${checkout.repo}/${slug}`, label: base.label ?? slug };
+      } else {
+        // A repository's main checkout is a git room; any other folder is plain.
+        room = checkout ? { ...base, repo: checkout.repo, branch: "main", dir: cwd } : { ...base, repo: cwd.split("/").pop() || "~", branch: "", dir: cwd, plain: true };
+      }
+      floor.rooms.push(room);
+      this.addPane(floor, room, `${room.id}:p1`, agent, id);
+    }, 500);
+    return true;
+  }
+
+  /** A new shell pane in `room`; an agent, if asked for, sits down there right away. */
+  private addPane(floor: DemoFloor, room: DemoRoom, paneId: string, agent: string | null, id: number) {
+    const pane = newPane(paneId, null, "idle", room, floor.host, Date.now());
+    pane.log = [];
+    if (agent) seat(pane, agent, room);
+    room.panes.push(pane);
+    this.pushSnapshot(floor);
+    this.h.onCreated?.(keyOf(floor.info.id, paneId), id);
   }
 
   // ------------------------------------------------------------ plumbing
@@ -317,8 +371,17 @@ function newPane(id: string, agent: string | null, status: AgentStatus, room: De
   return p;
 }
 
+/** Starting an agent sits someone down at this desk, idle until given a task. */
+function seat(p: DemoPane, agent: string, room: DemoRoom) {
+  p.agent = agent;
+  p.log = agentHeader(p, room);
+  p.placeholder = pick(TASKS);
+  setStatus(p, "idle", Date.now());
+  p.next = Date.now() + 60_000; // leave the new agent for the visitor to instruct
+}
+
 function agentHeader(p: DemoPane, room: DemoRoom): string[] {
-  const where = `${room.dir.replace(/^\/home\/[^/]+/, "~")} (${room.branch})`;
+  const where = `${room.dir.replace(/^\/home\/[^/]+/, "~")}${room.branch ? ` (${room.branch})` : ""}`;
   return [`${rgb(kindColor(p.agent))(bold(`✻ ${p.agent}`))} ${gray(`· ${where}`)}`, ""];
 }
 
@@ -414,7 +477,11 @@ function action(p: DemoPane): string[] {
 // ---------------------------------------------------------------- shell
 
 function shellPrompt(room: DemoRoom, host: string): string {
-  return `${green(`dev@${host}`)}:${blue(room.dir.replace(/^\/home\/dev/, "~"))} ${yellow(`(${room.branch})`)}$ `;
+  return `${green(`dev@${host}`)}:${blue(room.dir.replace(/^\/home\/dev/, "~"))} ${room.branch ? `${yellow(`(${room.branch})`)} ` : ""}$ `;
+}
+
+function repoRoot(r: DemoRoom): string {
+  return `/home/dev/code/${r.repo}`;
 }
 
 function runShell(p: DemoPane, room: DemoRoom, floor: DemoFloor) {
@@ -424,15 +491,7 @@ function runShell(p: DemoPane, room: DemoRoom, floor: DemoFloor) {
   const [cmd = "", ...args] = line.trim().split(/\s+/);
   const out = (...rows: string[]) => addLog(p, rows);
   if (!cmd) return;
-  if (AGENTS.includes(cmd)) {
-    // Starting an agent sits someone down at this desk.
-    p.agent = cmd;
-    p.log = agentHeader(p, room);
-    p.placeholder = pick(TASKS);
-    setStatus(p, "idle", Date.now());
-    p.next = Date.now() + 60_000; // leave the new agent for the visitor to instruct
-    return;
-  }
+  if (AGENTS.includes(cmd)) return seat(p, cmd, room);
   switch (cmd) {
     case "clear": p.log = []; return;
     case "ls": return out(`README.md  package.json  pnpm-lock.yaml  ${blue("src")}  ${blue("test")}  tsconfig.json`);
@@ -513,9 +572,9 @@ function snapshotOf(f: DemoFloor): Snapshot {
     version: "demo", protocol: 22,
     focused_workspace_id: focusedRoom?.id ?? null, focused_tab_id: focusedRoom ? `${focusedRoom.id}:t1` : null, focused_pane_id: f.focused,
     workspaces: f.rooms.map((r) => ({
-      workspace_id: r.id, number: r.number, label: r.branch, focused: r === focusedRoom, pane_count: r.panes.length, tab_count: 1,
+      workspace_id: r.id, number: r.number, label: r.label ?? (r.branch || r.repo), focused: r === focusedRoom, pane_count: r.panes.length, tab_count: 1,
       active_tab_id: `${r.id}:t1`, agent_status: worst(r.panes),
-      worktree: { repo_key: `${f.info.id}:${r.repo}`, repo_name: r.repo, repo_root: `/home/dev/code/${r.repo}`, checkout_path: r.dir, is_linked_worktree: r.branch !== "main" },
+      worktree: r.plain ? null : { repo_key: `${f.info.id}:${r.repo}`, repo_name: r.repo, repo_root: repoRoot(r), checkout_path: r.dir, is_linked_worktree: r.dir !== repoRoot(r) },
     })),
     tabs: f.rooms.map((r) => ({
       tab_id: `${r.id}:t1`, workspace_id: r.id, number: 1, label: "1", focused: r === focusedRoom, pane_count: r.panes.length, agent_status: worst(r.panes),

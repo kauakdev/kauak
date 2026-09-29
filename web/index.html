@@ -141,6 +141,40 @@
       #floor-banner.show { animation: banner 1.6s ease forwards; }
       @keyframes banner { 0% { opacity: 0; transform: translate(-50%, -6px); } 15%, 70% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 
+      /* ---- build mode (see build.ts) ---- */
+      #btn-build[aria-pressed="true"] { background: #ffd16626; border-color: #ffd16688; color: var(--accent); }
+      #build-form { position: fixed; width: 300px; z-index: 7; display: flex; flex-direction: column; }
+      #build-form[hidden], #build-form [hidden] { display: none !important; }
+      #build-form header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 8px; border-bottom: 1px solid var(--line);
+        font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+      #build-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #build-form .x { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 2px 4px; font-size: 12px; }
+      #build-form .x:hover { color: var(--text); }
+      #build-form .body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+      #build-form label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
+      #build-form .opt { opacity: .6; }
+      #build-form input:not([type=radio]), #build-form select { font: inherit; font-size: 12px; color: var(--text); background: var(--card-2); border: 1px solid var(--line-2);
+        border-radius: 6px; padding: 6px 8px; min-width: 0; }
+      #build-form input:focus, #build-form select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+      #build-form .kinds { display: flex; gap: 4px; padding: 3px; border-radius: 8px; background: var(--card-2); border: 1px solid var(--line-2); }
+      #build-form .kinds label { flex: 1; flex-direction: row; justify-content: center; align-items: center; gap: 0; padding: 5px 6px; border-radius: 6px;
+        cursor: pointer; font-size: 12px; color: var(--muted); }
+      #build-form .kinds input { position: absolute; opacity: 0; pointer-events: none; }
+      #build-form .kinds label:has(input:checked) { background: #3b4470; color: var(--text); }
+      #build-form .kinds label:has(input:focus-visible) { outline: 2px solid var(--accent); }
+      #build-form .pair { display: flex; gap: 6px; } #build-form .pair label { flex: 1; min-width: 0; }
+      #build-form .note { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.4; }
+      #build-form .err { margin: 0; font-size: 11px; color: var(--blocked); line-height: 1.4; overflow-wrap: anywhere; }
+      #build-form .row { display: flex; gap: 6px; }
+      #build-hint { display: none; position: fixed; bottom: calc(14px + var(--sab)); left: 50%; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px;
+        font-size: 11px; color: #1a1a1a; background: var(--accent); z-index: 3; white-space: nowrap; pointer-events: none; }
+      body.building #build-hint { display: block; } body.building #hint { display: none; }
+      body.panel-open #build-hint { display: none; }
+      #toast { position: fixed; left: 50%; top: calc(66px + var(--sat)); transform: translateX(-50%); max-width: min(520px, calc(100vw - 24px)); padding: 9px 14px;
+        font-size: 12px; line-height: 1.45; border-left: 3px solid var(--blocked); z-index: 9; cursor: pointer; }
+      #toast[hidden] { display: none; }
+      #tip[data-status="build"] { border-left-color: var(--accent); }
+
       /* ---- radio ---- */
       #btn-radio { display: inline-flex; align-items: center; gap: 6px; }
       #btn-radio .eq { display: inline-flex; align-items: flex-end; gap: 1.5px; height: 10px; }
@@ -283,6 +317,7 @@
         body.panel-open #feed, body.panel-open #roster, body.panel-open #floors, body.panel-open #radio { display: none; }
         #radio { width: min(300px, calc(100vw - 24px)); }
         .btn kbd, #btn-radio .lbl { display: none; }
+        #build-hint { display: none !important; }
         #btn-radio { padding: 5px 10px; height: 24px; }
         #floors { width: auto; top: calc(56px + var(--sat)); max-height: 45vh; }
         #floors header > span, #floors .floor .txt { display: none; }
@@ -319,6 +354,7 @@
         <button class="btn" id="btn-zoom-in" title="Zoom in (+)">+</button>
         <button class="btn" id="btn-fit" title="Fit the whole office (F)">Fit<kbd>F</kbd></button>
         <button class="btn" id="btn-roster" title="Toggle roster (R)">Roster<kbd>R</kbd></button>
+        <button class="btn" id="btn-build" title="Build mode: add desks and rooms (B)" aria-pressed="false">Build<kbd>B</kbd></button>
         <button class="btn" id="btn-radio" title="Radio (M: on/off)" aria-controls="radio" aria-expanded="false"><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><span class="lbl">Radio</span><kbd>M</kbd></button>
       </div>
     </div>
@@ -358,6 +394,26 @@
       <div id="floor-list" role="list"></div>
     </nav>
 
+    <form id="build-form" class="card" hidden autocomplete="off" aria-labelledby="build-title">
+      <header><span id="build-title">New desk</span><button type="button" class="x" data-cancel aria-label="Cancel">✕</button></header>
+      <div class="body">
+        <div class="kinds" role="radiogroup" aria-label="Kind of room" data-for="room">
+          <label><input type="radio" name="kind" value="worktree">Git branch</label>
+          <label><input type="radio" name="kind" value="folder">Folder</label>
+        </div>
+        <label data-for="room"><span>Folder</span><input name="cwd" spellcheck="false" autocapitalize="off" data-required></label>
+        <div class="pair" data-for="worktree">
+          <label><span>New branch</span><input name="branch" placeholder="feat/my-change" spellcheck="false" autocapitalize="off" data-required></label>
+          <label><span>From <span class="opt">optional</span></span><input name="base" placeholder="current branch" spellcheck="false" autocapitalize="off"></label>
+        </div>
+        <label data-for="room"><span>Name <span class="opt">optional</span></span><input name="label" placeholder="shown on the room" spellcheck="false"></label>
+        <label><span>Agent</span><select name="agent"></select></label>
+        <p class="note"></p>
+        <p class="err" hidden></p>
+        <div class="row"><button type="submit" class="btn primary">Create</button><button type="button" class="btn" data-cancel>Cancel</button></div>
+      </div>
+    </form>
+
     <aside id="feed" class="card">
       <header><span>Activity</span><span style="font-weight:400;letter-spacing:0;text-transform:none">this session</span></header>
       <div id="feed-body"></div>
@@ -370,7 +426,9 @@
       <span style="--c:#ffd166">done</span>
       <span style="--c:#7a7f93">unknown</span>
     </div>
-    <div id="hint">click a desk to open its terminal · drag to pan · wheel to zoom · <kbd>J</kbd>/<kbd>K</kbd> next desk · <kbd>1</kbd>–<kbd>9</kbd> floor · <kbd>F</kbd> fit · <kbd>R</kbd> roster · <kbd>M</kbd> music · <kbd>Esc</kbd> close</div>
+    <div id="hint">click a desk to open its terminal · drag to pan · wheel to zoom · <kbd>J</kbd>/<kbd>K</kbd> next desk · <kbd>1</kbd>–<kbd>9</kbd> floor · <kbd>F</kbd> fit · <kbd>R</kbd> roster · <kbd>B</kbd> build · <kbd>M</kbd> music · <kbd>Esc</kbd> close</div>
+    <div id="build-hint">Build mode · click a <b>+</b> to add a desk or a room · <b>B</b> or <b>Esc</b> to leave</div>
+    <div id="toast" class="card" role="status" hidden></div>
     <div id="tip"></div>
     <div id="floor-banner" aria-live="polite"></div>
     <div id="empty" class="card" hidden><h2></h2><p></p></div>
@@ -393,7 +451,7 @@
         <button id="panel-close" title="Close (Esc)">✕</button>
       </header>
       <div id="panel-term"></div>
-      <div id="panel-hint">keystrokes go to the pane · Esc, arrows and Ctrl combos are forwarded · click outside the terminal, then Esc to close</div>
+      <div id="panel-hint">keystrokes go to the pane · Esc, arrows and Ctrl combos are forwarded · click an empty spot in the office to close</div>
     </aside>
     <script type="module" src="/src/main.ts"></script>
   </body>

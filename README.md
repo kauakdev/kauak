@@ -43,8 +43,9 @@ Around the canvas:
 - **Activity** (bottom right): status changes, arrivals and departures seen
   during this session, tagged with their floor. Click an entry to jump to the desk.
 
-Hover a desk for the terminal title and cwd. Click a desk (or a roster row) to
-select it: a plumbob appears over it, the camera glides to it and the pane's
+Hover a desk for the terminal title and cwd. Click anywhere on a desk (the
+person, the chair, the floor around it: the outline that lights up on hover),
+or a roster row, to select it: a plumbob appears over it, the camera glides to it and the pane's
 terminal opens in a side panel (xterm.js, polled a few times a second and
 redrawn only when the viewport text changes). The terminal is live: anything you type there is sent to the pane, so
 you can answer an agent's question or run a command without leaving the office.
@@ -60,11 +61,32 @@ in Herdr" switches your Herdr window to the pane. `?pane=w1:p1` in the URL
 opens a pane on load (`?pane=<floor>/w1:p1` for another floor; `?floor=<id>`
 just picks the floor).
 
+**Build mode** (the Build button, or `B`) adds desks and rooms. Every room
+grows a ghost desk with a `+`, every wing ends in a dashed "New room" plot, and
+one more plot below the wings takes a room in any other folder. Click one and
+a small form asks what to create:
+
+- **New desk**: splits the room's biggest pane in Herdr (to the right when it
+  is wide, else down) in the same folder, with an optional agent.
+- **New room**: a **git branch** (Herdr's `worktree.create`: a new worktree
+  under `~/.herdr/worktrees`, opened as a room in the repository's wing) or a
+  **folder** (`workspace.create`). On this machine `~` is expanded and a
+  folder that does not exist is refused; a remote floor needs an absolute path.
+- **Agent**: none (a plain shell) or any kind Herdr knows (`herdr agent`).
+  The agent's command must be installed on that machine; the bridge starts it
+  with `agent.start` once the new shell is up.
+
+The new desk's terminal opens as soon as Herdr has the pane. Nothing is ever
+closed or removed from here.
+
 Keys: `J`/`K` next/previous desk, `1`–`9` go to that floor, `PgUp`/`PgDn` one
-floor up/down, `F` fit the office, `R` toggle roster, `+`/`-` zoom, `Esc` close
-the add-floor form or the panel. While the terminal has keyboard focus
+floor up/down, `F` fit the office, `R` toggle roster, `B` build mode, `+`/`-`
+zoom, `Esc` close the build form, the add-floor form or the panel, then leave
+build mode. While the terminal has keyboard focus
 these shortcuts are off and every key, including `Esc`, goes to the pane;
-click outside the terminal to get them back. Drag to pan, wheel to zoom.
+click outside the terminal to get them back. Click an empty spot in the
+office to close the panel. Drag to pan (a drag never selects or closes
+anything), wheel to zoom.
 
 ## Run
 

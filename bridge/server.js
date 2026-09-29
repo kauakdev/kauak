@@ -19,8 +19,9 @@ import { WebSocketServer } from "ws";
 import { LOCAL_SOCKET, Machine } from "./machine.js";
 
 const WS_PORT = Number(process.env.AGENT_OFFICE_PORT ?? 7788);
-// The bridge can type into terminals and open SSH connections, so by default
-// only this computer may connect, and only pages served from it.
+// The bridge can type into terminals, create panes and worktrees, and open SSH
+// connections, so by default only this computer may connect, and only pages
+// served from it.
 const WS_HOST = process.env.AGENT_OFFICE_HOST ?? "127.0.0.1";
 const ALLOWED_ORIGIN_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]",
   ...(process.env.AGENT_OFFICE_ORIGINS ?? "").split(",").map((h) => h.trim()).filter(Boolean)]);
@@ -213,9 +214,117 @@ wss.on("connection", (ws) => {
       queueInput(ws, m, msg.pane_id, msg.ops.slice(0, MAX_INPUT_OPS), typeof msg.id === "number" ? msg.id : undefined);
     } else if (msg.type === "refresh") {
       m.scheduleRefresh();
+    } else if (msg.type === "create_desk" || msg.type === "create_room") {
+      build(ws, m, msg);
     }
   });
 });
+
+// ---------------------------------------------------------------- build mode
+//
+// New desks (a pane split off a room's biggest pane) and new rooms (a
+// workspace in a folder, or a git worktree on a new branch), each with an
+// optional agent. `created` goes out as soon as the pane exists, after a fresh
+// snapshot, so the page can open it right away; the agent starts afterwards
+// (Herdr waits until it is ready, which can take seconds), and a failure
+// there is a `create_error` that carries the pane id.
+
+// Agent kinds are Herdr's own names (`herdr agent`), in its agent-name alphabet.
+const AGENT_KIND = /^[a-z][a-z0-9_-]{0,31}$/;
+// A branch or base as typed in the build form, never starting with "-".
+const GIT_REF = /^[A-Za-z0-9_.][A-Za-z0-9_./-]{0,199}$/;
+
+async function build(ws, m, msg) {
+  const id = typeof msg.id === "number" ? msg.id : undefined;
+  const reply = (o) => ws.send(JSON.stringify({ machine: m.id, id, ...o }));
+  const agent = typeof msg.agent === "string" && msg.agent ? msg.agent : null;
+  let paneId;
+  try {
+    if (agent && !AGENT_KIND.test(agent)) throw new Error(`Unknown agent kind "${agent}".`);
+    paneId = msg.type === "create_desk" ? await createDesk(m, msg.workspace_id) : await createRoom(m, msg.room);
+    await m.refresh();
+  } catch (err) {
+    reply({ type: "create_error", message: herdrMessage(err) });
+    return;
+  }
+  reply({ type: "created", pane_id: paneId });
+  if (!agent) return;
+  try {
+    await startAgent(m, agent, paneId);
+  } catch (err) {
+    reply({ type: "create_error", pane_id: paneId, message: `The desk is ready, but ${agent} did not start: ${herdrMessage(err)}` });
+  }
+}
+
+// A new pane's shell is not "available" to Herdr until its prompt is up
+// (verified on 0.9.1: agent.start answers agent_pane_busy for up to ~1 s).
+const AGENT_WAIT_MS = 10_000;
+const AGENT_RETRY_MS = 300;
+
+async function startAgent(m, kind, paneId) {
+  // Agent names must be unique among live agents; the kind plus a random tag is.
+  const name = `${kind}-${Math.random().toString(36).slice(2, 6)}`.slice(0, 32);
+  for (const started = Date.now(); ; await new Promise((r) => setTimeout(r, AGENT_RETRY_MS))) {
+    try {
+      return await m.request("agent.start", { name, kind, pane_id: paneId });
+    } catch (err) {
+      if (!err.message.includes("agent_pane_busy") || Date.now() - started > AGENT_WAIT_MS) throw err;
+    }
+  }
+}
+
+/** Split the room's biggest pane: to the right when it is wide, else down. Returns the new pane id. */
+async function createDesk(m, workspaceId) {
+  const snap = m.snapshot;
+  const room = snap?.workspaces.find((w) => w.workspace_id === workspaceId);
+  if (!room) throw new Error("That room is gone.");
+  const layout = snap.layouts.find((l) => l.workspace_id === room.workspace_id && l.tab_id === room.active_tab_id)
+    ?? snap.layouts.find((l) => l.workspace_id === room.workspace_id);
+  const biggest = layout?.panes.reduce((a, b) => (b.rect.width * b.rect.height > a.rect.width * a.rect.height ? b : a));
+  const target = snap.panes.find((p) => p.pane_id === biggest?.pane_id);
+  if (!target) throw new Error("That room has no pane to split.");
+  // Terminal cells are about twice as tall as they are wide.
+  const direction = biggest.rect.width >= biggest.rect.height * 2 ? "right" : "down";
+  const res = await m.request("pane.split", { target_pane_id: target.pane_id, direction, cwd: target.cwd, focus: false });
+  return res.pane.pane_id;
+}
+
+/** A workspace in a folder, or a git worktree on a new branch. Returns its first pane's id. */
+async function createRoom(m, room) {
+  if (room?.kind !== "worktree" && room?.kind !== "folder") throw new Error("Pick a git branch or a folder.");
+  const cwd = roomPath(m, room.cwd);
+  const label = typeof room.label === "string" && room.label.trim() ? room.label.trim().slice(0, 60) : null;
+  if (room.kind === "worktree") {
+    const branch = typeof room.branch === "string" ? room.branch.trim() : "";
+    const base = typeof room.base === "string" ? room.base.trim() : "";
+    if (!GIT_REF.test(branch)) throw new Error("Enter a branch name like feat/my-change.");
+    if (base && !GIT_REF.test(base)) throw new Error(`"${base}" is not a branch or commit.`);
+    const res = await m.request("worktree.create", { cwd, branch, base: base || null, label, focus: false });
+    return res.root_pane.pane_id;
+  }
+  const res = await m.request("workspace.create", { cwd, label, focus: false });
+  return res.root_pane.pane_id;
+}
+
+/**
+ * The folder a new room opens in. Herdr neither expands `~` nor rejects a
+ * missing folder (it opens the home directory instead), so this machine's
+ * paths are expanded and checked here; a remote one needs an absolute path.
+ */
+function roomPath(m, raw) {
+  let p = typeof raw === "string" ? raw.trim() : "";
+  if (!p || p.length > 1024) throw new Error("Enter a folder.");
+  if (!m.ssh && (p === "~" || p.startsWith("~/"))) p = path.join(os.homedir(), p.slice(1));
+  if (!p.startsWith("/")) throw new Error(`Use an absolute path${m.ssh ? ` on ${m.label}` : ""}, like /home/you/code/project.`);
+  if (!m.ssh && !fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`There is no folder at ${p}.`);
+  return p;
+}
+
+/** Herdr errors read "method: code message"; git ones end with the line that says what went wrong. */
+function herdrMessage(err) {
+  const text = err.message.replace(/^[\w.]+: [a-z_]+ /, "");
+  return text.split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? text;
+}
 
 // Input is serialized per pane so fast typing cannot reorder across
 // connections. Every Herdr request takes ~100 ms, so keystrokes that arrive

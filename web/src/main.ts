@@ -1,3 +1,4 @@
+import { BuildMode } from "./build";
 import { Elevator } from "./elevator";
 import { EMPTY_SNAPSHOT, floorOf, keyOf, mergeSnapshots, namespaceSnapshot, type Floor } from "./floors";
 import { Hud } from "./hud";
@@ -101,16 +102,33 @@ const handlers: BridgeHandlers = {
   onError: (message, id, inputId) => { if (id) panel.inputFailed(id, message, inputId); },
   onMachineAdded: (id) => { elevator.added(); goToFloor(id); },
   onMachineError: (message) => elevator.showError(message),
+  onCreated: (pane, id) => build.created(pane, id),
+  onCreateError: (message, id, pane) => build.failed(message, id, pane),
 };
 const bridge: BridgeApi = demo ? new (await import("./demo")).DemoBridge(handlers) : new Bridge(handlers);
 
+// The bridge refreshes the snapshot before it reports a new desk, so it can be selected right away.
+const build = new BuildMode({
+  onToggle: (on) => scene.setBuildMode(on),
+  createDesk: (workspace, agent, id) => bridge.createDesk(workspace, agent, id),
+  createRoom: (machine, room, agent, id) => bridge.createRoom(machine, room, agent, id),
+  onCreated: select,
+});
+scene.onBuild = (target, x, y) => {
+  const info = machines.find((m) => m.id === current);
+  if (info) build.open(target, { id: info.id, label: info.label, remote: info.ssh !== null }, x, y);
+};
 scene.onSelectPane = (pane) => select(pane.pane_id);
+scene.onEmptyClick = () => { panel.close(); build.close(); };
 panel.onRead = (id, seq) => bridge.readPane(id, seq);
 panel.onInput = (id, ops, inputId) => bridge.sendInput(id, ops, inputId);
-hud.isTyping = () => panel.isTyping();
-elevator.isTyping = () => panel.isTyping();
+// Global shortcuts stay off while the terminal or the build form has the keyboard.
+const typing = () => panel.isTyping() || build.hasFocus();
+hud.isTyping = typing;
+elevator.isTyping = typing;
+build.isTyping = () => panel.isTyping();
 const radio = new Radio();
-radio.isTyping = () => panel.isTyping();
+radio.isTyping = typing;
 panel.onFocus = (id) => bridge.focusPane(id);
 panel.onClose = () => { scene.setSelected(null); hud.setSelected(null); };
 }

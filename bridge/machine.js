@@ -203,16 +203,18 @@ export class Machine extends EventEmitter {
 
   scheduleRefresh() {
     clearTimeout(this.refreshTimer);
-    this.refreshTimer = setTimeout(async () => {
-      try {
-        this.snapshot = (await this.request("session.snapshot")).snapshot;
-        this.attempt = 0;
-        this.setState("live");
-        this.emit("snapshot", this.snapshot);
-      } catch (err) {
-        console.error(`[bridge] ${this.label}: snapshot failed:`, err.message);
-      }
+    this.refreshTimer = setTimeout(() => {
+      this.refresh().catch((err) => console.error(`[bridge] ${this.label}: snapshot failed:`, err.message));
     }, SNAPSHOT_DEBOUNCE_MS);
+  }
+
+  /** Fetch a fresh `session.snapshot` now and emit it. */
+  async refresh() {
+    clearTimeout(this.refreshTimer);
+    this.snapshot = (await this.request("session.snapshot")).snapshot;
+    this.attempt = 0;
+    this.setState("live");
+    this.emit("snapshot", this.snapshot);
   }
 
   // ------------------------------------------------------------ ssh tunnel

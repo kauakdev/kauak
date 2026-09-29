@@ -5,7 +5,7 @@
 
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { Caret, plainRow } from "./caret";
+import { Caret, plainRow, width } from "./caret";
 import { encodeInput } from "./keys";
 import type { InputOp, PaneInfo, Snapshot } from "./types";
 
@@ -32,6 +32,8 @@ export class TerminalPanel {
   private shownCursor = "";
   private fontCap = FONT_MAX; // largest font known to fit the current panel size
   private fitFor = "";
+  private readRows = 0; // rows in the last read of this pane
+  private readCols = 0; // widest row read from this pane so far
   // Reads are numbered so late, out-of-order replies are dropped. A reply
   // reflects every keystroke only if its read was sent after Herdr acked the
   // last one: `settledAfter` is the last read sent before that.
@@ -104,7 +106,7 @@ export class TerminalPanel {
     this.el.classList.add("open");
     document.body.classList.add("panel-open");
     this.renderHeader();
-    if (switching) { this.lastText = null; this.caret.reset(); this.term.reset(); this.resizeToPane(); }
+    if (switching) { this.lastText = null; this.readRows = this.readCols = 0; this.caret.reset(); this.term.reset(); this.resizeToPane(); }
     if (this.timer === null) {
       this.poll();
       this.timer = window.setInterval(() => this.poll(), POLL_MS);
@@ -128,13 +130,16 @@ export class TerminalPanel {
   receive(paneId: string, text: string, seq: number) {
     if (!this.pane || paneId !== this.pane.pane_id || seq <= this.appliedSeq) return;
     this.appliedSeq = seq;
-    const rows = text.split("\r\n");
-    this.caret.update(rows.map(plainRow), seq > this.settledAfter, performance.now());
+    const plain = text.split("\r\n").map(plainRow);
+    this.readRows = plain.length;
+    this.readCols = Math.max(this.readCols, ...plain.map(width));
+    const resized = this.resizeToPane();
+    this.caret.update(plain, seq > this.settledAfter, performance.now());
     // Herdr's `revision` does not move on plain output (verified on 0.9.1: it
     // stayed at 0 after typing and command output), so diff the viewport text.
     const changed = text !== this.lastText;
     this.lastText = text;
-    this.write(changed);
+    this.write(changed || resized);
   }
 
   /** Draw the latest screen (when it or the local echo changed), then put xterm's cursor at the caret. */
@@ -149,7 +154,9 @@ export class TerminalPanel {
     // (backspace in a TUI) would leave its old tail behind. Clear the screen in
     // the same write: xterm paints once per frame, so there is no blank flash.
     // Repainting the screen under the echo also wipes an echo that went away.
-    if (redraw) out = (this.lastText === null ? "" : "\x1b[H\x1b[2J" + this.lastText) + echo;
+    // Auto-wrap is off (?7l) so a row wider than xterm is clipped instead of
+    // wrapping and pushing every row below it down a line.
+    if (redraw) out = (this.lastText === null ? "" : "\x1b[?7l\x1b[H\x1b[2J" + this.lastText) + echo;
     this.shownEcho = echo;
     this.shownCursor = cursor;
     this.term.write(out + cursor, () => this.revealCaret());
@@ -218,17 +225,25 @@ export class TerminalPanel {
     this.el.dataset.status = p.agent_status;
   }
 
-  private resizeToPane() {
-    if (!this.pane || !this.snapshot) return;
-    for (const l of this.snapshot.layouts) {
-      const lp = l.panes.find((x) => x.pane_id === this.pane!.pane_id);
-      if (lp) {
-        const cols = Math.max(20, lp.rect.width), rows = Math.max(5, lp.rect.height);
-        if (cols !== this.term.cols || rows !== this.term.rows) { this.term.resize(cols, rows); this.fit(); }
-        this.caret.cols = this.term.cols;
-        return;
-      }
-    }
+  /**
+   * Give xterm the pane's size. A read with more rows than xterm has scrolls
+   * the whole screen up and, with no scrollback, drops the top rows. Herdr's
+   * layout rect is not the pane's real size (on 0.9.1 it stays at 120×40
+   * whatever size the attached client gives the pane), so the rows come from
+   * the reads, else the pane's `viewport_rows`, and the columns grow to fit
+   * the widest row read. Returns whether xterm was resized.
+   */
+  private resizeToPane(): boolean {
+    if (!this.pane) return false;
+    const id = this.pane.pane_id;
+    const rect = this.snapshot?.layouts.flatMap((l) => l.panes).find((p) => p.pane_id === id)?.rect;
+    const rows = Math.max(5, this.readRows || this.pane.scroll?.viewport_rows || rect?.height || this.term.rows);
+    const cols = Math.max(20, this.readCols, rect?.width ?? 0);
+    this.caret.cols = cols;
+    if (cols === this.term.cols && rows === this.term.rows) return false;
+    this.term.resize(cols, rows);
+    this.fit();
+    return true;
   }
 
   /**

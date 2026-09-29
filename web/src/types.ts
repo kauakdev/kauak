@@ -44,6 +44,8 @@ export interface PaneInfo {
   terminal_title: string;
   terminal_title_stripped: string;
   agent_status: AgentStatus;
+  /** `viewport_rows` is the pane's real height; layout rects are not (see `TerminalPanel.resizeToPane`). */
+  scroll?: { offset_from_bottom: number; max_offset_from_bottom: number; viewport_rows: number };
   revision: number;
 }
 

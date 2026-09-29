@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Office</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; height: 100%; background: #1b1e2a; overflow: hidden;
+        font-family: ui-sans-serif, system-ui, sans-serif; color: #e8e9f0; }
+      #app { position: fixed; inset: 0; }
+      #hud { position: fixed; top: 12px; left: 12px; display: flex; gap: 10px; align-items: center;
+        font-size: 13px; pointer-events: none; }
+      #hud .dot { width: 9px; height: 9px; border-radius: 50%; background: #666; }
+      #hud .dot.ok { background: #5ad87a; } #hud .dot.bad { background: #ff6b6b; }
+      #legend { position: fixed; bottom: 12px; left: 12px; display: flex; gap: 14px; font-size: 12px;
+        opacity: .85; pointer-events: none; }
+      #legend span::before { content: ""; display: inline-block; width: 10px; height: 10px;
+        border-radius: 3px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+      #tip { position: fixed; pointer-events: none; background: #0f1118ee; border: 1px solid #3a3f55;
+        border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.4; max-width: 340px;
+        display: none; white-space: pre-wrap; }
+      #tip b { color: #ffd166; }
+      #hint { position: fixed; bottom: 12px; right: 12px; font-size: 12px; opacity: .6; }
+      #panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(920px, 62vw); background: #0f1118;
+        border-left: 1px solid #3a3f55; transform: translateX(100%); transition: transform .18s ease;
+        display: flex; flex-direction: column; box-shadow: -12px 0 30px #0008; }
+      #panel.open { transform: none; }
+      #panel header { display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+        border-bottom: 1px solid #2a2e3f; }
+      #panel header .status { width: 10px; height: 10px; border-radius: 50%; background: #7a7f93; flex: none; }
+      #panel[data-status="working"] .status { background: #5ad87a; }
+      #panel[data-status="idle"] .status { background: #8fb4ff; }
+      #panel[data-status="blocked"] .status { background: #ff6b6b; animation: pulse 1s infinite; }
+      #panel[data-status="done"] .status { background: #ffd166; }
+      @keyframes pulse { 50% { opacity: .3; } }
+      #panel header .text { flex: 1; min-width: 0; }
+      #panel-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #panel-meta { font-size: 11px; opacity: .65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #panel header button { background: #232739; color: #e8e9f0; border: 1px solid #3a3f55; border-radius: 6px;
+        padding: 5px 10px; font-size: 12px; cursor: pointer; }
+      #panel header button:hover { background: #2e3350; }
+      #panel-term { flex: 1; overflow: auto; padding: 8px; }
+      #panel-term .xterm { opacity: .97; }
+      #panel-hint { font-size: 11px; opacity: .5; padding: 6px 12px; border-top: 1px solid #2a2e3f; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="hud"><div class="dot" id="conn"></div><span id="conn-text">connecting…</span></div>
+    <div id="legend">
+      <span style="--c:#5ad87a">working</span>
+      <span style="--c:#8fb4ff">idle</span>
+      <span style="--c:#ff6b6b">blocked</span>
+      <span style="--c:#ffd166">done</span>
+      <span style="--c:#7a7f93">unknown</span>
+    </div>
+    <div id="tip"></div>
+    <div id="hint">click a desk to watch its terminal · drag to pan · wheel to zoom</div>
+    <aside id="panel" data-status="unknown">
+      <header>
+        <div class="status"></div>
+        <div class="text"><div id="panel-title">—</div><div id="panel-meta"></div></div>
+        <button id="panel-focus" title="Switch Herdr to this pane">Focus in Herdr</button>
+        <button id="panel-close" title="Close (Esc)">✕</button>
+      </header>
+      <div id="panel-term"></div>
+      <div id="panel-hint">read-only mirror of the pane's viewport · refreshes when Herdr reports new output</div>
+    </aside>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

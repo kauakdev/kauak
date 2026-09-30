@@ -47,16 +47,18 @@ Hover a desk for the terminal title and cwd. Click anywhere on a desk (the
 person, the chair, the floor around it: the outline that lights up on hover),
 or a roster row, to select it: a plumbob appears over it, the camera glides to it and the pane's
 terminal opens in a side panel (xterm.js, polled a few times a second and
-redrawn only when the viewport text changes). The terminal is live: anything you type there is sent to the pane, so
-you can answer an agent's question or run a command without leaving the office.
-Printable text goes through Herdr's `pane.send_text`; Enter, Esc, arrows,
-Tab, Backspace, function keys and Ctrl/Alt combos go through `pane.send_keys`,
-so the pane's own key encoding (bracketed paste, application cursor keys) is
-honored. Herdr reports no cursor position and every request takes ~100 ms, so
-the panel tracks the caret from your keystrokes and echoes text typed at the
-end of the line right away, until the pane's own echo arrives
-(`web/src/caret.ts`). The terminal keeps the pane's exact size and shrinks its
-font to fit the panel. The "Live input" button toggles the panel back to read-only. "Focus
+redrawn only when the viewport text changes). The terminal itself is a
+read-only mirror: Herdr hands out snapshots of the screen, with no cursor
+position and no output stream, so the panel does not pretend to be a live
+terminal. To answer an agent or run a command, type into the message box under
+it: Enter sends the text and then Enter (an empty box just presses Enter, to
+accept a prompt), Shift+Enter adds a line, and a multi-line message goes as a
+bracketed paste. The key buttons send Esc, Ctrl+C, ↑, ↓, Tab and Shift+Tab;
+from the keyboard, Esc always goes to the pane, and ↑ ↓ Tab Ctrl+C do while
+the box is empty. Text goes through Herdr's `pane.send_text` and keys through
+`pane.send_keys`, so the pane's own key encoding (application cursor keys,
+kitty protocol) is honored. Unsent text is kept per pane. The terminal keeps
+the pane's exact size and shrinks its font to fit the panel. "Focus
 in Herdr" switches your Herdr window to the pane. `?pane=w1:p1` in the URL
 opens a pane on load (`?pane=<floor>/w1:p1` for another floor; `?floor=<id>`
 just picks the floor).
@@ -82,9 +84,9 @@ closed or removed from here.
 Keys: `J`/`K` next/previous desk, `1`–`9` go to that floor, `PgUp`/`PgDn` one
 floor up/down, `F` fit the office, `R` toggle roster, `A` toggle the activity feed, `B` build mode, `+`/`-`
 zoom, `Esc` close the build form, the add-floor form or the panel, then leave
-build mode. While the terminal has keyboard focus
-these shortcuts are off and every key, including `Esc`, goes to the pane;
-click outside the terminal to get them back. Click an empty spot in the
+build mode. While the message box has keyboard focus
+these shortcuts are off and `Esc` goes to the pane;
+click outside the box to get them back. Click an empty spot in the
 office to close the panel. Drag to pan (a drag never selects or closes
 anything), wheel to zoom.
 
@@ -178,8 +180,7 @@ get the pane's visible viewport as ANSI text (`pane.read`),
 to type into it, and `add_machine` (`ssh`, `label`) / `remove_machine`
 (`machine`) to manage floors. The bridge runs the ops in order (`pane.send_text` /
 `pane.send_keys`), serialized per pane, and answers with `input_ack`, after
-which the client re-reads the viewport. `web/src/keys.ts` translates the bytes
-xterm.js emits for keystrokes into those ops.
+which the client re-reads the viewport.
 
 Pane, tab and workspace ids are only unique within one Herdr server, so the
 client prefixes them with their machine (`madryn/w1:p1`, `web/src/floors.ts`)

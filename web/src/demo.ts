@@ -30,7 +30,7 @@ const FLOORS: { id: string; label: string; ssh: string | null; host: string; roo
   { id: "local", label: "local", ssh: null, host: "laptop", rooms: [
     { repo: "agent-office", branch: "main", panes: [["claude", "working"], [null]] },
     { repo: "agent-office", branch: "feat/elevator", panes: [["codex", "blocked"]] },
-    { repo: "agent-office", branch: "fix/caret-drift", panes: [["claude", "done"], ["gemini", "working"]] },
+    { repo: "agent-office", branch: "fix/panel-scroll", panes: [["claude", "done"], ["gemini", "working"]] },
     { repo: "billing-api", branch: "main", panes: [["codex", "idle"], [null]] },
     { repo: "billing-api", branch: "feat/refunds", panes: [["claude", "working"], ["opencode", "working"]] },
     { repo: "docs-site", branch: "main", panes: [["cursor", "idle"]] },
@@ -50,11 +50,11 @@ const TASKS = [
   "Fix the flaky login test", "Add pagination to /invoices", "Refactor the elevator animation",
   "Document the SSH floors", "Speed up the snapshot diff", "Add retries to the webhook sender",
   "Move config to TOML", "Remove unused CSS", "Add a dark mode toggle", "Find the memory leak in the worker",
-  "Bump dependencies and fix what breaks", "Test the caret tracker", "Split scene.ts into modules",
+  "Bump dependencies and fix what breaks", "Test the message box", "Split scene.ts into modules",
   "Handle SIGTERM gracefully", "Profile the eval runner", "Cache tokenizer results", "Add refunds to the ledger",
 ];
 const FILES = [
-  "src/server.ts", "src/routes/invoices.ts", "web/src/scene.ts", "web/src/elevator.ts", "web/src/caret.ts",
+  "src/server.ts", "src/routes/invoices.ts", "web/src/scene.ts", "web/src/elevator.ts", "web/src/panel.ts",
   "test/login.test.ts", "README.md", "src/worker/queue.ts", "src/config.ts", "package.json",
   "db/migrations/0042_refunds.sql", "src/api/client.ts", "evals/runner.py",
 ];
@@ -118,7 +118,7 @@ const clip = (s: string, n: number) => ([...s].length > n ? [...s].slice(0, n - 
 
 const sgr = (code: string) => (s: string) => `\x1b[${code}m${s}\x1b[0m`;
 const gray = sgr("90"), green = sgr("32"), red = sgr("31"), yellow = sgr("33"), blue = sgr("34"), bold = sgr("1");
-// Dim is how agents draw placeholders; the caret tracker treats it as blank (caret.ts).
+// Dim is how agents draw placeholders.
 const dim = sgr("2");
 const rgb = (c: number) => sgr(`38;2;${c >> 16};${(c >> 8) & 255};${c & 255}`);
 
@@ -317,7 +317,9 @@ export class DemoBridge implements BridgeApi {
   }
 
   private type(p: DemoPane, text: string) {
-    if (text.includes("\x1b")) return; // Home/End & co: not worth simulating
+    // A multi-line message comes as a bracketed paste (panel.ts); the demo keeps it on one line.
+    text = text.replace(/\x1b\[20[01]~/g, "").replace(/\r/g, " ");
+    if (text.includes("\x1b")) return; // other escape sequences: not worth simulating
     if (p.agent && p.status === "blocked") {
       const t = text.trim().toLowerCase();
       if (t === "1" || t === "y") answer(p, true, Date.now());
@@ -532,7 +534,7 @@ function agentScreen(p: DemoPane, now: number): string[] {
   rows.push("");
   if (p.status === "blocked" && p.ask) {
     const [what, detail] = p.ask;
-    // A selector, not a text prompt: no "❯" row, so the caret stays hidden.
+    // A selector, not a text prompt: no "❯" row.
     rows.push(
       yellow("─".repeat(COLS)), bold(` ${what}`), `   ${detail}`, "", " Do you want to proceed?",
       ` ${yellow("▸ 1. Yes")}`, `   2. No, and tell ${p.agent} what to do differently`, "", gray(" Enter to approve · Esc to reject"),

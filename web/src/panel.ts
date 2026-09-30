@@ -1,49 +1,56 @@
-// Terminal side panel backed by xterm.js. Mirrors the selected pane's visible
-// viewport (polled from the bridge, redrawn only when the text changes)
-// and forwards keystrokes typed into it to the pane via the bridge.
-// Herdr reports no cursor position, so `Caret` decides where to draw it.
+// Terminal side panel. The top is a read-only xterm.js mirror of the selected
+// pane's visible viewport (polled from the bridge, redrawn only when the text
+// changes). Below it, a message box and a row of key buttons send input to the
+// pane through the bridge.
+//
+// Herdr hands out snapshots of the screen, with no cursor position and no
+// output stream, so the mirror does not pretend to be a live terminal: you
+// type into an ordinary text box, and nothing reaches the pane until Enter or
+// a key button.
 
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { Caret, plainRow, width } from "./caret";
-import { encodeInput } from "./keys";
 import type { InputOp, PaneInfo, Snapshot } from "./types";
 
 const POLL_MS = 400;
-// Once Herdr has the keystrokes, read right away, then again once the program
-// has had time to echo them.
+// Once Herdr has the input, read right away, then again once the program has
+// had time to react.
 const AFTER_INPUT_READS_MS = [0, 120];
 // The pane is mirrored at its real size; the font shrinks so all of it fits the panel.
 const FONT_MAX = 13;
 const FONT_MIN = 8;
+// While the message box is empty these go straight to the pane (menus,
+// history, agent modes). Esc always does, and Enter sends the box.
+const PASS_KEYS: Record<string, string> = { ArrowUp: "up", ArrowDown: "down", Tab: "tab" };
+// Pasting a multi-line message into an agent: bracketed paste keeps the
+// newlines from submitting it line by line (agents and modern shells all turn it on).
+const PASTE_START = "\x1b[200~";
+const PASTE_END = "\x1b[201~";
 
 export class TerminalPanel {
   private el = document.getElementById("panel")!;
   private titleEl = document.getElementById("panel-title")!;
   private metaEl = document.getElementById("panel-meta")!;
   private hintEl = document.getElementById("panel-hint")!;
-  private lockBtn = document.getElementById("panel-lock") as HTMLButtonElement;
   private host = document.getElementById("panel-term")!;
+  private form = document.getElementById("panel-input") as HTMLFormElement;
+  private box = document.getElementById("panel-text") as HTMLTextAreaElement;
+  private sendBtn = document.getElementById("panel-send") as HTMLButtonElement;
   private term: Terminal;
   private pane: PaneInfo | null = null;
   private lastText: string | null = null;
-  private caret = new Caret();
-  private shownEcho = "";
-  private shownCursor = "";
+  private drafts = new Map<string, string>(); // unsent text per pane
   private fontCap = FONT_MAX; // largest font known to fit the current panel size
   private fitFor = "";
   private readRows = 0; // rows in the last read of this pane
   private readCols = 0; // widest row read from this pane so far
-  // Reads are numbered so late, out-of-order replies are dropped. A reply
-  // reflects every keystroke only if its read was sent after Herdr acked the
-  // last one: `settledAfter` is the last read sent before that.
+  private pinned = true; // the mirror stays scrolled to the bottom, where the prompt is
+  // Reads are numbered so late, out-of-order replies are dropped.
   private readSeq = 0;
   private appliedSeq = 0;
-  private settledAfter = 0;
   private inputId = 0;
   private timer: number | null = null;
   private snapshot: Snapshot | null = null;
-  private locked = false;
   private hintTimer: number | null = null;
 
   onRead: (paneId: string, seq: number) => void = () => {};
@@ -53,41 +60,47 @@ export class TerminalPanel {
 
   constructor() {
     this.term = new Terminal({
-      disableStdin: false,
-      cursorBlink: true,
-      cursorStyle: "bar",
-      cursorInactiveStyle: "outline",
+      disableStdin: true,
+      cursorBlink: false,
+      cursorInactiveStyle: "none",
       fontSize: FONT_MAX,
       fontFamily: "ui-monospace, 'JetBrains Mono', Menlo, monospace",
       convertEol: false,
       scrollback: 0,
-      theme: { background: "#0f1118", foreground: "#e8e9f0", cursor: "#ffd166", cursorAccent: "#0f1118" },
+      theme: { background: "#0f1118", foreground: "#e8e9f0" },
     });
     this.term.open(this.host);
-    this.term.onData((data) => this.send(data));
-    this.term.onBinary((data) => this.send(data));
-    this.term.textarea?.addEventListener("focus", () => this.el.classList.add("typing"));
-    this.term.textarea?.addEventListener("blur", () => this.el.classList.remove("typing"));
 
     document.getElementById("panel-close")!.addEventListener("click", () => this.close());
     document.getElementById("panel-focus")!.addEventListener("click", () => { if (this.pane) this.onFocus(this.pane.pane_id); });
-    this.lockBtn.addEventListener("click", () => this.setLocked(!this.locked));
-    // Header buttons must not take keyboard focus: a later Space would click them instead of typing.
-    for (const b of this.el.querySelectorAll("header button")) b.addEventListener("mousedown", (e) => e.preventDefault());
-    this.host.addEventListener("mousedown", () => { if (!this.locked) this.term.focus(); });
-    const ro = new ResizeObserver(() => this.fit());
+    for (const b of this.el.querySelectorAll<HTMLButtonElement>("[data-key]")) b.addEventListener("click", () => this.sendKey(b.dataset.key!));
+    // Buttons must not take keyboard focus: it stays in the message box, and a
+    // later Space would click them instead of typing.
+    for (const b of this.el.querySelectorAll("button")) b.addEventListener("mousedown", (e) => e.preventDefault());
+    this.form.addEventListener("submit", (e) => { e.preventDefault(); this.submit(); });
+    this.box.addEventListener("keydown", (e) => this.onKey(e));
+    this.box.addEventListener("input", () => this.autosize());
+    addEventListener("resize", () => this.autosize()); // the panel's width follows the window's
+    // A click on the mirror means "I want to type", unless it selected text to copy.
+    this.host.addEventListener("click", () => { if (!this.term.hasSelection() && finePointer()) this.box.focus(); });
+    this.host.addEventListener("scroll", () => {
+      const h = this.host;
+      this.pinned = h.scrollTop + h.clientHeight >= h.scrollHeight - 2;
+    });
+    const ro = new ResizeObserver(() => { this.fit(); this.keepBottom(); });
     ro.observe(this.host);
     ro.observe(this.host.querySelector(".xterm-screen")!);
-    // Esc inside the terminal goes to the pane (agents use it); Esc elsewhere closes the panel.
+    // Esc in the message box goes to the pane (agents use it); Esc elsewhere closes the panel.
     addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !this.isTyping()) this.close();
     });
-    this.setLocked(false);
+    this.renderHint();
+    this.autosize();
   }
 
-  /** True while keyboard focus is inside the terminal, so global shortcuts must stay out of the way. */
+  /** True while keyboard focus is in the message box, so global shortcuts must stay out of the way. */
   isTyping(): boolean {
-    return this.pane !== null && document.activeElement === this.term.textarea;
+    return this.pane !== null && document.activeElement === this.box;
   }
 
   setSnapshot(s: Snapshot) {
@@ -102,25 +115,36 @@ export class TerminalPanel {
 
   open(pane: PaneInfo) {
     const switching = this.pane?.pane_id !== pane.pane_id;
+    if (switching) this.saveDraft();
     this.pane = pane;
     this.el.classList.add("open");
     document.body.classList.add("panel-open");
     this.renderHeader();
-    if (switching) { this.lastText = null; this.readRows = this.readCols = 0; this.caret.reset(); this.term.reset(); this.resizeToPane(); }
+    if (switching) {
+      this.lastText = null;
+      this.readRows = this.readCols = 0;
+      this.pinned = true;
+      this.term.reset();
+      this.resizeToPane();
+      this.box.value = this.drafts.get(pane.pane_id) ?? "";
+      this.autosize();
+    }
     if (this.timer === null) {
       this.poll();
       this.timer = window.setInterval(() => this.poll(), POLL_MS);
     }
-    if (!this.locked) this.term.focus();
+    // On a phone, focusing would pop the keyboard up over the terminal.
+    if (finePointer()) this.box.focus();
     requestAnimationFrame(() => this.fit());
   }
 
   close() {
     const wasOpen = this.pane !== null;
+    this.saveDraft();
     this.el.classList.remove("open");
     document.body.classList.remove("panel-open");
     this.pane = null;
-    this.term.blur();
+    this.box.blur();
     if (wasOpen) this.onClose();
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null; }
   }
@@ -130,78 +154,88 @@ export class TerminalPanel {
   receive(paneId: string, text: string, seq: number) {
     if (!this.pane || paneId !== this.pane.pane_id || seq <= this.appliedSeq) return;
     this.appliedSeq = seq;
-    const plain = text.split("\r\n").map(plainRow);
-    this.readRows = plain.length;
-    this.readCols = Math.max(this.readCols, ...plain.map(width));
+    const rows = text.split("\r\n");
+    this.readRows = rows.length;
+    this.readCols = Math.max(this.readCols, ...rows.map((r) => width(stripAnsi(r))));
     const resized = this.resizeToPane();
-    this.caret.update(plain, seq > this.settledAfter, performance.now());
     // Herdr's `revision` does not move on plain output (verified on 0.9.1: it
     // stayed at 0 after typing and command output), so diff the viewport text.
-    const changed = text !== this.lastText;
+    if (text === this.lastText && !resized) return;
     this.lastText = text;
-    this.write(changed || resized);
-  }
-
-  /** Draw the latest screen (when it or the local echo changed), then put xterm's cursor at the caret. */
-  private write(screenChanged = false) {
-    const c = this.caret;
-    const echo = c.overlay();
-    const cursor = this.locked || c.row < 0 ? "\x1b[?25l" : `\x1b[?25h\x1b[${c.row + 1};${c.col + 1}H`;
-    const redraw = screenChanged || echo !== this.shownEcho;
-    if (!redraw && cursor === this.shownCursor) return;
-    let out = "";
     // Rows come back only as long as their content, so a row that got shorter
-    // (backspace in a TUI) would leave its old tail behind. Clear the screen in
-    // the same write: xterm paints once per frame, so there is no blank flash.
-    // Repainting the screen under the echo also wipes an echo that went away.
-    // Auto-wrap is off (?7l) so a row wider than xterm is clipped instead of
-    // wrapping and pushing every row below it down a line.
-    if (redraw) out = (this.lastText === null ? "" : "\x1b[?7l\x1b[H\x1b[2J" + this.lastText) + echo;
-    this.shownEcho = echo;
-    this.shownCursor = cursor;
-    this.term.write(out + cursor, () => this.revealCaret());
+    // would leave its old tail behind: clear the screen in the same write
+    // (xterm paints once per frame, so there is no blank flash). Auto-wrap is
+    // off (?7l) so a row wider than xterm is clipped instead of pushing every
+    // row below it down a line. The cursor stays hidden (?25l): Herdr does not
+    // say where it is.
+    this.term.write("\x1b[?7l\x1b[H\x1b[2J" + text + "\x1b[?25l", () => this.keepBottom());
   }
 
-  /** Keystrokes reached Herdr. Once the last one has, reads reflect them all. */
+  /** Input reached Herdr: read again soon to show what it did. */
   inputAcked(paneId: string, id: number | undefined) {
     if (!this.pane || paneId !== this.pane.pane_id || id !== this.inputId) return;
-    this.settledAfter = this.readSeq;
     for (const ms of AFTER_INPUT_READS_MS) window.setTimeout(() => this.poll(), ms);
   }
 
-  inputFailed(paneId: string, message: string, id?: number) {
+  inputFailed(paneId: string, message: string, _id?: number) {
     if (!this.pane || paneId !== this.pane.pane_id) return;
-    if (id === this.inputId) this.settledAfter = this.readSeq;
     this.flashHint(`input failed: ${message}`);
   }
 
-  setLocked(locked: boolean) {
-    this.locked = locked;
-    this.term.options.disableStdin = locked;
-    this.el.classList.toggle("locked", locked);
-    this.lockBtn.textContent = locked ? "Read-only" : "Live input";
-    this.lockBtn.title = locked ? "Typing is off. Click to send keystrokes to this pane." : "Typing here sends keystrokes to the pane. Click to make it read-only.";
-    this.lockBtn.setAttribute("aria-pressed", String(!locked));
-    this.renderHint();
-    this.write(true);
-    if (locked) this.term.blur(); else if (this.pane) this.term.focus();
+  private onKey(e: KeyboardEvent) {
+    if (e.isComposing) return;
+    if (e.key === "Enter" && !e.shiftKey && !e.altKey) { e.preventDefault(); this.submit(); return; }
+    const empty = this.box.value === "";
+    const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+    let key: string | undefined;
+    if (e.key === "Escape") key = "esc";
+    else if (empty && e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === "c") key = "ctrl+c";
+    else if (empty && plain && e.key === "Tab") key = e.shiftKey ? "shift+tab" : "tab";
+    else if (empty && plain && !e.shiftKey) key = PASS_KEYS[e.key];
+    if (!key) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.sendKey(key);
+  }
+
+  /** Enter: the box's text (if any) and then Enter. An empty box just presses Enter. */
+  private submit() {
+    const text = this.box.value.replace(/\s+$/, "");
+    const ops: InputOp[] = [];
+    if (text) ops.push({ text: text.includes("\n") ? PASTE_START + text.replace(/\r?\n/g, "\r") + PASTE_END : text });
+    ops.push({ keys: ["enter"] });
+    if (!this.send(ops)) return;
+    this.box.value = "";
+    this.autosize();
+  }
+
+  private sendKey(key: string) { this.send([{ keys: [key] }]); }
+
+  private send(ops: InputOp[]): boolean {
+    if (!this.pane) return false;
+    if (this.onInput(this.pane.pane_id, ops, ++this.inputId)) return true;
+    this.flashHint("bridge offline · nothing was sent");
+    return false;
+  }
+
+  private saveDraft() {
+    if (!this.pane) return;
+    if (this.box.value) this.drafts.set(this.pane.pane_id, this.box.value);
+    else this.drafts.delete(this.pane.pane_id);
+  }
+
+  /** Grow the box with its text (CSS caps it), and say what the send button will do. */
+  private autosize() {
+    this.box.style.height = "";
+    if (this.box.value) this.box.style.height = `${this.box.scrollHeight}px`;
+    const empty = this.box.value.trim() === "";
+    this.sendBtn.textContent = empty ? "Enter ↵" : "Send";
+    this.sendBtn.title = empty ? "Press Enter in the pane (to accept a prompt, say)" : "Send the message, then Enter (Enter)";
   }
 
   private renderHint() {
     this.hintEl.classList.remove("warn");
-    this.hintEl.textContent = this.locked
-      ? "read-only mirror of the pane's viewport · refreshes when Herdr reports new output"
-      : "keystrokes go to the pane · Esc, arrows and Ctrl combos are forwarded · caret is a best guess · click an empty spot in the office to close";
-  }
-
-  private send(data: string) {
-    if (!this.pane || this.locked) return;
-    const ops = encodeInput(data);
-    if (ops.length === 0) return;
-    if (!this.onInput(this.pane.pane_id, ops, ++this.inputId)) { this.flashHint("bridge offline · keystrokes dropped"); return; }
-    this.settledAfter = Number.MAX_SAFE_INTEGER; // until the ack
-    this.caret.input(ops, performance.now());
-    this.write();
+    this.hintEl.textContent = "Enter sends · Shift+Enter new line · Esc, and ↑ ↓ Tab ⌃C in an empty box, go to the pane";
   }
 
   private flashHint(text: string) {
@@ -223,6 +257,7 @@ export class TerminalPanel {
     kind.dataset.kind = p.agent ?? "";
     document.getElementById("panel-status")!.textContent = p.agent ? p.agent_status : "no agent";
     this.el.dataset.status = p.agent_status;
+    this.box.placeholder = p.agent ? `Message ${p.agent}` : "Run a command";
   }
 
   /**
@@ -239,7 +274,6 @@ export class TerminalPanel {
     const rect = this.snapshot?.layouts.flatMap((l) => l.panes).find((p) => p.pane_id === id)?.rect;
     const rows = Math.max(5, this.readRows || this.pane.scroll?.viewport_rows || rect?.height || this.term.rows);
     const cols = Math.max(20, this.readCols, rect?.width ?? 0);
-    this.caret.cols = cols;
     if (cols === this.term.cols && rows === this.term.rows) return false;
     this.term.resize(cols, rows);
     this.fit();
@@ -270,21 +304,39 @@ export class TerminalPanel {
     if (overflow) this.fontCap = Math.min(this.fontCap, size - 0.5);
     const estimate = Math.floor(size * Math.min(w / r.width, h / r.height) * 2) / 2;
     const next = Math.max(FONT_MIN, Math.min(this.fontCap, estimate));
-    if (next === size) return;
-    this.term.options.fontSize = next;
-    this.shownCursor = ""; // re-place the cursor (and xterm's input box) at the new cell size
-    this.write();
+    if (next !== size) this.term.options.fontSize = next;
   }
 
-  /** If the pane is still taller than the panel at the smallest font, scroll so the caret row shows. */
-  private revealCaret() {
-    const h = this.host;
-    if (h.scrollHeight <= h.clientHeight || this.caret.row < 0) return;
-    const screen = h.querySelector<HTMLElement>(".xterm-screen");
-    if (!screen) return;
-    const cell = screen.getBoundingClientRect().height / this.term.rows;
-    const top = this.caret.row * cell;
-    if (top < h.scrollTop || top + 2 * cell > h.scrollTop + h.clientHeight) h.scrollTop = Math.max(0, top - h.clientHeight / 2);
+  /** If the pane is taller than the panel even at the smallest font, keep its bottom rows (the prompt) in view. */
+  private keepBottom() {
+    if (this.pinned) this.host.scrollTop = this.host.scrollHeight;
   }
 }
 
+function finePointer(): boolean {
+  return matchMedia("(hover: hover) and (pointer: fine)").matches;
+}
+
+const ESC_RE = /\x1b(?:\[[0-9;:?]*[ -\/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][A-Za-z0-9]|.)/g;
+
+function stripAnsi(s: string): string {
+  return s.replace(ESC_RE, "");
+}
+
+/** Terminal cell width: wide CJK and emoji take two cells, combining marks none. */
+function width(s: string): number {
+  let w = 0;
+  for (const ch of s) {
+    const c = ch.codePointAt(0)!;
+    if (c < 0x300) w += 1;
+    else if ((c <= 0x36f) || c === 0x200d || (c >= 0xfe00 && c <= 0xfe0f)) continue;
+    else w += isWide(c) ? 2 : 1;
+  }
+  return w;
+}
+
+function isWide(c: number): boolean {
+  return (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3) ||
+    (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60) ||
+    (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1faff) || (c >= 0x20000 && c <= 0x3fffd);
+}

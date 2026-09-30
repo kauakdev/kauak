@@ -296,17 +296,24 @@
       #panel-status { font-size: 11px; color: var(--muted); text-transform: capitalize; }
       #panel header button { background: #232739; color: var(--text); border: 1px solid var(--line-2); border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
       #panel header button:hover { background: #2e3350; } #panel header button.primary { background: #3b4470; border-color: #55609a; }
-      #panel-term { flex: 1; overflow: auto; padding: 8px; }
+      #panel-term { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
       #panel-term .xterm { opacity: .97; overflow: hidden; } /* xterm's hidden input box can sit outside the screen after a font change */
-      #panel-hint { font-size: 11px; opacity: .5; padding: 6px 12px; border-top: 1px solid var(--line); transition: color .15s ease; }
+      #panel-input { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px calc(8px + var(--sab)); border-top: 1px solid var(--line); }
+      #panel-input .compose { display: flex; align-items: flex-end; gap: 6px; padding: 4px 4px 4px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card-2); }
+      #panel-input .compose:focus-within { border-color: #55609a; box-shadow: 0 0 0 1px #55609a; }
+      #panel-text { flex: 1; min-width: 0; max-height: 10em; overflow-y: auto; resize: none; border: 0; outline: 0; padding: 5px 0; background: transparent;
+        color: var(--text); font: 13px/1.45 var(--mono); }
+      #panel-text::placeholder { color: var(--muted); opacity: .7; }
+      #panel-input button { background: #232739; color: var(--text); border: 1px solid var(--line-2); border-radius: 6px; cursor: pointer; }
+      #panel-input button:hover { background: #2e3350; } #panel-input button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+      #panel-send { flex: none; padding: 5px 12px; font-size: 12px; white-space: nowrap; }
+      #panel-send.primary { background: #3b4470; border-color: #55609a; } #panel-send.primary:hover { background: #46518a; }
+      #panel-input .keys { display: flex; align-items: center; gap: 10px; }
+      #panel-input .keys [role=toolbar] { display: flex; gap: 4px; flex: none; }
+      #panel-input .keys button { font: 600 11px var(--mono); min-width: 30px; padding: 4px 7px; }
+      #panel-hint { flex: 1; min-width: 0; font-size: 11px; line-height: 1.35; color: var(--muted); opacity: .75; text-align: right; overflow-wrap: anywhere;
+        transition: color .15s ease; }
       #panel-hint.warn { opacity: 1; color: var(--blocked); }
-      #panel-lock { display: inline-flex; align-items: center; gap: 6px; }
-      #panel-lock::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--unknown); }
-      #panel:not(.locked) #panel-lock::before { background: var(--working); }
-      #panel.typing:not(.locked) #panel-lock::before { box-shadow: 0 0 0 0 #5ad87a99; animation: ping-green 1.4s infinite; }
-      #panel.typing:not(.locked) #panel-term { box-shadow: inset 0 0 0 1px #5ad87a55; }
-      #panel.locked #panel-term { cursor: default; }
-      @keyframes ping-green { 0% { box-shadow: 0 0 0 0 #5ad87a99; } 100% { box-shadow: 0 0 0 6px #5ad87a00; } }
 
       @media (max-width: 900px) {
         :root { --panel-w: 100vw; }
@@ -327,6 +334,9 @@
         .btn kbd, #btn-radio .lbl { display: none; }
         #build-hint { display: none !important; }
         #btn-radio { padding: 5px 10px; height: 24px; }
+        /* 16px keeps iOS from zooming in when the message box takes focus. */
+        #panel-text { font-size: 16px; }
+        #panel-hint:not(.warn) { display: none; }
         #floors { width: auto; top: calc(56px + var(--sat)); max-height: 45vh; }
         #floors header > span, #floors .floor .txt { display: none; }
         #floors header { justify-content: center; padding: 6px; }
@@ -443,7 +453,7 @@
     <div id="empty" class="card" hidden><h2></h2><p></p></div>
     <aside id="demo" class="card" hidden aria-label="About this demo">
       <span class="tag">Demo</span>
-      <span class="txt">Simulated agents. Click a desk, then type into its terminal.</span>
+      <span class="txt">Simulated agents. Click a desk, then give its agent a task.</span>
       <button class="cmd" data-copy title="Copy the command that runs it on your own machine"><span>$</span> npx agentoffice<i>copy</i></button>
       <a class="btn" href="https://github.com/agustinrbeltran/agent-office" target="_blank" rel="noopener">GitHub</a>
       <button class="x" data-close aria-label="Hide">✕</button>
@@ -455,12 +465,27 @@
         <span id="panel-kind">shell</span>
         <div class="text"><div id="panel-title">—</div><div id="panel-meta"></div></div>
         <span id="panel-status"></span>
-        <button id="panel-lock" aria-pressed="true" title="Typing here sends keystrokes to the pane. Click to make it read-only.">Live input</button>
         <button id="panel-focus" class="primary" title="Switch Herdr to this pane">Focus in Herdr</button>
         <button id="panel-close" title="Close (Esc)">✕</button>
       </header>
       <div id="panel-term"></div>
-      <div id="panel-hint">keystrokes go to the pane · Esc, arrows and Ctrl combos are forwarded · click an empty spot in the office to close</div>
+      <form id="panel-input" autocomplete="off">
+        <div class="compose">
+          <textarea id="panel-text" rows="1" spellcheck="false" autocapitalize="off" aria-label="Message to send to the pane"></textarea>
+          <button type="submit" id="panel-send" class="primary">Enter ↵</button>
+        </div>
+        <div class="keys">
+          <span role="toolbar" aria-label="Send a key to the pane">
+            <button type="button" data-key="esc" title="Esc: interrupt an agent or reject its request" aria-label="Escape">Esc</button>
+            <button type="button" data-key="ctrl+c" title="Ctrl+C" aria-label="Control C">⌃C</button>
+            <button type="button" data-key="up" title="Up arrow: previous option or history" aria-label="Up arrow">↑</button>
+            <button type="button" data-key="down" title="Down arrow: next option" aria-label="Down arrow">↓</button>
+            <button type="button" data-key="tab" title="Tab" aria-label="Tab">Tab</button>
+            <button type="button" data-key="shift+tab" title="Shift+Tab: switch the agent's mode" aria-label="Shift Tab">⇧Tab</button>
+          </span>
+          <span id="panel-hint" aria-live="polite"></span>
+        </div>
+      </form>
     </aside>
     <script type="module" src="/src/main.ts"></script>
   </body>

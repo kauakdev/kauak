@@ -1,5 +1,5 @@
 import { keyOf, splitKey } from "./floors";
-import type { BridgeMessage, InputOp, MachineInfo, RoomSpec, Snapshot } from "./types";
+import type { BridgeMessage, InputOp, MachineInfo, RoomSpec, SlashCommand, Snapshot } from "./types";
 
 /** Pane arguments and callbacks use floor keys ("machine/pane_id", see floors.ts). */
 export interface BridgeHandlers {
@@ -8,6 +8,8 @@ export interface BridgeHandlers {
   onStatus(connected: boolean): void;
   onPaneOutput(pane: string, text: string, seq: number): void;
   onInputAck?(pane: string, id: number | undefined): void;
+  /** The "/" menu's commands for a pane, answering listCommands. */
+  onCommands?(pane: string, commands: SlashCommand[]): void;
   onError?(message: string, pane?: string, id?: number): void;
   onMachineAdded?(machine: string): void;
   onMachineError?(message: string): void;
@@ -22,6 +24,8 @@ export interface BridgeApi {
   focusPane(pane: string): void;
   readPane(pane: string, seq: number): void;
   sendInput(pane: string, ops: InputOp[], id: number): boolean;
+  /** Ask which slash commands the pane's agent has; answered with onCommands. */
+  listCommands(pane: string): void;
   addMachine(ssh: string, label: string): boolean;
   removeMachine(machine: string): void;
   /** A new desk (a new Herdr tab) in a room (`workspace` is a floor key), with an optional agent kind. */
@@ -55,6 +59,8 @@ export class Bridge implements BridgeApi {
         this.handlers.onPaneOutput(keyOf(msg.machine, msg.pane_id), msg.text, msg.seq ?? 0);
       } else if (msg.type === "input_ack") {
         this.handlers.onInputAck?.(keyOf(msg.machine, msg.pane_id), msg.id);
+      } else if (msg.type === "commands") {
+        this.handlers.onCommands?.(keyOf(msg.machine, msg.pane_id), msg.commands);
       } else if (msg.type === "machine_added") {
         this.handlers.onMachineAdded?.(msg.machine);
       } else if (msg.type === "machine_error") {
@@ -98,6 +104,11 @@ export class Bridge implements BridgeApi {
     if (ops.length === 0) return false;
     const { machine, id: paneId } = splitKey(pane);
     return this.send({ type: "input", machine, pane_id: paneId, ops, id });
+  }
+
+  listCommands(pane: string) {
+    const { machine, id } = splitKey(pane);
+    this.send({ type: "commands", machine, pane_id: id });
   }
 
   /** Add a machine as a new floor; answered with onMachineAdded or onMachineError. */

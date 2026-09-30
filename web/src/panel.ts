@@ -7,10 +7,16 @@
 // output stream, so the mirror does not pretend to be a live terminal: you
 // type into an ordinary text box, and nothing reaches the pane until Enter or
 // a key button.
+//
+// The box borrows two things from agents' own prompts: a "/" menu of the
+// agent's commands (slash.ts), and Claude Code's shadow text, the dim
+// suggestion in its empty prompt, which Tab takes (shadow.ts).
 
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import type { InputOp, PaneInfo, Snapshot } from "./types";
+import { promptShadow, type Shadow } from "./shadow";
+import { SlashMenu } from "./slash";
+import type { InputOp, PaneInfo, SlashCommand, Snapshot } from "./types";
 
 const POLL_MS = 400;
 // Once Herdr has the input, read right away, then again once the program has
@@ -36,10 +42,15 @@ export class TerminalPanel {
   private form = document.getElementById("panel-input") as HTMLFormElement;
   private box = document.getElementById("panel-text") as HTMLTextAreaElement;
   private sendBtn = document.getElementById("panel-send") as HTMLButtonElement;
+  private takeBtn = document.getElementById("panel-take") as HTMLButtonElement;
+  private menu = new SlashMenu(document.getElementById("panel-slash")!, this.box);
   private term: Terminal;
   private pane: PaneInfo | null = null;
   private lastText: string | null = null;
   private drafts = new Map<string, string>(); // unsent text per pane
+  private commands = new Map<string, SlashCommand[]>(); // the "/" menu per pane
+  private commandsFor = ""; // pane, agent and folder the menu was last asked for
+  private shadow: Shadow | null = null; // Claude Code's dim prompt text, on the latest read
   private fontCap = FONT_MAX; // largest font known to fit the current panel size
   private fitFor = "";
   private readRows = 0; // rows in the last read of this pane
@@ -55,6 +66,7 @@ export class TerminalPanel {
 
   onRead: (paneId: string, seq: number) => void = () => {};
   onInput: (paneId: string, ops: InputOp[], id: number) => boolean = () => false;
+  onListCommands: (paneId: string) => void = () => {};
   onFocus: (paneId: string) => void = () => {};
   onClose: () => void = () => {};
 
@@ -79,7 +91,12 @@ export class TerminalPanel {
     for (const b of this.el.querySelectorAll("button")) b.addEventListener("mousedown", (e) => e.preventDefault());
     this.form.addEventListener("submit", (e) => { e.preventDefault(); this.submit(); });
     this.box.addEventListener("keydown", (e) => this.onKey(e));
-    this.box.addEventListener("input", () => this.autosize());
+    this.box.addEventListener("input", () => this.changed());
+    // The menu shows only while the box has focus.
+    this.box.addEventListener("blur", () => this.changed());
+    this.box.addEventListener("focus", () => this.changed());
+    this.menu.onPick = (cmd) => this.complete(cmd);
+    this.takeBtn.addEventListener("click", () => this.takeSuggestion());
     addEventListener("resize", () => this.autosize()); // the panel's width follows the window's
     // A click on the mirror means "I want to type", unless it selected text to copy.
     this.host.addEventListener("click", () => { if (!this.term.hasSelection() && finePointer()) this.box.focus(); });
@@ -94,8 +111,7 @@ export class TerminalPanel {
     addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !this.isTyping()) this.close();
     });
-    this.renderHint();
-    this.autosize();
+    this.changed();
   }
 
   /** True while keyboard focus is in the message box, so global shortcuts must stay out of the way. */
@@ -111,6 +127,7 @@ export class TerminalPanel {
     this.pane = fresh;
     this.renderHeader();
     this.resizeToPane();
+    this.askCommands(); // an agent may have started or quit in the pane
   }
 
   open(pane: PaneInfo) {
@@ -126,9 +143,12 @@ export class TerminalPanel {
       this.pinned = true;
       this.term.reset();
       this.resizeToPane();
+      this.shadow = null;
+      this.menu.setCommands(this.commands.get(pane.pane_id) ?? []);
       this.box.value = this.drafts.get(pane.pane_id) ?? "";
-      this.autosize();
+      this.changed();
     }
+    this.askCommands();
     if (this.timer === null) {
       this.poll();
       this.timer = window.setInterval(() => this.poll(), POLL_MS);
@@ -144,12 +164,21 @@ export class TerminalPanel {
     this.el.classList.remove("open");
     document.body.classList.remove("panel-open");
     this.pane = null;
+    this.commandsFor = "";
     this.box.blur();
     if (wasOpen) this.onClose();
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null; }
   }
 
   get selectedPaneId(): string | null { return this.pane?.pane_id ?? null; }
+
+  /** The "/" menu's commands for a pane, from the bridge. */
+  setCommands(paneId: string, cmds: SlashCommand[]) {
+    this.commands.set(paneId, cmds);
+    if (paneId !== this.pane?.pane_id) return;
+    this.menu.setCommands(cmds);
+    this.renderHint();
+  }
 
   receive(paneId: string, text: string, seq: number) {
     if (!this.pane || paneId !== this.pane.pane_id || seq <= this.appliedSeq) return;
@@ -169,6 +198,7 @@ export class TerminalPanel {
     // row below it down a line. The cursor stays hidden (?25l): Herdr does not
     // say where it is.
     this.term.write("\x1b[?7l\x1b[H\x1b[2J" + text + "\x1b[?25l", () => this.keepBottom());
+    this.setShadow(this.pane.agent === "claude" ? promptShadow(text) : null);
   }
 
   /** Input reached Herdr: read again soon to show what it did. */
@@ -184,9 +214,19 @@ export class TerminalPanel {
 
   private onKey(e: KeyboardEvent) {
     if (e.isComposing) return;
+    const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+    if (this.menu.open && plain && this.menuKey(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey && !e.altKey) { e.preventDefault(); this.submit(); return; }
     const empty = this.box.value === "";
-    const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+    if (empty && plain && !e.shiftKey && e.key === "Tab" && this.shadow?.suggestion) {
+      e.preventDefault();
+      this.takeSuggestion();
+      return;
+    }
     let key: string | undefined;
     if (e.key === "Escape") key = "esc";
     else if (empty && e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === "c") key = "ctrl+c";
@@ -198,15 +238,68 @@ export class TerminalPanel {
     this.sendKey(key);
   }
 
-  /** Enter: the box's text (if any) and then Enter. An empty box just presses Enter. */
+  /** ↑ ↓ pick, Tab completes, Enter runs, Esc closes. Returns whether the menu took the key. */
+  private menuKey(e: KeyboardEvent): boolean {
+    const cmd = this.menu.current;
+    if (!cmd) return false;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") this.menu.move(e.key === "ArrowDown" ? 1 : -1);
+    else if (e.key === "Tab") { if (e.shiftKey) this.menu.move(-1); else this.complete(cmd); }
+    else if (e.key === "Enter" && !e.shiftKey) this.submit();
+    else if (e.key === "Escape") { this.menu.dismiss(); this.changed(); }
+    else return false;
+    return true;
+  }
+
+  /** Put a command in the box, ready for its arguments. */
+  private complete(cmd: SlashCommand) {
+    this.box.value = `/${cmd.name} `;
+    this.box.setSelectionRange(this.box.value.length, this.box.value.length);
+    this.box.focus();
+    this.changed();
+  }
+
+  /** Tab on an empty box: the agent's suggestion becomes the message, to send or edit. */
+  private takeSuggestion() {
+    if (!this.shadow?.suggestion || this.box.value) return;
+    this.box.value = this.shadow.text;
+    this.box.setSelectionRange(this.box.value.length, this.box.value.length);
+    this.box.focus();
+    this.changed();
+  }
+
+  /** The shadow text on the latest read shows through the empty box, as it does in the agent's prompt. */
+  private setShadow(shadow: Shadow | null) {
+    if (shadow?.text === this.shadow?.text && shadow?.suggestion === this.shadow?.suggestion) return;
+    this.shadow = shadow;
+    this.renderPlaceholder();
+    this.changed();
+  }
+
+  /** Ask the bridge for the menu when the pane, its agent or its folder is new. */
+  private askCommands() {
+    const p = this.pane;
+    const key = p?.agent ? `${p.pane_id}|${p.agent}|${p.foreground_cwd || p.cwd}` : "";
+    if (key === this.commandsFor) return;
+    this.commandsFor = key;
+    if (!p) return;
+    if (p.agent) this.onListCommands(p.pane_id);
+    else this.setCommands(p.pane_id, []);
+  }
+
+  /**
+   * Enter: the box's text (if any) and then Enter. An empty box just presses
+   * Enter. With the "/" menu open, the highlighted command is what goes.
+   */
   private submit() {
+    const cmd = this.menu.current;
+    if (cmd) this.box.value = `/${cmd.name}`;
     const text = this.box.value.replace(/\s+$/, "");
     const ops: InputOp[] = [];
     if (text) ops.push({ text: text.includes("\n") ? PASTE_START + text.replace(/\r?\n/g, "\r") + PASTE_END : text });
     ops.push({ keys: ["enter"] });
     if (!this.send(ops)) return;
     this.box.value = "";
-    this.autosize();
+    this.changed();
   }
 
   private sendKey(key: string) { this.send([{ keys: [key] }]); }
@@ -224,18 +317,34 @@ export class TerminalPanel {
     else this.drafts.delete(this.pane.pane_id);
   }
 
+  /** After any change to the box's text: size, menu, buttons and hint follow it. */
+  private changed() {
+    if (document.activeElement === this.box) this.menu.update(this.box.value);
+    else this.menu.close();
+    this.autosize();
+    this.takeBtn.hidden = !(this.shadow?.suggestion && this.box.value === "");
+    this.renderHint();
+  }
+
   /** Grow the box with its text (CSS caps it), and say what the send button will do. */
   private autosize() {
     this.box.style.height = "";
     if (this.box.value) this.box.style.height = `${this.box.scrollHeight}px`;
     const empty = this.box.value.trim() === "";
-    this.sendBtn.textContent = empty ? "Enter ↵" : "Send";
-    this.sendBtn.title = empty ? "Press Enter in the pane (to accept a prompt, say)" : "Send the message, then Enter (Enter)";
+    const cmd = this.menu.current;
+    this.sendBtn.textContent = cmd ? "Run" : empty ? "Enter ↵" : "Send";
+    this.sendBtn.title = cmd ? "Run the highlighted command (Enter)" : empty ? "Press Enter in the pane (to accept a prompt, say)" : "Send the message, then Enter (Enter)";
   }
 
   private renderHint() {
+    if (this.hintTimer !== null) return; // a flashed message has the line for now
     this.hintEl.classList.remove("warn");
-    this.hintEl.textContent = "Enter sends · Shift+Enter new line · Esc, and ↑ ↓ Tab ⌃C in an empty box, go to the pane";
+    const typed = /^\/([\w.:-]+) /.exec(this.box.value);
+    const usage = typed && this.menu.find(typed[1]!)?.hint;
+    this.hintEl.textContent = this.menu.open ? "↑ ↓ pick · Tab completes · Enter runs · Esc closes"
+      : usage ? `/${typed[1]} ${usage}`
+      : this.box.value === "" && this.shadow?.suggestion ? "Tab takes the suggestion · Esc, and ↑ ↓ ⌃C in an empty box, go to the pane"
+      : `Enter sends · Shift+Enter new line${this.menu.any ? " · / for commands" : ""} · Esc, and ↑ ↓ Tab ⌃C in an empty box, go to the pane`;
   }
 
   private flashHint(text: string) {
@@ -257,7 +366,12 @@ export class TerminalPanel {
     kind.dataset.kind = p.agent ?? "";
     document.getElementById("panel-status")!.textContent = p.agent ? p.agent_status : "no agent";
     this.el.dataset.status = p.agent_status;
-    this.box.placeholder = p.agent ? `Message ${p.agent}` : "Run a command";
+    this.renderPlaceholder();
+  }
+
+  private renderPlaceholder() {
+    const p = this.pane;
+    this.box.placeholder = this.shadow?.text ?? (p?.agent ? `Message ${p.agent}` : "Run a command");
   }
 
   /**

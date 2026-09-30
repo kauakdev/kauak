@@ -16,6 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
+import { slashCommands } from "./commands.js";
 import { LOCAL_SOCKET, Machine } from "./machine.js";
 
 const WS_PORT = Number(process.env.AGENT_OFFICE_PORT ?? 7788);
@@ -212,6 +213,13 @@ wss.on("connection", (ws) => {
       // { text } (literal bytes, pane.send_text) and { keys } (named keys such
       // as "enter" or "ctrl+c", pane.send_keys).
       queueInput(ws, m, msg.pane_id, msg.ops.slice(0, MAX_INPUT_OPS), typeof msg.id === "number" ? msg.id : undefined);
+    } else if (msg.type === "commands" && typeof msg.pane_id === "string") {
+      // The message box's "/" menu. The agent and its folder come from the
+      // snapshot, not the page; only this machine's files are read.
+      const pane = m.snapshot?.panes.find((p) => p.pane_id === msg.pane_id);
+      if (!pane) return;
+      const commands = await slashCommands(pane.agent ?? null, pane.foreground_cwd || pane.cwd, !m.ssh);
+      ws.send(JSON.stringify({ type: "commands", machine: m.id, pane_id: msg.pane_id, agent: pane.agent ?? null, commands }));
     } else if (msg.type === "refresh") {
       m.scheduleRefresh();
     } else if (msg.type === "create_desk" || msg.type === "create_room") {

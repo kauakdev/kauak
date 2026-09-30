@@ -298,7 +298,7 @@
       #panel header button:hover { background: #2e3350; } #panel header button.primary { background: #3b4470; border-color: #55609a; }
       #panel-term { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
       #panel-term .xterm { opacity: .97; overflow: hidden; } /* xterm's hidden input box can sit outside the screen after a font change */
-      #panel-input { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px calc(8px + var(--sab)); border-top: 1px solid var(--line); }
+      #panel-input { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px calc(8px + var(--sab)); border-top: 1px solid var(--line); }
       #panel-input .compose { display: flex; align-items: flex-end; gap: 6px; padding: 4px 4px 4px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card-2); }
       #panel-input .compose:focus-within { border-color: #55609a; box-shadow: 0 0 0 1px #55609a; }
       #panel-text { flex: 1; min-width: 0; max-height: 10em; overflow-y: auto; resize: none; border: 0; outline: 0; padding: 5px 0; background: transparent;
@@ -307,6 +307,21 @@
       #panel-input button { background: #232739; color: var(--text); border: 1px solid var(--line-2); border-radius: 6px; cursor: pointer; }
       #panel-input button:hover { background: #2e3350; } #panel-input button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
       #panel-send { flex: none; padding: 5px 12px; font-size: 12px; white-space: nowrap; }
+      #panel-take { flex: none; align-self: center; padding: 3px 7px; font: 600 11px var(--mono); color: var(--muted) !important; }
+      /* The "/" menu floats over the bottom of the mirror, names in one column and descriptions in the next. */
+      #panel-slash { position: absolute; left: 10px; right: 10px; bottom: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; z-index: 2;
+        display: grid; grid-template-columns: fit-content(45%) minmax(0, 1fr) auto; column-gap: 14px; align-content: start;
+        max-height: min(290px, 45vh); overflow-y: auto; overscroll-behavior: contain;
+        background: var(--card-2); border: 1px solid var(--line-2); border-radius: 8px; box-shadow: 0 -8px 24px #0009; }
+      #panel-slash[hidden] { display: none; }
+      #panel-slash li { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: baseline; padding: 4px 8px; border-radius: 5px; cursor: pointer; }
+      #panel-slash li[aria-selected="true"] { background: #2e3350; }
+      #panel-slash li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #panel-slash .n { font: 600 12px var(--mono); }
+      #panel-slash li[aria-selected="true"] .n { color: var(--accent); }
+      #panel-slash .a { font-weight: 400; color: var(--muted); }
+      #panel-slash .d { grid-column: 2; font-size: 12px; color: var(--muted); }
+      #panel-slash .s { grid-column: 3; font-size: 10px; font-weight: 600; color: var(--muted); padding: 0 6px; border: 1px solid var(--line-2); border-radius: 4px; max-width: 16ch; justify-self: end; }
       #panel-send.primary { background: #3b4470; border-color: #55609a; } #panel-send.primary:hover { background: #46518a; }
       #panel-input .keys { display: flex; align-items: center; gap: 10px; }
       #panel-input .keys [role=toolbar] { display: flex; gap: 4px; flex: none; }
@@ -336,6 +351,8 @@
         #btn-radio { padding: 5px 10px; height: 24px; }
         /* 16px keeps iOS from zooming in when the message box takes focus. */
         #panel-text { font-size: 16px; }
+        #panel-slash { grid-template-columns: fit-content(55%) minmax(0, 1fr) auto; }
+        #panel-slash .s { display: none; }
         #panel-hint:not(.warn) { display: none; }
         #floors { width: auto; top: calc(56px + var(--sat)); max-height: 45vh; }
         #floors header > span, #floors .floor .txt { display: none; }
@@ -470,8 +487,10 @@
       </header>
       <div id="panel-term"></div>
       <form id="panel-input" autocomplete="off">
+        <ul id="panel-slash" role="listbox" aria-label="Commands" hidden></ul>
         <div class="compose">
-          <textarea id="panel-text" rows="1" spellcheck="false" autocapitalize="off" aria-label="Message to send to the pane"></textarea>
+          <textarea id="panel-text" rows="1" spellcheck="false" autocapitalize="off" role="combobox" aria-expanded="false" aria-label="Message to send to the pane"></textarea>
+          <button type="button" id="panel-take" title="Use the suggestion (Tab)" hidden>Tab ↹</button>
           <button type="submit" id="panel-send" class="primary">Enter ↵</button>
         </div>
         <div class="keys">

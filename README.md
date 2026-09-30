@@ -55,7 +55,14 @@ it: Enter sends the text and then Enter (an empty box just presses Enter, to
 accept a prompt), Shift+Enter adds a line, and a multi-line message goes as a
 bracketed paste. The key buttons send Esc, Ctrl+C, ↑, ↓, Tab and Shift+Tab;
 from the keyboard, Esc always goes to the pane, and ↑ ↓ Tab Ctrl+C do while
-the box is empty. Text goes through Herdr's `pane.send_text` and keys through
+the box is empty. Typing `/` in a Claude Code or Codex pane lists the agent's
+commands above the box, as its own prompt does: ↑ ↓ pick, Tab completes, Enter
+runs, Esc closes. The list is the agent's built-in commands plus, on this
+machine, the command, skill and plugin files it would load for the pane's
+folder (`.claude/commands`, `.claude/skills` and enabled plugins, or
+`~/.codex/prompts`); remote floors get the built-ins. When Claude Code shows a
+dim suggestion in its empty prompt, the box shows it too, and Tab (or the Tab
+button beside it) takes it. Text goes through Herdr's `pane.send_text` and keys through
 `pane.send_keys`, so the pane's own key encoding (application cursor keys,
 kitty protocol) is honored. Unsent text is kept per pane. The terminal keeps
 the pane's exact size and shrinks its font to fit the panel. "Focus
@@ -157,7 +164,8 @@ Herdr socket (another Herdr session on this machine) as its own floor.
 `?demo` in the URL (or `npx agentoffice --demo`) swaps the bridge for a
 simulated one (`web/src/demo.ts`): two floors of made-up agents that work, get
 blocked and finish on their own. The terminal panel works there too: Enter or
-Esc answers a blocked agent, a typed task puts an idle one to work, and shell
+Esc answers a blocked agent, a typed task puts an idle one to work, a finished
+Claude suggests a next message, `/` lists a few made-up commands, and shell
 panes run a few commands (`help`, `git status`, `claude`…). "+ Add floor"
 adds a made-up machine. `pnpm build:demo` builds it as a static site in
 `dist-demo/`, and `.github/workflows/demo.yml` publishes that to GitHub Pages
@@ -178,7 +186,9 @@ Clients send `{ "type": "focus", "machine": "local", "pane_id": "w1:p1" }` to
 focus a pane, `{ "type": "read", "machine": "local", "pane_id": "w1:p1" }` to
 get the pane's visible viewport as ANSI text (`pane.read`),
 `{ "type": "input", "machine": "local", "pane_id": "w1:p1", "ops": [{ "text": "ls" }, { "keys": ["enter"] }] }`
-to type into it, and `add_machine` (`ssh`, `label`) / `remove_machine`
+to type into it, `{ "type": "commands", "machine": "local", "pane_id": "w1:p1" }`
+for the pane's slash commands (`bridge/commands.js`; the agent and folder come
+from the snapshot), and `add_machine` (`ssh`, `label`) / `remove_machine`
 (`machine`) to manage floors. The bridge runs the ops in order (`pane.send_text` /
 `pane.send_keys`), serialized per pane, and answers with `input_ack`, after
 which the client re-reads the viewport.

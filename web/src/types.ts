@@ -93,10 +93,20 @@ export type BridgeMessage =
   | { type: "event"; machine: string; event: string; data: unknown }
   | { type: "pane_output"; machine: string; pane_id: string; text: string; revision: number; truncated: boolean; seq?: number }
   | { type: "input_ack"; machine: string; pane_id: string; id?: number }
+  | { type: "commands"; machine: string; pane_id: string; agent: string | null; commands: SlashCommand[] }
   | { type: "created"; machine: string; id?: number; pane_id: string }
   /** A create request failed; `pane_id` is set when the desk exists but its agent did not start. */
   | { type: "create_error"; machine: string; id?: number; pane_id?: string; message: string }
   | { type: "error"; machine?: string; pane_id?: string; id?: number; message: string };
+
+/** An entry of the message box's "/" menu. `source`: "built-in", "project", "user", or a plugin's name. */
+export interface SlashCommand {
+  name: string;
+  description: string;
+  hint?: string;
+  aliases?: string[];
+  source: string;
+}
 
 /** One unit of terminal input: literal text or named keys (Herdr `pane.send_keys` names). */
 export type InputOp = { text: string } | { keys: string[] };

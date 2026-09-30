@@ -4,11 +4,13 @@
 // their own, and the terminal panel works: Enter / Esc answers a blocked agent,
 // a typed task puts an idle one to work, and shell panes run a few commands
 // (including `claude` or `codex`, which sits an agent down at that desk).
+// Claude panes suggest a next message when they finish, and "/" lists a few
+// made-up commands.
 // Build mode works too: new desks and rooms appear on the simulated floors.
 
 import { kindColor } from "./character";
 import { keyOf, splitKey } from "./floors";
-import type { AgentStatus, InputOp, MachineInfo, PaneInfo, RoomSpec, Snapshot } from "./types";
+import type { AgentStatus, InputOp, MachineInfo, PaneInfo, RoomSpec, SlashCommand, Snapshot } from "./types";
 import type { BridgeApi, BridgeHandlers } from "./ws";
 
 const COLS = 100;
@@ -82,6 +84,37 @@ const SUMMARIES = [
   "Done. I left two TODOs where the spec is unclear.", "All set. Typecheck and lint are clean.",
   "Done. The fix is in, with a regression test for it.",
 ];
+// What a finished Claude pane suggests next (its dim prompt text; Tab takes it).
+const SUGGESTIONS = [
+  "commit this", "run the full test suite", "open a PR for it", "add a test for the error case", "update the README",
+  "yes, go ahead", "now do the same for the other endpoints",
+];
+const cmd = (source: string) => ([name, description, hint]: [string, string, string?]): SlashCommand =>
+  ({ name, description, ...(hint ? { hint } : {}), source });
+const SLASH: Record<string, SlashCommand[]> = {
+  claude: [
+    ...([
+      ["clear", "Start a new session with empty context"], ["compact", "Free up context by summarizing the conversation so far", "[instructions]"],
+      ["config", "Open settings"], ["context", "Show current context usage"], ["diff", "View uncommitted changes and per-turn diffs"],
+      ["exit", "Exit Claude Code"], ["help", "Show help and available commands"], ["init", "Initialize a new CLAUDE.md file with codebase documentation"],
+      ["mcp", "Manage MCP servers"], ["memory", "Edit CLAUDE.md files and memory settings"], ["model", "Set the AI model for Claude Code", "[model]"],
+      ["permissions", "Manage allow and deny tool permission rules"], ["plan", "Enable plan mode or view the current session plan"],
+      ["resume", "Resume a previous conversation"], ["review", "Review a pull request", "[PR]"], ["status", "Show version, model, account and tool statuses"],
+      ["usage", "Show session cost, plan usage, and activity stats"],
+    ] as [string, string, string?][]).map(cmd("built-in")),
+    cmd("project")(["deploy-preview", "Deploy this branch to a preview URL"]),
+    cmd("user")(["standup", "Summarize yesterday's commits for standup"]),
+    cmd("commit-commands")(["commit-commands:commit", "Create a git commit"]),
+    cmd("commit-commands")(["commit-commands:commit-push-pr", "Commit, push, and open a PR"]),
+  ],
+  codex: ([
+    ["compact", "summarize conversation to prevent hitting the context limit"], ["diff", "show git diff (including untracked files)"],
+    ["init", "create an AGENTS.md file with instructions for Codex"], ["mention", "mention a file"],
+    ["model", "choose what model and reasoning effort to use"], ["new", "start a new chat during a conversation"],
+    ["permissions", "choose what Codex is allowed to do"], ["review", "review my current changes and find issues"],
+    ["status", "show current session configuration and token usage"], ["exit", "exit Codex"],
+  ] as [string, string, string?][]).map(cmd("built-in")),
+};
 const VERBS = ["Thinking", "Reading", "Editing", "Testing", "Refactoring", "Pondering", "Wiring", "Tidying"];
 const SPINNER = ["·", "✢", "✳", "✶", "✻", "✽"];
 const COMMITS = [
@@ -98,6 +131,8 @@ interface DemoPane {
   task: string;
   verb: string;
   placeholder: string;
+  /** Claude's suggested next message, shown dim in its empty prompt. */
+  suggestion: string;
   log: string[];
   input: string;
   ask: [string, string] | null;
@@ -159,6 +194,12 @@ export class DemoBridge implements BridgeApi {
     // A finished agent goes back to idle once someone has looked at it.
     if (p.status === "done") p.next = Math.min(p.next, Date.now() + 3000);
     setTimeout(() => this.h.onPaneOutput(key, screen(p, found.floor, found.room), seq), 20);
+  }
+
+  listCommands(key: string) {
+    const found = this.find(key);
+    if (!found) return;
+    setTimeout(() => this.h.onCommands?.(key, SLASH[found.pane.agent ?? ""] ?? []), 20);
   }
 
   sendInput(key: string, ops: InputOp[], id: number): boolean {
@@ -327,11 +368,13 @@ export class DemoBridge implements BridgeApi {
       return;
     }
     p.input = clip(p.input + text, 300);
+    p.suggestion = "";
   }
 
   private key(p: DemoPane, room: DemoRoom, floor: DemoFloor, k: string) {
     const now = Date.now();
-    if (k === "backspace") p.input = [...p.input].slice(0, -1).join("");
+    if (k === "tab" && !p.input && p.suggestion) p.input = p.suggestion;
+    else if (k === "backspace") p.input = [...p.input].slice(0, -1).join("");
     else if (k === "ctrl+u") p.input = "";
     else if (k === "enter") {
       if (!p.agent) runShell(p, room, floor);
@@ -354,7 +397,7 @@ export class DemoBridge implements BridgeApi {
 
 function newPane(id: string, agent: string | null, status: AgentStatus, room: DemoRoom, host: string, now: number): DemoPane {
   const p: DemoPane = {
-    id, agent, status: agent ? status : "unknown", task: "", verb: pick(VERBS), placeholder: pick(TASKS),
+    id, agent, status: agent ? status : "unknown", task: "", verb: pick(VERBS), placeholder: pick(TASKS), suggestion: "",
     log: [], input: "", ask: null, startedAt: now - between(3000, 90_000), next: 0,
   };
   if (!agent) {
@@ -396,6 +439,7 @@ function schedule(p: DemoPane, now: number) {
 function setStatus(p: DemoPane, status: AgentStatus, now: number) {
   p.status = status;
   if (status !== "blocked") p.ask = null;
+  if (status === "working" || status === "blocked") p.suggestion = "";
   schedule(p, now);
 }
 
@@ -436,6 +480,7 @@ function answer(p: DemoPane, yes: boolean, now: number) {
 function finish(p: DemoPane, now: number) {
   addLog(p, ["", `${bullet(p, false)} ${pick(SUMMARIES)}`]);
   setStatus(p, "done", now);
+  if (p.agent === "claude") p.suggestion = pick(SUGGESTIONS);
 }
 
 function submit(p: DemoPane, room: DemoRoom, floor: DemoFloor, now: number) {
@@ -449,6 +494,12 @@ function submit(p: DemoPane, room: DemoRoom, floor: DemoFloor, now: number) {
     return;
   }
   if (text === "/clear") { p.log = agentHeader(p, room); return; }
+  if (text.startsWith("/")) {
+    const name = text.slice(1).split(/\s/)[0]!;
+    const known = (SLASH[p.agent ?? ""] ?? []).some((c) => c.name === name);
+    addLog(p, ["", bold(`▎ ${clip(text, COLS - 4)}`), gray(known ? `  ⎿  /${name} does nothing in this demo` : `  ⎿  Unknown command: /${name}`)]);
+    return;
+  }
   // A message typed while the agent works is queued in the transcript.
   if (p.status === "working") addLog(p, ["", bold(`▎ ${clip(text, COLS - 4)}`)]);
   else startTask(p, text, now);
@@ -544,7 +595,7 @@ function agentScreen(p: DemoPane, now: number): string[] {
     const hint = p.status === "working" ? "type to queue a message · esc to interrupt" : "type a task and press Enter";
     rows.push(
       gray("─".repeat(COLS)),
-      `${prompt} ${p.input || dim(p.status === "working" ? "" : `Try "${p.placeholder.toLowerCase()}"`)}`,
+      `${prompt} ${p.input || dim(p.status === "working" ? "" : p.suggestion || `Try "${p.placeholder.toLowerCase()}"`)}`,
       gray("─".repeat(COLS)),
       gray(`  ${hint}`),
     );

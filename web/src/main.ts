@@ -99,6 +99,7 @@ const handlers: BridgeHandlers = {
   onStatus: (ok) => hud.setBridge(ok),
   onPaneOutput: (id, text, seq) => panel.receive(id, text, seq),
   onInputAck: (id, inputId) => panel.inputAcked(id, inputId),
+  onCommands: (id, cmds) => panel.setCommands(id, cmds),
   onError: (message, id, inputId) => { if (id) panel.inputFailed(id, message, inputId); },
   onMachineAdded: (id) => { elevator.added(); goToFloor(id); },
   onMachineError: (message) => elevator.showError(message),
@@ -122,6 +123,7 @@ scene.onSelectPane = (pane) => select(pane.pane_id);
 scene.onEmptyClick = () => { panel.close(); build.close(); };
 panel.onRead = (id, seq) => bridge.readPane(id, seq);
 panel.onInput = (id, ops, inputId) => bridge.sendInput(id, ops, inputId);
+panel.onListCommands = (id) => bridge.listCommands(id);
 // Global shortcuts stay off while the terminal or the build form has the keyboard.
 const typing = () => panel.isTyping() || build.hasFocus();
 hud.isTyping = typing;

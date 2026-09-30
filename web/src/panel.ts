@@ -14,6 +14,7 @@
 
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
+import { contextLevel, contextPercent, contextText } from "./context";
 import { promptShadow, type Shadow } from "./shadow";
 import { SlashMenu } from "./slash";
 import type { InputOp, PaneInfo, SlashCommand, Snapshot } from "./types";
@@ -365,6 +366,14 @@ export class TerminalPanel {
     kind.textContent = p.agent ?? "shell";
     kind.dataset.kind = p.agent ?? "";
     document.getElementById("panel-status")!.textContent = p.agent ? p.agent_status : "no agent";
+    const ctx = document.getElementById("panel-ctx")!;
+    ctx.hidden = !p.context;
+    if (p.context) {
+      ctx.title = `Context: ${contextText(p.context)}`;
+      ctx.querySelector(".ctx")!.className = `ctx ${contextLevel(p.context)}`;
+      ctx.querySelector<HTMLElement>(".ctx i")!.style.width = contextPercent(p.context);
+      ctx.querySelector(".pct")!.textContent = `${contextPercent(p.context)} context`;
+    }
     this.el.dataset.status = p.agent_status;
     this.renderPlaceholder();
   }

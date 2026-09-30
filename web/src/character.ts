@@ -2,10 +2,11 @@
 // owns its own tick() so the scene just loops over them each frame.
 
 import { Container, Graphics, Text, TextStyle, type PointData } from "pixi.js";
+import { CONTEXT_COLOR, contextLevel, contextShare } from "./context";
 import { hashStr, mix, shade, toScreen } from "./iso";
 import type { Desk } from "./layout";
 import { PALETTE, box, quadAlongX, shadow } from "./props";
-import type { AgentStatus } from "./types";
+import type { AgentStatus, ContextUsage } from "./types";
 
 export const STATUS_COLOR: Record<AgentStatus, number> = {
   working: 0x5ad87a,
@@ -134,7 +135,8 @@ export function makeEmptyDesk(desk: Desk, state: CharState): DeskNode {
   };
 }
 
-function makeTag(text: string, color: number, desk: Desk): Container {
+/** Name tag in front of the desk, with the agent's context meter under it when the bridge knows it. */
+function makeTag(text: string, color: number, desk: Desk, context: ContextUsage | null = null): Container {
   const c = new Container();
   const t = new Text({ text: text.toUpperCase(), style: tagStyle });
   t.anchor.set(0.5);
@@ -142,9 +144,20 @@ function makeTag(text: string, color: number, desk: Desk): Container {
   const w = t.width + 10;
   bg.roundRect(-w / 2, -8, w, 16, 4).fill({ color, alpha: 0.95 }).stroke({ color: shade(color, 0.6), width: 1 });
   c.addChild(bg, t);
+  if (context) c.addChild(contextMeter(context, Math.max(w, 36)));
   const p = toScreen(desk.x + 0.5, desk.y + 0.95);
   c.position.set(p.x, p.y);
   return c;
+}
+
+/** A bar as wide as the name tag, just under it: how full the context window is. */
+function contextMeter(context: ContextUsage, w: number): Graphics {
+  const g = new Graphics();
+  const y = 11, h = 5;
+  g.roundRect(-w / 2, y, w, h, 2.5).fill({ color: 0x0f1118, alpha: 0.9 }).stroke({ color: 0x3a3f55, width: 1 });
+  const fill = (w - 2) * contextShare(context);
+  if (fill > 0) g.roundRect(-w / 2 + 1, y + 1, Math.max(2, fill), h - 2, 1.5).fill(CONTEXT_COLOR[contextLevel(context)]);
+  return g;
 }
 
 // ------------------------------------------------------------------ character
@@ -176,7 +189,7 @@ export function makeCharacter(desk: Desk, state: CharState): DeskNode {
   root.addChild(hands);
 
   const parts = drawDeskFurniture(root, desk, seed, true);
-  root.addChild(makeTag(pane.agent ?? "agent", color, desk));
+  root.addChild(makeTag(pane.agent ?? "agent", color, desk, pane.context));
 
   // Status bubble above the head
   const bubble = new Container();

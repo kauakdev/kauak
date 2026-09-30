@@ -10,6 +10,7 @@
 
 import { Application, Container, Graphics, Polygon, Text, TextStyle } from "pixi.js";
 import { STATUS_COLOR, kindColor, makeCharacter, makeEmptyDesk, type CharState, type DeskNode } from "./character";
+import { contextText } from "./context";
 import { TILE_W, depth, hashStr, mix, rng, shade, toScreen, type Pt } from "./iso";
 import { CELL, WALL, buildOffice, type Desk, type Office, type Plot, type Room, type Spot, type Wing } from "./layout";
 import * as P from "./props";
@@ -544,7 +545,8 @@ export class OfficeScene {
   private showTip(pane: PaneInfo, x: number, y: number) {
     const who = pane.agent ? `<b>${escapeHtml(pane.agent)}</b> · ${pane.agent_status}` : "<b>shell</b> · no agent";
     const title = pane.terminal_title_stripped || pane.terminal_title || "";
-    this.placeTip(`${who}\n${escapeHtml(title)}\n<span class="muted">${escapeHtml(shortPath(pane.foreground_cwd || pane.cwd))}\n${pane.pane_id}${pane.focused ? " · focused in Herdr" : ""}</span>`, pane.agent_status, x, y);
+    const context = pane.context ? `\ncontext: ${contextText(pane.context)}` : "";
+    this.placeTip(`${who}\n${escapeHtml(title)}${context}\n<span class="muted">${escapeHtml(shortPath(pane.foreground_cwd || pane.cwd))}\n${pane.pane_id}${pane.focused ? " · focused in Herdr" : ""}</span>`, pane.agent_status, x, y);
   }
 
   private placeTip(html: string, status: string, x: number, y: number) {

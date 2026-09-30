@@ -3,6 +3,7 @@
 // timestamps are refreshed on a slow timer. Stats, roster and feed span every
 // floor; the connection chip and the empty state describe the floor on screen.
 
+import { contextLevel, contextPercent, contextText } from "./context";
 import { floorOf, floorProblem, type Floor } from "./floors";
 import type { AgentStatus, PaneInfo, Snapshot } from "./types";
 
@@ -213,7 +214,7 @@ export class Hud {
         const title = p.terminal_title_stripped || p.terminal_title || (p.foreground_cwd || p.cwd).split("/").pop() || p.pane_id;
         g.rows.push(
           `<button class="pane st-${p.agent_status} ${p.pane_id === this.selected ? "selected" : ""}" data-pane="${esc(p.pane_id)}">` +
-          `<i class="dot"></i><span class="kind">${esc(p.agent ?? "shell")}</span><span class="title">${esc(title)}</span>` +
+          `<i class="dot"></i><span class="kind">${esc(p.agent ?? "shell")}</span><span class="title">${esc(title)}</span>${contextMeter(p)}` +
           `<span class="age" data-since="${t?.since ?? Date.now()}">${ago(t?.since ?? Date.now())}</span></button>`,
         );
       }
@@ -246,6 +247,13 @@ export class Hud {
     const next = i === -1 ? (dir > 0 ? 0 : this.order.length - 1) : (i + dir + this.order.length) % this.order.length;
     this.h.onSelect(this.order[next]!);
   }
+}
+
+/** The pane's context meter, or an empty cell to keep the row's grid. */
+function contextMeter(p: PaneInfo): string {
+  const c = p.context;
+  if (!c) return "<span></span>";
+  return `<span class="ctx ${contextLevel(c)}" title="Context: ${esc(contextText(c))}"><i style="width:${contextPercent(c)}"></i></span>`;
 }
 
 function ago(ts: number): string {

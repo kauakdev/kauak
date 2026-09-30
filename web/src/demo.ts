@@ -7,6 +7,8 @@
 // Claude panes suggest a next message when they finish, and "/" lists a few
 // made-up commands.
 // Build mode works too: new desks and rooms appear on the simulated floors.
+// Claude and Codex desks on this machine's floor fill their context windows as
+// they work and compact when full, as the real bridge reports them.
 
 import { kindColor } from "./character";
 import { keyOf, splitKey } from "./floors";
@@ -45,6 +47,10 @@ const FLOORS: { id: string; label: string; ssh: string | null; host: string; roo
 ];
 
 const AGENTS = ["claude", "codex", "gemini", "opencode", "aider", "cursor"];
+// The agents whose context use the bridge can read (bridge/context.js), and their windows.
+const WINDOW: Record<string, number> = { claude: 200_000, codex: 258_400 };
+// What a fresh session starts with: system prompt, tools, memory files.
+const BASE_CONTEXT: [number, number] = [14_000, 22_000];
 const EXTRA_REPOS = ["web-app", "mobile", "infra", "search-service", "cli", "design-system"];
 const BRANCHES = ["feat/onboarding", "fix/timeouts", "chore/deps", "feat/export", "fix/flaky-ci"];
 
@@ -139,6 +145,8 @@ interface DemoPane {
   startedAt: number;
   /** When the pane may change status on its own. */
   next: number;
+  /** Tokens in the agent's context window. */
+  context: number;
 }
 
 /** A workspace. A `plain` one is a folder outside git (no branch, no repository). */
@@ -341,7 +349,10 @@ export class DemoBridge implements BridgeApi {
       let changed = false;
       for (const p of f.rooms.flatMap((r) => r.panes)) {
         if (!p.agent) continue;
-        if (p.status === "working" && Math.random() < 0.4) addLog(p, action(p));
+        if (p.status === "working" && Math.random() < 0.4) {
+          addLog(p, action(p));
+          if (p.agent in WINDOW && !f.info.ssh) { think(p); changed = true; }
+        }
         if (now < p.next) continue;
         changed = true;
         if (p.status === "working") {
@@ -398,7 +409,7 @@ export class DemoBridge implements BridgeApi {
 function newPane(id: string, agent: string | null, status: AgentStatus, room: DemoRoom, host: string, now: number): DemoPane {
   const p: DemoPane = {
     id, agent, status: agent ? status : "unknown", task: "", verb: pick(VERBS), placeholder: pick(TASKS), suggestion: "",
-    log: [], input: "", ask: null, startedAt: now - between(3000, 90_000), next: 0,
+    log: [], input: "", ask: null, startedAt: now - between(3000, 90_000), next: 0, context: between(18_000, 150_000),
   };
   if (!agent) {
     p.log = [shellPrompt(room, host) + "git pull", "Already up to date.", shellPrompt(room, host) + "git status --short", gray(" M src/config.ts")];
@@ -420,6 +431,7 @@ function newPane(id: string, agent: string | null, status: AgentStatus, room: De
 function seat(p: DemoPane, agent: string, room: DemoRoom) {
   p.agent = agent;
   p.log = agentHeader(p, room);
+  p.context = between(...BASE_CONTEXT);
   p.placeholder = pick(TASKS);
   setStatus(p, "idle", Date.now());
   p.next = Date.now() + 60_000; // leave the new agent for the visitor to instruct
@@ -446,6 +458,16 @@ function setStatus(p: DemoPane, status: AgentStatus, now: number) {
 function addLog(p: DemoPane, rows: string[]) {
   p.log.push(...rows);
   if (p.log.length > MAX_LOG) p.log.splice(0, p.log.length - MAX_LOG);
+}
+
+/** A model call: the context grows, and a full window is compacted the way Claude Code and Codex do on their own. */
+function think(p: DemoPane) {
+  const max = WINDOW[p.agent ?? ""];
+  if (!max) return;
+  p.context += between(1500, 7000);
+  if (p.context < max * 0.9) return;
+  p.context = between(24_000, 45_000);
+  addLog(p, ["", gray(`✻ Conversation compacted · ${p.agent} summarized the session to free up context`)]);
 }
 
 function startTask(p: DemoPane, task: string, now: number) {
@@ -493,7 +515,8 @@ function submit(p: DemoPane, room: DemoRoom, floor: DemoFloor, now: number) {
     p.log = [shellPrompt(room, floor.host)];
     return;
   }
-  if (text === "/clear") { p.log = agentHeader(p, room); return; }
+  if (text === "/clear") { p.log = agentHeader(p, room); p.context = between(...BASE_CONTEXT); return; }
+  if (text === "/compact") { p.context = Math.min(p.context, between(24_000, 45_000)); addLog(p, ["", gray("✻ Conversation compacted")]); return; }
   if (text.startsWith("/")) {
     const name = text.slice(1).split(/\s/)[0]!;
     const known = (SLASH[p.agent ?? ""] ?? []).some((c) => c.name === name);
@@ -605,7 +628,7 @@ function agentScreen(p: DemoPane, now: number): string[] {
 
 /** What the snapshot shows of a pane; the floor is re-sent only when this changes. */
 function snapshotKey(p: DemoPane): string {
-  return `${p.agent}|${p.status}|${p.task}`;
+  return `${p.agent}|${p.status}|${p.task}|${p.context}`;
 }
 
 function snapshotOf(f: DemoFloor): Snapshot {
@@ -619,6 +642,8 @@ function snapshotOf(f: DemoFloor): Snapshot {
       cwd: r.dir, foreground_cwd: r.dir, agent: p.agent, agent_status: p.agent ? p.status : "unknown",
       terminal_title: p.agent && p.status === "working" ? `✳ ${title}` : title, terminal_title_stripped: title,
       scroll: { offset_from_bottom: 0, max_offset_from_bottom: 0, viewport_rows: ROWS }, revision: 0,
+      // Like the bridge: only this machine's transcripts can be read.
+      context: p.agent && WINDOW[p.agent] && !f.info.ssh ? { used: p.context, max: WINDOW[p.agent]! } : null,
     };
   }));
   return {

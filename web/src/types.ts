@@ -47,6 +47,14 @@ export interface PaneInfo {
   /** `viewport_rows` is the pane's real height; layout rects are not (see `TerminalPanel.resizeToPane`). */
   scroll?: { offset_from_bottom: number; max_offset_from_bottom: number; viewport_rows: number };
   revision: number;
+  /** Added by the bridge, not Herdr: Claude Code and Codex panes on this machine only (bridge/context.js). */
+  context?: ContextUsage | null;
+}
+
+/** Tokens in the agent's context window as of its last model call, and the window's size. */
+export interface ContextUsage {
+  used: number;
+  max: number;
 }
 
 export interface LayoutPane {

@@ -4,7 +4,8 @@
 // and remote machines (reached over SSH, see machine.js) are saved in
 // ~/.config/agent-office/machines.json. The bridge keeps things simple and
 // robust: on every Herdr event it re-fetches that machine's full
-// `session.snapshot` (a few KB) and broadcasts it to all clients.
+// `session.snapshot` (a few KB) and broadcasts it to all clients, with each
+// agent's context use added for floors on this machine (see context.js).
 //
 // The same port also serves the built office page (dist/, `pnpm build`), so
 // `npx agentoffice` is one process and one URL. `pnpm dev` serves the page
@@ -17,6 +18,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { slashCommands } from "./commands.js";
+import { ContextTracker } from "./context.js";
 import { LOCAL_SOCKET, Machine } from "./machine.js";
 
 const WS_PORT = Number(process.env.AGENT_OFFICE_PORT ?? 7788);
@@ -35,6 +37,8 @@ const SSH_TARGET = /^[A-Za-z0-9_][A-Za-z0-9._@-]{0,127}$/;
 
 /** id → Machine, in floor order. */
 const machines = new Map();
+/** id → ContextTracker, for machines on this computer (it reads agent transcripts from disk). */
+const contexts = new Map();
 
 function loadConfig() {
   try {
@@ -55,8 +59,13 @@ function saveConfig() {
 function addMachine(cfg) {
   const m = new Machine(cfg);
   machines.set(m.id, m);
+  if (!m.ssh) {
+    const c = new ContextTracker(m);
+    contexts.set(m.id, c);
+    c.on("change", () => broadcast(snapshotMessage(m)));
+  }
   m.on("status", () => broadcastMachines());
-  m.on("snapshot", (snapshot) => broadcast({ type: "snapshot", machine: m.id, snapshot }));
+  m.on("snapshot", () => broadcast(snapshotMessage(m)));
   m.on("event", (event, data) => broadcast({ type: "event", machine: m.id, event, data }));
   m.start();
   return m;
@@ -80,6 +89,10 @@ for (const c of loadConfig()) {
 
 function machineInfos() {
   return [...machines.values()].map((m) => m.info);
+}
+
+function snapshotMessage(m) {
+  return { type: "snapshot", machine: m.id, snapshot: contexts.get(m.id)?.annotate(m.snapshot) ?? m.snapshot };
 }
 
 // ---------------------------------------------------------------- page
@@ -142,7 +155,7 @@ wss.on("connection", (ws) => {
   console.log(`[bridge] client connected (${wss.clients.size})`);
   ws.send(JSON.stringify({ type: "machines", machines: machineInfos() }));
   for (const m of machines.values()) {
-    if (m.snapshot) ws.send(JSON.stringify({ type: "snapshot", machine: m.id, snapshot: m.snapshot }));
+    if (m.snapshot) ws.send(JSON.stringify(snapshotMessage(m)));
   }
 
   ws.on("message", async (raw) => {
@@ -170,6 +183,8 @@ wss.on("connection", (ws) => {
       const m = machines.get(msg.machine);
       if (!m || m.id === "local") return;
       m.stop();
+      contexts.get(m.id)?.stop();
+      contexts.delete(m.id);
       machines.delete(m.id);
       saveConfig();
       broadcastMachines();

@@ -222,7 +222,7 @@ wss.on("connection", (ws) => {
 
 // ---------------------------------------------------------------- build mode
 //
-// New desks (a pane split off a room's biggest pane) and new rooms (a
+// New desks (a new tab in a room) and new rooms (a
 // workspace in a folder, or a git worktree on a new branch), each with an
 // optional agent. `created` goes out as soon as the pane exists, after a fresh
 // snapshot, so the page can open it right away; the agent starts afterwards
@@ -273,20 +273,20 @@ async function startAgent(m, kind, paneId) {
   }
 }
 
-/** Split the room's biggest pane: to the right when it is wide, else down. Returns the new pane id. */
+/**
+ * A new tab in the room, in the room's folder. Returns its pane's id. A tab
+ * rather than a split: a split pane gets only part of the Herdr window, and
+ * the side panel mirrors a pane at its real size, so a desk split off another
+ * came out as a narrow strip with the rest of the panel empty.
+ */
 async function createDesk(m, workspaceId) {
   const snap = m.snapshot;
   const room = snap?.workspaces.find((w) => w.workspace_id === workspaceId);
   if (!room) throw new Error("That room is gone.");
-  const layout = snap.layouts.find((l) => l.workspace_id === room.workspace_id && l.tab_id === room.active_tab_id)
-    ?? snap.layouts.find((l) => l.workspace_id === room.workspace_id);
-  const biggest = layout?.panes.reduce((a, b) => (b.rect.width * b.rect.height > a.rect.width * a.rect.height ? b : a));
-  const target = snap.panes.find((p) => p.pane_id === biggest?.pane_id);
-  if (!target) throw new Error("That room has no pane to split.");
-  // Terminal cells are about twice as tall as they are wide.
-  const direction = biggest.rect.width >= biggest.rect.height * 2 ? "right" : "down";
-  const res = await m.request("pane.split", { target_pane_id: target.pane_id, direction, cwd: target.cwd, focus: false });
-  return res.pane.pane_id;
+  const panes = snap.panes.filter((p) => p.workspace_id === room.workspace_id);
+  const cwd = room.worktree?.checkout_path ?? (panes.find((p) => p.tab_id === room.active_tab_id) ?? panes[0])?.cwd ?? null;
+  const res = await m.request("tab.create", { workspace_id: room.workspace_id, cwd, focus: false });
+  return res.root_pane.pane_id;
 }
 
 /** A workspace in a folder, or a git worktree on a new branch. Returns its first pane's id. */

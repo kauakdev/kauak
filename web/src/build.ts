@@ -1,6 +1,6 @@
 // Build mode: the top-bar Build button (B) shows "+" slots in the office
 // (scene.ts), and clicking one opens this form. It asks Herdr, through the
-// bridge, for a new desk (a pane split off the room) or a new room (a git
+// bridge, for a new desk (a new tab in the room) or a new room (a git
 // worktree on a new branch, or a workspace in a folder), with an optional
 // agent. Once the pane exists the office opens it like any other desk.
 
@@ -149,7 +149,7 @@ export class BuildMode {
     this.field("cwd").previousElementSibling!.textContent = mode === "worktree" ? "Repository" : "Folder";
     this.field("cwd").placeholder = this.floor.remote ? "/home/you/code/project" : "~/code/project";
     this.note.textContent = mode === "desk"
-      ? `Splits a new pane off this room in Herdr. An agent must be installed on ${this.floor.label} to start.`
+      ? `Opens a new tab in this room in Herdr. An agent must be installed on ${this.floor.label} to start.`
       : mode === "worktree"
         ? "Creates a git worktree on a new branch (in ~/.herdr/worktrees) and opens it as a room."
         : `Opens a Herdr workspace in that folder${this.floor.remote ? ` on ${this.floor.label} (absolute path)` : ""}.`;

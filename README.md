@@ -68,8 +68,9 @@ grows a ghost desk with a `+`, every wing ends in a dashed "New room" plot, and
 one more plot below the wings takes a room in any other folder. Click one and
 a small form asks what to create:
 
-- **New desk**: splits the room's biggest pane in Herdr (to the right when it
-  is wide, else down) in the same folder, with an optional agent.
+- **New desk**: a new Herdr tab in the room (`tab.create`), in the room's
+  folder, with an optional agent. A tab rather than a split, so the new pane
+  gets the whole Herdr window and its terminal fills the side panel.
 - **New room**: a **git branch** (Herdr's `worktree.create`: a new worktree
   under `~/.herdr/worktrees`, opened as a room in the repository's wing) or a
   **folder** (`workspace.create`). On this machine `~` is expanded and a

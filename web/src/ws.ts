@@ -24,7 +24,7 @@ export interface BridgeApi {
   sendInput(pane: string, ops: InputOp[], id: number): boolean;
   addMachine(ssh: string, label: string): boolean;
   removeMachine(machine: string): void;
-  /** Split a new desk off a room (`workspace` is a floor key), with an optional agent kind. */
+  /** A new desk (a new Herdr tab) in a room (`workspace` is a floor key), with an optional agent kind. */
   createDesk(workspace: string, agent: string | null, id: number): boolean;
   createRoom(machine: string, room: RoomSpec, agent: string | null, id: number): boolean;
 }

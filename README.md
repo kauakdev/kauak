@@ -31,15 +31,16 @@ when the desk is empty.
 how full its context window is, as of its last model call. It is teal, turns
 amber at 60% and red at 85%, where agents start compacting. The same meter is
 in the roster row and the terminal panel's header; hover a desk for the token
-counts ("84k of 200k tokens"). Neither Herdr nor the agents report this over
+counts ("184k of 1M tokens"). Neither Herdr nor the agents report this over
 an API, so the bridge reads it from the transcripts the agents write to disk
 (`~/.claude/projects`, `~/.codex/sessions`). On a remote floor it does that
 over SSH with a small Python script (`bridge/context_remote.py`, run with the
 machine's `python3`; nothing is installed there). To match a pane with its
 transcript, the bridge uses the session that Herdr's agent integrations report
 (`herdr integration install claude`, or `codex`), and for Claude Code panes
-without that, the Claude process running in the pane. Claude's window is 200k
-tokens unless the model has 1M (`[1m]`).
+without that, the Claude process running in the pane. Claude's window is 1M
+tokens, or 200k on Haiku and models up to 4.5 unless Claude Code runs them with
+1M (`[1m]`).
 
 Around the canvas:
 

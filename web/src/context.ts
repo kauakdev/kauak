@@ -26,7 +26,7 @@ export function contextPercent(c: ContextUsage): string {
   return `${Math.round(contextShare(c) * 100)}%`;
 }
 
-/** "84k of 200k tokens (42%)" */
+/** "184k of 1M tokens (18%)" */
 export function contextText(c: ContextUsage): string {
   return `${tokens(c.used)} of ${tokens(c.max)} tokens (${contextPercent(c)})`;
 }

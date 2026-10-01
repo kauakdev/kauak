@@ -34,9 +34,11 @@ const MISS_MS = 15_000;
 // The first read of a long transcript starts this far from its end. The model
 // line near the start may be skipped, and then the window size is a guess.
 const FIRST_READ_MAX = 32 * 1024 * 1024;
-// Claude Code's default window; "[1m]" model ids have a million tokens.
-const CLAUDE_WINDOW = 200_000;
-const CLAUDE_WINDOW_1M = 1_000_000;
+// Claude's context window: 1M tokens on current models. Haiku and the models
+// up to Opus/Sonnet 4.5 have 200k, unless Claude Code runs them as "[1m]".
+const CLAUDE_WINDOW = 1_000_000;
+const CLAUDE_WINDOW_SMALL = 200_000;
+const CLAUDE_SMALL_MODEL = /^claude-(?:3|haiku)|^claude-(?:opus|sonnet)-4(?:-[015])?(?:-\d{8})?$/;
 const SESSION_ID = /^[A-Za-z0-9-]{1,64}$/;
 // The remote reader runs with the machine's python3 (Herdr's own agent hooks need it too).
 const REMOTE_SCRIPT = fs.readFileSync(new URL("./context_remote.py", import.meta.url)).toString("base64");
@@ -396,7 +398,10 @@ class Transcript {
  */
 class ClaudeLog {
   used = null;
+  /** The model of the last call, e.g. "claude-opus-5-5". */
   model = null;
+  /** Claude Code's name for it, which ends in "[1m]" when it asked for the 1M window. */
+  modelId = null;
 
   fresh() { return new ClaudeLog(); }
 
@@ -411,19 +416,21 @@ class ClaudeLog {
       if (!u || e.message.model === "<synthetic>") return;
       const used = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
       if (used > 0) this.used = used;
+      if (typeof e.message.model === "string") this.model = e.message.model;
     } else if (e.type === "system" && e.subtype === "compact_boundary") {
       const post = e.compactMetadata?.postTokens;
       this.used = typeof post === "number" ? post : null;
     } else if (e.type === "attachment" && e.attachment?.type === "model") {
-      this.model = e.attachment.identity?.modelId ?? this.model;
+      this.modelId = e.attachment.identity?.modelId ?? this.modelId;
     }
   }
 
   usage() {
     if (this.used === null) return null;
-    // Without the model line, a count past the default window can only be a 1M one.
-    const big = /\[1m\]/i.test(this.model ?? "") || this.used > CLAUDE_WINDOW;
-    return { used: this.used, max: big ? CLAUDE_WINDOW_1M : CLAUDE_WINDOW };
+    // A count past 200k can only be in a 1M window, whatever the model lines say.
+    const small = this.used <= CLAUDE_WINDOW_SMALL && !/\[1m\]/i.test(this.modelId ?? "")
+      && CLAUDE_SMALL_MODEL.test(this.model ?? this.modelId ?? "");
+    return { used: this.used, max: small ? CLAUDE_WINDOW_SMALL : CLAUDE_WINDOW };
   }
 }
 

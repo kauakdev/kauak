@@ -48,7 +48,7 @@ const FLOORS: { id: string; label: string; ssh: string | null; host: string; roo
 
 const AGENTS = ["claude", "codex", "gemini", "opencode", "aider", "cursor"];
 // The agents whose context use the bridge can read (bridge/context.js), and their windows.
-const WINDOW: Record<string, number> = { claude: 200_000, codex: 258_400 };
+const WINDOW: Record<string, number> = { claude: 1_000_000, codex: 258_400 };
 // What a fresh session starts with: system prompt, tools, memory files.
 const BASE_CONTEXT: [number, number] = [14_000, 22_000];
 const EXTRA_REPOS = ["web-app", "mobile", "infra", "search-service", "cli", "design-system"];
@@ -409,7 +409,8 @@ export class DemoBridge implements BridgeApi {
 function newPane(id: string, agent: string | null, status: AgentStatus, room: DemoRoom, host: string, now: number): DemoPane {
   const p: DemoPane = {
     id, agent, status: agent ? status : "unknown", task: "", verb: pick(VERBS), placeholder: pick(TASKS), suggestion: "",
-    log: [], input: "", ask: null, startedAt: now - between(3000, 90_000), next: 0, context: between(18_000, 150_000),
+    log: [], input: "", ask: null, startedAt: now - between(3000, 90_000), next: 0,
+    context: Math.round((WINDOW[agent ?? ""] ?? 0) * between(4, 75) / 100),
   };
   if (!agent) {
     p.log = [shellPrompt(room, host) + "git pull", "Already up to date.", shellPrompt(room, host) + "git status --short", gray(" M src/config.ts")];
@@ -464,7 +465,7 @@ function addLog(p: DemoPane, rows: string[]) {
 function think(p: DemoPane) {
   const max = WINDOW[p.agent ?? ""];
   if (!max) return;
-  p.context += between(1500, 7000);
+  p.context += Math.round(max * between(5, 30) / 1000); // 0.5-3% a call
   if (p.context < max * 0.9) return;
   p.context = between(24_000, 45_000);
   addLog(p, ["", gray(`✻ Conversation compacted · ${p.agent} summarized the session to free up context`)]);

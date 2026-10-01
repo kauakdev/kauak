@@ -22,8 +22,9 @@ CLAUDE_DIR = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claud
 CODEX_DIR = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
 MISS_S = 15
 FIRST_READ_MAX = 32 * 1024 * 1024
-CLAUDE_WINDOW = 200_000
-CLAUDE_WINDOW_1M = 1_000_000
+CLAUDE_WINDOW = 1_000_000
+CLAUDE_WINDOW_SMALL = 200_000
+CLAUDE_SMALL_MODEL = re.compile(r"^claude-(?:3|haiku)|^claude-(?:opus|sonnet)-4(?:-[015])?(?:-\d{8})?$")
 SESSION_ID = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 
 found = {}        # "kind:id" -> transcript path
@@ -34,7 +35,8 @@ transcripts = {}  # path -> Transcript
 class ClaudeLog:
     def __init__(self):
         self.used = None
-        self.model = None
+        self.model = None    # the model of the last call
+        self.model_id = None  # Claude Code's name for it, "[1m]" when it asked for 1M
 
     def wants(self, line):
         return b'"usage"' in line or b'"compact_boundary"' in line or b'"modelId"' in line
@@ -51,17 +53,20 @@ class ClaudeLog:
             used = (u.get("input_tokens") or 0) + (u.get("cache_creation_input_tokens") or 0) + (u.get("cache_read_input_tokens") or 0)
             if used > 0:
                 self.used = used
+            if isinstance(m.get("model"), str):
+                self.model = m["model"]
         elif kind == "system" and e.get("subtype") == "compact_boundary":
             post = (e.get("compactMetadata") or {}).get("postTokens")
             self.used = post if isinstance(post, int) else None
         elif kind == "attachment" and (e.get("attachment") or {}).get("type") == "model":
-            self.model = ((e["attachment"].get("identity") or {}).get("modelId")) or self.model
+            self.model_id = ((e["attachment"].get("identity") or {}).get("modelId")) or self.model_id
 
     def usage(self):
         if self.used is None:
             return None
-        big = "[1m]" in (self.model or "").lower() or self.used > CLAUDE_WINDOW
-        return {"used": self.used, "max": CLAUDE_WINDOW_1M if big else CLAUDE_WINDOW}
+        small = (self.used <= CLAUDE_WINDOW_SMALL and "[1m]" not in (self.model_id or "").lower()
+                 and CLAUDE_SMALL_MODEL.match(self.model or self.model_id or "") is not None)
+        return {"used": self.used, "max": CLAUDE_WINDOW_SMALL if small else CLAUDE_WINDOW}
 
 
 class CodexLog:

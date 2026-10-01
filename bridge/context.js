@@ -11,12 +11,18 @@
 // - Without it, a Claude Code pane is matched through its process: Claude
 //   Code keeps ~/.claude/sessions/<pid>.json with the session id and folder of
 //   each running instance (verified on 2.1.286; not a documented interface).
-//   The pane's processes come from Herdr (`pane.process_info`).
+// - Without it, a Codex pane gets the newest terminal Codex rollout
+//   (`originator: "codex-tui"`) for the pane's folder written since Codex
+//   started there. Codex 0.159 runs its sessions in a shared daemon, so
+//   nothing on disk ties a pane's process to its session; when two Codex
+//   panes share a folder there is no telling which is which, and neither gets
+//   a meter.
+// The pane's processes come from Herdr (`pane.process_info`).
 //
 // Transcripts only grow, so each one is read incrementally from where the
 // last read stopped.
 
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
@@ -61,7 +67,7 @@ export class ContextTracker extends EventEmitter {
     this.reader = machine.ssh ? new RemoteReader(machine) : new LocalReader();
     /** pane_id → { used, max } */
     this.usage = new Map();
-    /** pane_id → pid of its Claude Code process */
+    /** pane_id → pid of its agent's process (Claude Code's, or Codex's) */
     this.pids = new Map();
     /** pane_id → when to ask Herdr for its processes again */
     this.misses = new Map();
@@ -110,12 +116,21 @@ export class ContextTracker extends EventEmitter {
     if (!snap || this.m.state !== "live") return;
     const panes = [];
     const asked = new Set(); // panes whose processes came from Herdr just now, not from the cache
+    const sessionOf = (pane) => {
+      const s = pane.agent_session;
+      return s && s.agent === pane.agent && typeof s.value === "string" ? { kind: s.kind, value: s.value } : null;
+    };
+    const folderOf = (pane) => pane.foreground_cwd || pane.cwd;
+    // Codex panes without a session are matched by folder, so one folder must not have two.
+    const codexFolders = new Map();
+    for (const pane of snap.panes) {
+      if (pane.agent === "codex" && !sessionOf(pane)) codexFolders.set(folderOf(pane), (codexFolders.get(folderOf(pane)) ?? 0) + 1);
+    }
     for (const pane of snap.panes) {
       if (!KINDS.has(pane.agent)) continue;
-      const s = pane.agent_session;
-      const session = s && s.agent === pane.agent && typeof s.value === "string" ? { kind: s.kind, value: s.value } : null;
+      const session = sessionOf(pane);
       let pids = [];
-      if (!session && pane.agent === "claude") {
+      if (!session && (pane.agent === "claude" || codexFolders.get(folderOf(pane)) === 1)) {
         const known = this.pids.get(pane.pane_id);
         if (known) pids = [known];
         else if ((this.misses.get(pane.pane_id) ?? 0) <= Date.now()) {
@@ -123,7 +138,7 @@ export class ContextTracker extends EventEmitter {
           pids = await this.processesOf(pane.pane_id);
         }
       }
-      panes.push({ pane_id: pane.pane_id, agent: pane.agent, session, pids, cwd: pane.cwd });
+      panes.push({ pane_id: pane.pane_id, agent: pane.agent, session, pids, cwd: folderOf(pane) });
     }
     const results = panes.length ? await this.reader.read(panes) : new Map();
     if (!results) return; // the remote reader is down; keep what we had
@@ -166,7 +181,8 @@ function sameUsage(a, b) {
 //
 // read(panes) takes [{ pane_id, agent, session, pids, cwd }] and resolves with
 // Map(pane_id → { usage: { used, max } | null, pid: number | null }), where
-// `pid` is the one of `pids` that is Claude Code; or null if it could not read.
+// `pid` is the one of `pids` that is the agent (Claude Code's, or the first
+// Codex process); or null if it could not read.
 
 /** Reads this machine's transcripts. context_remote.py does the same on a remote one. */
 class LocalReader {
@@ -177,6 +193,8 @@ class LocalReader {
     this.found = new Map();
     /** kind:session id → when to look again */
     this.misses = new Map();
+    /** rollout path → its session_meta: { cwd, originator, source } */
+    this.rollouts = new Map();
   }
 
   stop() {}
@@ -203,11 +221,37 @@ class LocalReader {
     // Herdr 0.9.1 shows the id even when the hook reported the path too.
     if (session?.kind === "path") return { file: session.value.endsWith(".jsonl") ? session.value : null, pid: null };
     if (session?.kind === "id") return { file: await this.find(agent, session.value, cwd), pid: null };
+    if (agent === "codex") {
+      // The pid is kept even before the first rollout shows up, so the next read looks again.
+      const started = await processStart(pids);
+      return started ? { file: await this.codexByFolder(cwd, started.at), pid: started.pid } : { file: null, pid: null };
+    }
     for (const pid of pids) {
       const meta = await readSessionFile(pid);
       if (meta) return { file: await this.find("claude", meta.sessionId, meta.cwd), pid };
     }
     return { file: null, pid: null };
+  }
+
+  /** The newest terminal Codex rollout for `cwd` written since `since` (when Codex started), from the day it started on. */
+  async codexByFolder(cwd, since) {
+    let best = null, bestTime = 0;
+    for (const dir of codexDayDirs(since)) {
+      for (const name of await fs.promises.readdir(dir).catch(() => [])) {
+        if (!name.startsWith("rollout-") || !name.endsWith(".jsonl")) continue;
+        const file = path.join(dir, name);
+        const st = await fs.promises.stat(file).catch(() => null);
+        if (!st || st.mtimeMs < since || st.mtimeMs <= bestTime) continue;
+        let meta = this.rollouts.get(file);
+        if (!meta) {
+          meta = await rolloutMeta(file).catch(() => null);
+          if (meta) this.rollouts.set(file, meta);
+        }
+        // A subagent's rollout has an object for `source`.
+        if (meta?.cwd === cwd && meta.originator === "codex-tui" && typeof meta.source === "string") { best = file; bestTime = st.mtimeMs; }
+      }
+    }
+    return best;
   }
 
   /** A session id's transcript. Remembered once found; a miss is retried after a while (the file shows up with the first message). */
@@ -304,6 +348,56 @@ class RemoteReader {
     };
     child.once("exit", gone);
     child.once("error", (err) => { this.stderr += err.message; gone(null, null); });
+  }
+}
+
+/** The earliest-started of `pids` and when it started (ms), from `ps`. */
+function processStart(pids) {
+  if (!pids.length) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    execFile("ps", ["-o", "pid=,lstart=", "-p", pids.join(",")], { env: { ...process.env, LC_ALL: "C" } }, (_err, out) => {
+      let best = null;
+      for (const line of String(out ?? "").split("\n")) {
+        const m = line.trim().match(/^(\d+)\s+(.+)$/);
+        const at = m ? Date.parse(m[2]) : NaN;
+        if (!Number.isNaN(at) && (!best || at < best.at)) best = { pid: Number(m[1]), at };
+      }
+      resolve(best);
+    });
+  });
+}
+
+/** ~/.codex/sessions/YYYY/MM/DD for each day from the one before `since` (time zones) to today. */
+function codexDayDirs(since) {
+  const dirs = [];
+  const day = new Date(since - 86_400_000);
+  day.setHours(12, 0, 0, 0);
+  for (let i = 0; i < 31 && day.getTime() <= Date.now() + 86_400_000; i++, day.setDate(day.getDate() + 1)) {
+    const pad = (n) => String(n).padStart(2, "0");
+    dirs.push(path.join(CODEX_DIR, "sessions", String(day.getFullYear()), pad(day.getMonth() + 1), pad(day.getDate())));
+  }
+  return dirs;
+}
+
+/**
+ * A rollout's first line, `session_meta`: { cwd, originator, source }; {} if
+ * the line is something else, null while it is still being written.
+ */
+async function rolloutMeta(file) {
+  const fh = await fs.promises.open(file, "r").catch(() => null);
+  if (!fh) return null;
+  try {
+    // The first line carries the base instructions too, so it can be long.
+    const buf = Buffer.alloc(1 << 20);
+    const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+    const nl = buf.subarray(0, bytesRead).indexOf(10);
+    if (nl === -1) return null;
+    let e;
+    try { e = JSON.parse(buf.subarray(0, nl).toString("utf8")); } catch { return {}; }
+    const p = e?.type === "session_meta" ? e.payload : null;
+    return p ? { cwd: p.cwd ?? null, originator: p.originator ?? null, source: p.source ?? null } : {};
+  } finally {
+    await fh.close();
   }
 }
 

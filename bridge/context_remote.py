@@ -7,14 +7,16 @@
 #   in:  {"id": 1, "panes": [{"pane_id", "agent", "session": {"kind", "value"} | null, "pids": [...], "cwd"}]}
 #   out: {"id": 1, "result": {pane_id: {"usage": {"used", "max"} | null, "pid": int | null}}}
 # `session` is Herdr's pane.agent_session; `pids` are the pane's foreground
-# processes (pane.process_info), for a Claude Code pane without a session.
-# `pid` in the answer is the one that turned out to be Claude Code's.
+# processes (pane.process_info), for a pane without a session. `pid` in the
+# answer is the agent's: Claude Code's, or the first Codex process.
 #
 # Keep the reading rules in step with context.js.
 
+import datetime
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 
@@ -30,6 +32,7 @@ SESSION_ID = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 found = {}        # "kind:id" -> transcript path
 misses = {}       # "kind:id" -> when to look again
 transcripts = {}  # path -> Transcript
+rollouts = {}     # rollout path -> its session_meta: {cwd, originator, source}
 
 
 class ClaudeLog:
@@ -211,6 +214,82 @@ def find(kind, sid, cwd=None):
     return path
 
 
+def process_start(pids):
+    """The earliest-started of `pids` and when it started (s), from `ps`."""
+    if not pids:
+        return None
+    try:
+        out = subprocess.run(["ps", "-o", "pid=,lstart=", "-p", ",".join(str(p) for p in pids)],
+                             capture_output=True, text=True, env={**os.environ, "LC_ALL": "C"}, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    best = None
+    for line in out.splitlines():
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            continue
+        try:
+            at = time.mktime(time.strptime(" ".join(parts[1].split()), "%a %b %d %H:%M:%S %Y"))
+        except ValueError:
+            continue
+        if best is None or at < best[1]:
+            best = (int(parts[0]), at)
+    return best
+
+
+def rollout_meta(path):
+    """A rollout's first line, session_meta; {} if it is something else, None while it is being written."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(1 << 20)
+    except OSError:
+        return None
+    nl = head.find(b"\n")
+    if nl == -1:
+        return None
+    try:
+        e = json.loads(head[:nl])
+    except ValueError:
+        return {}
+    p = e.get("payload") if isinstance(e, dict) and e.get("type") == "session_meta" else None
+    return {"cwd": p.get("cwd"), "originator": p.get("originator"), "source": p.get("source")} if isinstance(p, dict) else {}
+
+
+def codex_by_folder(cwd, since):
+    """The newest terminal Codex rollout for `cwd` written since `since` (when Codex started), from the day it started on."""
+    best, best_time = None, 0
+    day = datetime.date.fromtimestamp(since) - datetime.timedelta(days=1)  # time zones
+    last = datetime.date.today() + datetime.timedelta(days=1)
+    for _ in range(31):
+        if day > last:
+            break
+        d = os.path.join(CODEX_DIR, "sessions", f"{day.year:04d}", f"{day.month:02d}", f"{day.day:02d}")
+        day += datetime.timedelta(days=1)
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for name in names:
+            if not (name.startswith("rollout-") and name.endswith(".jsonl")):
+                continue
+            path = os.path.join(d, name)
+            try:
+                mtime = os.stat(path).st_mtime
+            except OSError:
+                continue
+            if mtime < since or mtime <= best_time:
+                continue
+            meta = rollouts.get(path)
+            if meta is None:
+                meta = rollout_meta(path)
+                if meta is not None:
+                    rollouts[path] = meta
+            # A subagent's rollout has an object for `source`.
+            if meta and meta.get("cwd") == cwd and meta.get("originator") == "codex-tui" and isinstance(meta.get("source"), str):
+                best, best_time = path, mtime
+    return best
+
+
 def pane_usage(pane, used):
     agent, s, pid, path = pane.get("agent"), pane.get("session"), None, None
     if s and isinstance(s.get("value"), str):
@@ -218,6 +297,12 @@ def pane_usage(pane, used):
             path = s["value"] if s["value"].endswith(".jsonl") else None
         elif s.get("kind") == "id":
             path = find(agent, s["value"], pane.get("cwd"))
+    elif agent == "codex":
+        # The pid is kept even before the first rollout shows up, so the next read looks again.
+        started = process_start(pane.get("pids") or [])
+        if started:
+            pid = started[0]
+            path = codex_by_folder(pane.get("cwd"), started[1])
     elif agent == "claude":
         for p in pane.get("pids") or []:
             meta = session_file(p)

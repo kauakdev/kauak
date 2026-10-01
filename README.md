@@ -37,8 +37,11 @@ an API, so the bridge reads it from the transcripts the agents write to disk
 over SSH with a small Python script (`bridge/context_remote.py`, run with the
 machine's `python3`; nothing is installed there). To match a pane with its
 transcript, the bridge uses the session that Herdr's agent integrations report
-(`herdr integration install claude`, or `codex`), and for Claude Code panes
-without that, the Claude process running in the pane. Claude's window is 1M
+(`herdr integration install claude`, or `codex`). Without them, nothing needs
+installing: a Claude Code pane is matched through the Claude process running in
+it, and a Codex pane gets the newest terminal Codex session in the pane's folder
+since Codex started there (two Codex panes in one folder get no meter, rather
+than a guess). Claude's window is 1M
 tokens, or 200k on Haiku and models up to 4.5 unless Claude Code runs them with
 1M (`[1m]`).
 

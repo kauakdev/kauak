@@ -21,9 +21,9 @@ import path from "node:path";
 
 export const LOCAL_SOCKET = process.env.HERDR_SOCKET_PATH ?? process.env.HERDR_SOCKET
   ?? path.join(os.homedir(), ".config", "herdr", "herdr.sock");
-const SSH = process.env.AGENT_OFFICE_SSH ?? "ssh";
+export const SSH = process.env.AGENT_OFFICE_SSH ?? "ssh";
 // BatchMode: never prompt for a password or host key; fail instead.
-const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"];
+export const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"];
 const TUNNEL_DIR = path.join(os.tmpdir(), `agent-office-${process.getuid?.() ?? "user"}`);
 const TUNNEL_READY_MS = 20_000;
 const RETRY_MS = [2000, 4000, 8000, 15_000, 30_000];
@@ -283,6 +283,6 @@ export class Machine extends EventEmitter {
 }
 
 /** Last line ssh printed, without its own "ssh: " prefix. */
-function lastLine(s) {
+export function lastLine(s) {
   return (s.trim().split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? "").replace(/^ssh: /, "");
 }

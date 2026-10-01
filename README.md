@@ -33,11 +33,13 @@ amber at 60% and red at 85%, where agents start compacting. The same meter is
 in the roster row and the terminal panel's header; hover a desk for the token
 counts ("84k of 200k tokens"). Neither Herdr nor the agents report this over
 an API, so the bridge reads it from the transcripts the agents write to disk
-(`~/.claude/projects`, `~/.codex/sessions`). That limits it to floors on this
-machine. To match a pane with its transcript, the bridge uses the session that
-Herdr's agent integrations report (`herdr integration install claude`, or
-`codex`), and for Claude Code panes without that, the Claude process running
-in the pane. Claude's window is 200k tokens unless the model has 1M (`[1m]`).
+(`~/.claude/projects`, `~/.codex/sessions`). On a remote floor it does that
+over SSH with a small Python script (`bridge/context_remote.py`, run with the
+machine's `python3`; nothing is installed there). To match a pane with its
+transcript, the bridge uses the session that Herdr's agent integrations report
+(`herdr integration install claude`, or `codex`), and for Claude Code panes
+without that, the Claude process running in the pane. Claude's window is 200k
+tokens unless the model has 1M (`[1m]`).
 
 Around the canvas:
 
@@ -181,8 +183,8 @@ Claude suggests a next message, `/` lists a few made-up commands, and shell
 panes run a few commands (`help`, `git status`, `claude`…). "+ Add floor"
 adds a made-up machine. `pnpm build:demo` builds it as a static site in
 `dist-demo/`, and `.github/workflows/demo.yml` publishes that to GitHub Pages
-on every push to `main`. The Claude and Codex agents on the first floor fill
-their context meters as they work and compact when full.
+on every push to `main`. The Claude and Codex agents fill their context meters
+as they work and compact when full.
 
 ## How it works
 
@@ -195,9 +197,11 @@ event re-fetches `session.snapshot`. `bridge/server.js` holds the floors and
 broadcasts `{ "type": "machines", "machines": [...] }` (id, label, SSH target,
 state, message) and `{ "type": "snapshot", "machine": "local", "snapshot": {...} }`
 to browser clients over WebSocket. Every pane message names its machine.
-For floors on this machine, `bridge/context.js` adds `context: { used, max }`
-to the Claude Code and Codex panes in each snapshot, from the last token count
-in the agent's transcript, and sends the snapshot again when that count changes.
+`bridge/context.js` adds `context: { used, max }` to the Claude Code and Codex
+panes in each snapshot, from the last token count in the agent's transcript,
+and sends the snapshot again when that count changes. For a remote floor it
+keeps one more SSH connection open, running `bridge/context_remote.py` there,
+and asks it for the counts in JSON lines.
 Clients send `{ "type": "focus", "machine": "local", "pane_id": "w1:p1" }` to
 focus a pane, `{ "type": "read", "machine": "local", "pane_id": "w1:p1" }` to
 get the pane's visible viewport as ANSI text (`pane.read`),

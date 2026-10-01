@@ -5,7 +5,7 @@
 // ~/.config/agent-office/machines.json. The bridge keeps things simple and
 // robust: on every Herdr event it re-fetches that machine's full
 // `session.snapshot` (a few KB) and broadcasts it to all clients, with each
-// agent's context use added for floors on this machine (see context.js).
+// agent's context use added (see context.js).
 //
 // The same port also serves the built office page (dist/, `pnpm build`), so
 // `npx agentoffice` is one process and one URL. `pnpm dev` serves the page
@@ -37,7 +37,7 @@ const SSH_TARGET = /^[A-Za-z0-9_][A-Za-z0-9._@-]{0,127}$/;
 
 /** id → Machine, in floor order. */
 const machines = new Map();
-/** id → ContextTracker, for machines on this computer (it reads agent transcripts from disk). */
+/** id → ContextTracker */
 const contexts = new Map();
 
 function loadConfig() {
@@ -59,11 +59,9 @@ function saveConfig() {
 function addMachine(cfg) {
   const m = new Machine(cfg);
   machines.set(m.id, m);
-  if (!m.ssh) {
-    const c = new ContextTracker(m);
-    contexts.set(m.id, c);
-    c.on("change", () => broadcast(snapshotMessage(m)));
-  }
+  const c = new ContextTracker(m);
+  contexts.set(m.id, c);
+  c.on("change", () => broadcast(snapshotMessage(m)));
   m.on("status", () => broadcastMachines());
   m.on("snapshot", () => broadcast(snapshotMessage(m)));
   m.on("event", (event, data) => broadcast({ type: "event", machine: m.id, event, data }));
@@ -405,14 +403,18 @@ function queueInput(ws, machine, paneId, ops, id) {
 
 // ---------------------------------------------------------------- shutdown
 
-// SSH tunnels are child processes; take them down with the bridge.
-function shutdown(code = 0) {
+// SSH tunnels and remote context readers are child processes; take them down with the bridge.
+function stopAll() {
   for (const m of machines.values()) m.stop();
+  for (const c of contexts.values()) c.stop();
+}
+function shutdown(code = 0) {
+  stopAll();
   process.exit(code);
 }
 process.on("SIGINT", () => shutdown());
 process.on("SIGTERM", () => shutdown());
-process.on("exit", () => { for (const m of machines.values()) m.stop(); });
+process.on("exit", stopAll);
 
 // ---------------------------------------------------------------- listen
 

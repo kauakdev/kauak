@@ -47,7 +47,7 @@ export interface PaneInfo {
   /** `viewport_rows` is the pane's real height; layout rects are not (see `TerminalPanel.resizeToPane`). */
   scroll?: { offset_from_bottom: number; max_offset_from_bottom: number; viewport_rows: number };
   revision: number;
-  /** Added by the bridge, not Herdr: Claude Code and Codex panes on this machine only (bridge/context.js). */
+  /** Added by the bridge, not Herdr: Claude Code and Codex panes whose transcript it found (bridge/context.js). */
   context?: ContextUsage | null;
 }
 

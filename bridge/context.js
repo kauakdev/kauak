@@ -1,9 +1,9 @@
 // Context meters: how full each agent's context window is. Neither Herdr nor
 // the agents expose this over an API, but both Claude Code and Codex log the
 // token count of every model call to a transcript file on disk, so the bridge
-// reads those (floors on this machine only; a remote floor's files are out of
-// reach) and adds `context: { used, max }` to the panes in the snapshots it
-// sends out.
+// reads those and adds `context: { used, max }` to the panes in the snapshots
+// it sends out. On this machine it reads the files itself; for a remote floor
+// it runs context_remote.py there over SSH, which reads them the same way.
 //
 // Which transcript belongs to which pane:
 // - Herdr's agent integrations (`herdr integration install claude`) report the
@@ -11,14 +11,17 @@
 // - Without it, a Claude Code pane is matched through its process: Claude
 //   Code keeps ~/.claude/sessions/<pid>.json with the session id and folder of
 //   each running instance (verified on 2.1.286; not a documented interface).
+//   The pane's processes come from Herdr (`pane.process_info`).
 //
 // Transcripts only grow, so each one is read incrementally from where the
 // last read stopped.
 
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { SSH, SSH_OPTS, lastLine } from "./machine.js";
 
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
 const CODEX_DIR = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
@@ -35,23 +38,31 @@ const FIRST_READ_MAX = 32 * 1024 * 1024;
 const CLAUDE_WINDOW = 200_000;
 const CLAUDE_WINDOW_1M = 1_000_000;
 const SESSION_ID = /^[A-Za-z0-9-]{1,64}$/;
+// The remote reader runs with the machine's python3 (Herdr's own agent hooks need it too).
+const REMOTE_SCRIPT = fs.readFileSync(new URL("./context_remote.py", import.meta.url)).toString("base64");
+const REMOTE_COMMAND = `python3 -u -c "import base64; exec(base64.b64decode('${REMOTE_SCRIPT}'))"`;
+// The first answer waits for the SSH connection.
+const REMOTE_TIMEOUT_MS = 20_000;
+// After the remote reader dies: 30 s, or 5 min when python3 is missing there.
+const REMOTE_RETRY_MS = 30_000;
+const REMOTE_NO_PYTHON_RETRY_MS = 5 * 60_000;
 
-/** Emits "change" when any pane's context use changes. */
+/**
+ * Emits "change" when any pane's context use changes. The tracker decides
+ * which panes to read and how to find their sessions (through Herdr); a
+ * reader turns that into token counts, here or over SSH.
+ */
 export class ContextTracker extends EventEmitter {
-  /** `machine` must be on this computer: its panes' transcripts are read from disk. */
   constructor(machine) {
     super();
     this.m = machine;
+    this.reader = machine.ssh ? new RemoteReader(machine) : new LocalReader();
     /** pane_id → { used, max } */
     this.usage = new Map();
-    /** transcript path → Transcript */
-    this.transcripts = new Map();
     /** pane_id → pid of its Claude Code process */
     this.pids = new Map();
-    /** pane_id, or kind:session id → when to look again */
+    /** pane_id → when to ask Herdr for its processes again */
     this.misses = new Map();
-    /** kind:session id → transcript path */
-    this.found = new Map();
     this.running = false;
     this.again = false;
     this.kickTimer = null;
@@ -63,6 +74,7 @@ export class ContextTracker extends EventEmitter {
   stop() {
     clearInterval(this.timer);
     clearTimeout(this.kickTimer);
+    this.reader.stop();
   }
 
   /** The snapshot with `context` on every pane whose use is known. */
@@ -94,19 +106,38 @@ export class ContextTracker extends EventEmitter {
   async update() {
     const snap = this.m.snapshot;
     if (!snap || this.m.state !== "live") return;
-    const next = new Map();
-    const read = new Set();
+    const panes = [];
+    const asked = new Set(); // panes whose processes came from Herdr just now, not from the cache
     for (const pane of snap.panes) {
       if (!KINDS.has(pane.agent)) continue;
-      const file = await this.transcriptOf(pane).catch(() => null);
-      if (!file) continue;
-      read.add(file);
-      let t = this.transcripts.get(file);
-      if (!t) this.transcripts.set(file, (t = new Transcript(file, pane.agent)));
-      const usage = await t.usage().catch(() => null);
-      if (usage) next.set(pane.pane_id, usage);
+      const s = pane.agent_session;
+      const session = s && s.agent === pane.agent && typeof s.value === "string" ? { kind: s.kind, value: s.value } : null;
+      let pids = [];
+      if (!session && pane.agent === "claude") {
+        const known = this.pids.get(pane.pane_id);
+        if (known) pids = [known];
+        else if ((this.misses.get(pane.pane_id) ?? 0) <= Date.now()) {
+          asked.add(pane.pane_id);
+          pids = await this.processesOf(pane.pane_id);
+        }
+      }
+      panes.push({ pane_id: pane.pane_id, agent: pane.agent, session, pids, cwd: pane.cwd });
     }
-    for (const file of [...this.transcripts.keys()]) if (!read.has(file)) this.transcripts.delete(file);
+    const results = panes.length ? await this.reader.read(panes) : new Map();
+    if (!results) return; // the remote reader is down; keep what we had
+    const next = new Map();
+    for (const p of panes) {
+      const r = results.get(p.pane_id);
+      if (r?.usage) next.set(p.pane_id, r.usage);
+      if (r?.pid) {
+        this.pids.set(p.pane_id, r.pid);
+        this.misses.delete(p.pane_id);
+      } else if (p.pids.length || asked.has(p.pane_id)) {
+        // A remembered pid that stopped matching (Claude restarted) is looked up again right away.
+        this.pids.delete(p.pane_id);
+        if (asked.has(p.pane_id)) this.misses.set(p.pane_id, Date.now() + MISS_MS);
+      }
+    }
     const live = new Set(snap.panes.map((p) => p.pane_id));
     for (const id of [...this.pids.keys()]) if (!live.has(id)) this.pids.delete(id);
     if (sameUsage(next, this.usage)) return;
@@ -114,34 +145,67 @@ export class ContextTracker extends EventEmitter {
     this.emit("change");
   }
 
-  // ------------------------------------------------------------ which transcript
+  async processesOf(paneId) {
+    const res = await this.m.request("pane.process_info", { pane_id: paneId }).catch(() => null);
+    return (res?.process_info?.foreground_processes ?? []).map((p) => p.pid).filter(Number.isInteger);
+  }
+}
 
-  async transcriptOf(pane) {
-    // Herdr 0.9.1 shows the id even when the hook reported the path too.
-    const s = pane.agent_session;
-    if (s && s.agent === pane.agent && typeof s.value === "string") {
-      if (s.kind === "path") return s.value.endsWith(".jsonl") ? s.value : null;
-      if (s.kind === "id") return this.find(pane.agent, s.value, pane.cwd);
-    }
-    return pane.agent === "claude" ? this.claudeByProcess(pane.pane_id) : null;
+function sameUsage(a, b) {
+  if (a.size !== b.size) return false;
+  for (const [id, u] of a) {
+    const v = b.get(id);
+    if (!v || v.used !== u.used || v.max !== u.max) return false;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------- readers
+//
+// read(panes) takes [{ pane_id, agent, session, pids, cwd }] and resolves with
+// Map(pane_id → { usage: { used, max } | null, pid: number | null }), where
+// `pid` is the one of `pids` that is Claude Code; or null if it could not read.
+
+/** Reads this machine's transcripts. context_remote.py does the same on a remote one. */
+class LocalReader {
+  constructor() {
+    /** transcript path → Transcript */
+    this.transcripts = new Map();
+    /** kind:session id → transcript path */
+    this.found = new Map();
+    /** kind:session id → when to look again */
+    this.misses = new Map();
   }
 
-  /** The Claude Code session running in a pane, through ~/.claude/sessions/<pid>.json. */
-  async claudeByProcess(paneId) {
-    let pid = this.pids.get(paneId);
-    let meta = pid ? await readSessionFile(pid) : null;
-    if (!meta) {
-      this.pids.delete(paneId);
-      if ((this.misses.get(paneId) ?? 0) > Date.now()) return null;
-      const res = await this.m.request("pane.process_info", { pane_id: paneId });
-      for (const proc of res.process_info?.foreground_processes ?? []) {
-        if ((meta = await readSessionFile(proc.pid))) { pid = proc.pid; break; }
+  stop() {}
+
+  async read(panes) {
+    const results = new Map();
+    const read = new Set();
+    for (const pane of panes) {
+      const { file, pid } = await this.transcriptOf(pane).catch(() => ({ file: null, pid: null }));
+      let usage = null;
+      if (file) {
+        read.add(file);
+        let t = this.transcripts.get(file);
+        if (!t) this.transcripts.set(file, (t = new Transcript(file, pane.agent)));
+        usage = await t.usage().catch(() => null);
       }
-      if (!meta) { this.misses.set(paneId, Date.now() + MISS_MS); return null; }
-      this.misses.delete(paneId);
-      this.pids.set(paneId, pid);
+      results.set(pane.pane_id, { usage, pid });
     }
-    return this.find("claude", meta.sessionId, meta.cwd);
+    for (const file of [...this.transcripts.keys()]) if (!read.has(file)) this.transcripts.delete(file);
+    return results;
+  }
+
+  async transcriptOf({ agent, session, pids, cwd }) {
+    // Herdr 0.9.1 shows the id even when the hook reported the path too.
+    if (session?.kind === "path") return { file: session.value.endsWith(".jsonl") ? session.value : null, pid: null };
+    if (session?.kind === "id") return { file: await this.find(agent, session.value, cwd), pid: null };
+    for (const pid of pids) {
+      const meta = await readSessionFile(pid);
+      if (meta) return { file: await this.find("claude", meta.sessionId, meta.cwd), pid };
+    }
+    return { file: null, pid: null };
   }
 
   /** A session id's transcript. Remembered once found; a miss is retried after a while (the file shows up with the first message). */
@@ -155,6 +219,89 @@ export class ContextTracker extends EventEmitter {
     if (file) { this.found.set(key, file); this.misses.delete(key); }
     else this.misses.set(key, Date.now() + MISS_MS);
     return file;
+  }
+}
+
+/**
+ * Runs context_remote.py on a remote floor's machine over its own SSH
+ * connection, kept open across reads (the script keeps its caches), and
+ * restarted when it dies.
+ */
+class RemoteReader {
+  constructor(machine) {
+    this.m = machine;
+    this.child = null;
+    this.buf = "";
+    this.stderr = "";
+    this.seq = 0;
+    /** request id → resolve */
+    this.waiting = new Map();
+    this.retryAt = 0;
+    this.stopped = false;
+  }
+
+  stop() {
+    this.stopped = true;
+    this.child?.kill();
+  }
+
+  read(panes) {
+    if (this.stopped) return Promise.resolve(null);
+    if (!this.child) {
+      if (Date.now() < this.retryAt) return Promise.resolve(null);
+      this.start();
+    }
+    const id = ++this.seq;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.waiting.delete(id);
+        this.child?.kill(); // stuck: start over next time
+        resolve(null);
+      }, REMOTE_TIMEOUT_MS);
+      this.waiting.set(id, (result) => {
+        clearTimeout(timer);
+        resolve(result ? new Map(Object.entries(result)) : null);
+      });
+      this.child.stdin.write(JSON.stringify({ id, panes }) + "\n");
+    });
+  }
+
+  start() {
+    // ControlPath=none, as for the tunnel: a connection of its own, never handed to a shared master.
+    const child = spawn(SSH, [...SSH_OPTS, "-o", "ControlPath=none", "--", this.m.ssh, REMOTE_COMMAND], { stdio: ["pipe", "pipe", "pipe"] });
+    this.child = child;
+    this.buf = "";
+    this.stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdin.on("error", () => {}); // EPIPE once it is gone; "exit" says why
+    child.stdout.on("data", (chunk) => {
+      this.buf += chunk;
+      let nl;
+      while ((nl = this.buf.indexOf("\n")) !== -1) {
+        const line = this.buf.slice(0, nl);
+        this.buf = this.buf.slice(nl + 1);
+        let msg;
+        try { msg = JSON.parse(line); } catch { continue; }
+        const done = this.waiting.get(msg.id);
+        this.waiting.delete(msg.id);
+        done?.(msg.result ?? null);
+      }
+    });
+    child.stderr.on("data", (d) => { this.stderr = (this.stderr + d).slice(-2000); });
+    const gone = (code, signal) => {
+      if (this.child !== child) return;
+      this.child = null;
+      for (const done of this.waiting.values()) done(null);
+      this.waiting.clear();
+      if (this.stopped) return;
+      const noPython = code === 127;
+      this.retryAt = Date.now() + (noPython ? REMOTE_NO_PYTHON_RETRY_MS : REMOTE_RETRY_MS);
+      const why = noPython ? "python3 is not installed there" : lastLine(this.stderr) || (signal ? `killed by ${signal}` : `exit ${code}`);
+      console.warn(`[bridge] ${this.m.label}: context meters stopped (${why}); retrying in ${(this.retryAt - Date.now()) / 1000}s`);
+    };
+    child.once("exit", gone);
+    child.once("error", (err) => { this.stderr += err.message; gone(null, null); });
   }
 }
 
@@ -198,18 +345,9 @@ async function findCodexRollout(id) {
   return null;
 }
 
-function sameUsage(a, b) {
-  if (a.size !== b.size) return false;
-  for (const [id, u] of a) {
-    const v = b.get(id);
-    if (!v || v.used !== u.used || v.max !== u.max) return false;
-  }
-  return true;
-}
-
 // ---------------------------------------------------------------- transcripts
 
-/** One transcript, read incrementally; `usage()` is the context use as of its last complete line. */
+/** One transcript, read incrementally; `usage()` is the context use as of its last complete line. Keep in step with context_remote.py. */
 class Transcript {
   constructor(file, kind) {
     this.file = file;

@@ -7,8 +7,8 @@
 // Claude panes suggest a next message when they finish, and "/" lists a few
 // made-up commands.
 // Build mode works too: new desks and rooms appear on the simulated floors.
-// Claude and Codex desks on this machine's floor fill their context windows as
-// they work and compact when full, as the real bridge reports them.
+// Claude and Codex desks fill their context windows as they work and compact
+// when full, as the real bridge reports them.
 
 import { kindColor } from "./character";
 import { keyOf, splitKey } from "./floors";
@@ -351,7 +351,7 @@ export class DemoBridge implements BridgeApi {
         if (!p.agent) continue;
         if (p.status === "working" && Math.random() < 0.4) {
           addLog(p, action(p));
-          if (p.agent in WINDOW && !f.info.ssh) { think(p); changed = true; }
+          if (p.agent in WINDOW) { think(p); changed = true; }
         }
         if (now < p.next) continue;
         changed = true;
@@ -642,8 +642,7 @@ function snapshotOf(f: DemoFloor): Snapshot {
       cwd: r.dir, foreground_cwd: r.dir, agent: p.agent, agent_status: p.agent ? p.status : "unknown",
       terminal_title: p.agent && p.status === "working" ? `✳ ${title}` : title, terminal_title_stripped: title,
       scroll: { offset_from_bottom: 0, max_offset_from_bottom: 0, viewport_rows: ROWS }, revision: 0,
-      // Like the bridge: only this machine's transcripts can be read.
-      context: p.agent && WINDOW[p.agent] && !f.info.ssh ? { used: p.context, max: WINDOW[p.agent]! } : null,
+      context: p.agent && WINDOW[p.agent] ? { used: p.context, max: WINDOW[p.agent]! } : null,
     };
   }));
   return {

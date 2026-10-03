@@ -210,7 +210,7 @@ export class OfficeScene {
     const roster = visible("roster");
     const left = roster && roster.right < sw * 0.5 ? roster.right + 8 : 0;
     const floors = visible("floors");
-    const right = document.body.classList.contains("panel-open") ? Math.min(920, sw * 0.62) : floors && sw >= 900 && floors.left > sw * 0.5 ? sw - floors.left + 8 : 0;
+    const right = document.body.classList.contains("panel-open") ? document.getElementById("panel")!.offsetWidth : floors && sw >= 900 && floors.left > sw * 0.5 ? sw - floors.left + 8 : 0;
     const top = 52, bottom = 40;
     const w = Math.max(200, sw - left - right), h = Math.max(200, sh - top - bottom);
     return { w, h, cx: left + w / 2, cy: top + h / 2 };

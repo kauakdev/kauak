@@ -34,6 +34,11 @@ const PASS_KEYS: Record<string, string> = { ArrowUp: "up", ArrowDown: "down", Ta
 // newlines from submitting it line by line (agents and modern shells all turn it on).
 const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
+// Dragging the panel's left edge: no narrower than its header needs, and
+// the roster (280px wide, 12px in) stays clear of it.
+const WIDTH_KEY = "agent-office.panel-width";
+const WIDTH_MIN = 420;
+const OFFICE_MIN = 300;
 
 export class TerminalPanel {
   private el = document.getElementById("panel")!;
@@ -71,6 +76,7 @@ export class TerminalPanel {
   onListCommands: (paneId: string) => void = () => {};
   onFocus: (paneId: string) => void = () => {};
   onClose: () => void = () => {};
+  onResize: () => void = () => {};
 
   constructor() {
     this.term = new Terminal({
@@ -100,6 +106,11 @@ export class TerminalPanel {
     this.menu.onPick = (cmd) => this.complete(cmd);
     this.takeBtn.addEventListener("click", () => this.takeSuggestion());
     addEventListener("resize", () => this.autosize()); // the panel's width follows the window's
+    // A pane wider than the panel gets small text: dragging the edge makes room.
+    const grip = document.getElementById("panel-resize")!;
+    this.setWidth(Number(load(WIDTH_KEY)) || null);
+    grip.addEventListener("pointerdown", (e) => this.dragWidth(e, grip));
+    grip.addEventListener("dblclick", () => { this.setWidth(null); save(WIDTH_KEY, ""); this.onResize(); });
     // A click on the mirror means "I want to type", unless it selected text to copy.
     this.host.addEventListener("click", () => { if (!this.term.hasSelection() && finePointer()) this.box.focus(); });
     this.host.addEventListener("scroll", () => {
@@ -434,6 +445,40 @@ export class TerminalPanel {
     if (next !== size) this.term.options.fontSize = next;
   }
 
+  /** Follow the pointer while the panel's edge is dragged, and keep the width for next time. */
+  private dragWidth(e: PointerEvent, grip: HTMLElement) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    document.body.classList.add("resizing-panel");
+    let width: number | null = null;
+    const move = (ev: PointerEvent) => { width = this.setWidth(innerWidth - ev.clientX); };
+    const end = () => {
+      grip.removeEventListener("pointermove", move);
+      grip.removeEventListener("pointerup", end);
+      grip.removeEventListener("pointercancel", end);
+      document.body.classList.remove("resizing-panel");
+      if (width === null) return; // a click, not a drag
+      save(WIDTH_KEY, String(width));
+      this.onResize();
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", end);
+    grip.addEventListener("pointercancel", end);
+  }
+
+  /**
+   * Set the panel's width in px, or null for the default. The window can
+   * shrink later, so CSS caps it again. Returns the width set.
+   */
+  private setWidth(px: number | null): number | null {
+    const root = document.documentElement.style;
+    if (px === null) { root.removeProperty("--panel-custom"); return null; }
+    const width = Math.round(Math.max(WIDTH_MIN, Math.min(innerWidth - OFFICE_MIN, px)));
+    root.setProperty("--panel-custom", `min(${width}px, calc(100vw - ${OFFICE_MIN}px))`);
+    return width;
+  }
+
   /** If the pane is taller than the panel, keep its bottom rows (the prompt) in view. */
   private keepBottom() {
     if (this.pinned) this.host.scrollTop = this.host.scrollHeight;
@@ -442,6 +487,14 @@ export class TerminalPanel {
 
 function finePointer(): boolean {
   return matchMedia("(hover: hover) and (pointer: fine)").matches;
+}
+
+// localStorage can be missing or throw (private windows, blocked site data).
+function load(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function save(key: string, value: string) {
+  try { localStorage.setItem(key, value); } catch {}
 }
 
 const ESC_RE = /\x1b(?:\[[0-9;:?]*[ -\/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][A-Za-z0-9]|.)/g;

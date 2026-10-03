@@ -17,7 +17,8 @@
         --ctx-ok: #7fd1b9; --ctx-warn: #ffb347; --ctx-full: #ff6b6b;
         --sat: env(safe-area-inset-top, 0px); --sar: env(safe-area-inset-right, 0px);
         --sab: env(safe-area-inset-bottom, 0px); --sal: env(safe-area-inset-left, 0px);
-        --panel-w: min(920px, 62vw);
+        /* --panel-custom: the width the panel's edge was dragged to (panel.ts). */
+        --panel-w: var(--panel-custom, min(920px, 62vw));
         --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
         --mono: ui-monospace, "JetBrains Mono", Menlo, monospace;
       }
@@ -288,6 +289,11 @@
         border-left: 1px solid var(--line-2); transform: translateX(100%); transition: transform .18s ease;
         display: flex; flex-direction: column; box-shadow: -12px 0 30px #0008; z-index: 8; }
       #panel.open { transform: none; }
+      #panel-resize { position: absolute; top: 0; bottom: 0; left: -4px; width: 8px; cursor: ew-resize; touch-action: none; z-index: 1; }
+      #panel-resize::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; transition: background .15s ease; }
+      #panel-resize:hover::after, body.resizing-panel #panel-resize::after { background: var(--accent); }
+      #panel:not(.open) #panel-resize { display: none; }
+      body.resizing-panel, body.resizing-panel * { cursor: ew-resize !important; user-select: none; }
       #panel header { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
       #panel header .status { width: 10px; height: 10px; border-radius: 50%; background: var(--unknown); flex: none; }
       #panel[data-status="working"] .status { background: var(--working); } #panel[data-status="idle"] .status { background: var(--idle); }
@@ -340,6 +346,7 @@
 
       @media (max-width: 900px) {
         :root { --panel-w: 100vw; }
+        #panel-resize { display: none; }
         #topbar { gap: 8px; }
         #brand { white-space: nowrap; } #brand span { display: none; }
         #conn { white-space: nowrap; } #conn-text { max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
@@ -486,6 +493,7 @@
     </aside>
 
     <aside id="panel" data-status="unknown">
+      <div id="panel-resize" title="Drag to resize · double-click for the default width"></div>
       <header>
         <div class="status"></div>
         <span id="panel-kind">shell</span>

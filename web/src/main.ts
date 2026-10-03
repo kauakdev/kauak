@@ -133,6 +133,8 @@ const radio = new Radio();
 radio.isTyping = typing;
 panel.onFocus = (id) => bridge.focusPane(id);
 panel.onClose = () => { scene.setSelected(null); hud.setSelected(null); };
+// A wider panel can cover the desk: bring it back into the office's visible part.
+panel.onResize = () => { if (panel.selectedPaneId) scene.focusPane(panel.selectedPaneId); };
 }
 
 // localStorage can be missing or throw (private windows, blocked site data).

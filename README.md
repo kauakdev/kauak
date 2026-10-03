@@ -83,7 +83,8 @@ dim suggestion in its empty prompt, the box shows it too, and Tab (or the Tab
 button beside it) takes it. Text goes through Herdr's `pane.send_text` and keys through
 `pane.send_keys`, so the pane's own key encoding (application cursor keys,
 kitty protocol) is honored. Unsent text is kept per pane. The terminal keeps
-the pane's exact size and shrinks its font to fit the panel. "Focus
+the pane's exact size and shrinks its font until the pane's width fits the
+panel; a pane taller than the panel scrolls, kept at the bottom. "Focus
 in Herdr" switches your Herdr window to the pane. `?pane=w1:p1` in the URL
 opens a pane on load (`?pane=<floor>/w1:p1` for another floor; `?floor=<id>`
 just picks the floor).

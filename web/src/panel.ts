@@ -23,7 +23,8 @@ const POLL_MS = 400;
 // Once Herdr has the input, read right away, then again once the program has
 // had time to react.
 const AFTER_INPUT_READS_MS = [0, 120];
-// The pane is mirrored at its real size; the font shrinks so all of it fits the panel.
+// The pane is mirrored at its real size; the font shrinks so its full width
+// fits the panel, and a pane taller than the panel scrolls.
 const FONT_MAX = 13;
 const FONT_MIN = 8;
 // While the message box is empty these go straight to the pane (menus,
@@ -385,18 +386,21 @@ export class TerminalPanel {
 
   /**
    * Give xterm the pane's size. A read with more rows than xterm has scrolls
-   * the whole screen up and, with no scrollback, drops the top rows. Herdr's
-   * layout rect is not the pane's real size (on 0.9.1 it stays at 120×40
-   * whatever size the attached client gives the pane), so the rows come from
-   * the reads, else the pane's `viewport_rows`, and the columns grow to fit
-   * the widest row read. Returns whether xterm was resized.
+   * the whole screen up and, with no scrollback, drops the top rows. Reads
+   * leave out blank rows at the bottom, so the rows come from the reads, else
+   * the pane's `viewport_rows`. The columns are the layout rect's width when
+   * the rect is the pane's real size (its height matches `viewport_rows`; on
+   * Herdr 0.9.1 it stayed at 120×40 whatever size the attached client gave
+   * the pane). Otherwise they grow to fit the widest row read. Returns whether
+   * xterm was resized.
    */
   private resizeToPane(): boolean {
     if (!this.pane) return false;
     const id = this.pane.pane_id;
     const rect = this.snapshot?.layouts.flatMap((l) => l.panes).find((p) => p.pane_id === id)?.rect;
     const rows = Math.max(5, this.readRows || this.pane.scroll?.viewport_rows || rect?.height || this.term.rows);
-    const cols = Math.max(20, this.readCols, rect?.width ?? 0);
+    const real = rect !== undefined && rect.height === this.pane.scroll?.viewport_rows;
+    const cols = Math.max(20, real ? rect.width : Math.max(this.readCols, rect?.width ?? 0));
     if (cols === this.term.cols && rows === this.term.rows) return false;
     this.term.resize(cols, rows);
     this.fit();
@@ -404,33 +408,33 @@ export class TerminalPanel {
   }
 
   /**
-   * Pick the largest font (up to FONT_MAX) at which the whole pane fits the
-   * panel. Runs again whenever the panel or xterm's screen changes size.
+   * Pick the largest font (up to FONT_MAX) at which the pane's full width fits
+   * the panel. Not its height: since reads leave out blank rows, the text
+   * would shrink as the pane filled up, and a full pane would need a tiny
+   * font. A pane taller than the panel scrolls, kept at the bottom (the
+   * prompt). Runs again whenever the panel or xterm's screen changes size.
    */
   private fit() {
     const screen = this.host.querySelector<HTMLElement>(".xterm-screen");
     if (!screen || !this.el.classList.contains("open")) return;
-    // Measure the box itself, not clientWidth/Height: a scrollbar showing up
-    // while it overflows must not change the target.
+    // The scrollbar's gutter is always reserved (scrollbar-gutter: stable), so
+    // the width does not change when the pane starts to overflow the height.
     const cs = getComputedStyle(this.host);
-    const box = this.host.getBoundingClientRect();
-    const w = box.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    const h = box.height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const w = this.host.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     const r = screen.getBoundingClientRect();
-    if (w <= 0 || h <= 0 || !r.width || !r.height) return;
-    const key = `${w}x${h}:${this.term.cols}x${this.term.rows}`;
+    if (w <= 0 || !r.width) return;
+    const key = `${w}:${this.term.cols}`;
     if (key !== this.fitFor) { this.fitFor = key; this.fontCap = FONT_MAX; }
     const size = this.term.options.fontSize ?? FONT_MAX;
     // Cells are rounded to whole pixels, so the estimate can overshoot: when
-    // it does, step down and never try that size again for this panel size.
-    const overflow = r.width > w + 0.5 || r.height > h + 0.5;
-    if (overflow) this.fontCap = Math.min(this.fontCap, size - 0.5);
-    const estimate = Math.floor(size * Math.min(w / r.width, h / r.height) * 2) / 2;
+    // it does, step down and never try that size again for this panel width.
+    if (r.width > w + 0.5) this.fontCap = Math.min(this.fontCap, size - 0.5);
+    const estimate = Math.floor(size * (w / r.width) * 2) / 2;
     const next = Math.max(FONT_MIN, Math.min(this.fontCap, estimate));
     if (next !== size) this.term.options.fontSize = next;
   }
 
-  /** If the pane is taller than the panel even at the smallest font, keep its bottom rows (the prompt) in view. */
+  /** If the pane is taller than the panel, keep its bottom rows (the prompt) in view. */
   private keepBottom() {
     if (this.pinned) this.host.scrollTop = this.host.scrollHeight;
   }

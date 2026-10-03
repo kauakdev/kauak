@@ -328,6 +328,10 @@
         max-height: min(290px, 45vh); overflow-y: auto; overscroll-behavior: contain;
         background: var(--card-2); border: 1px solid var(--line-2); border-radius: 8px; box-shadow: 0 -8px 24px #0009; }
       #panel-slash[hidden] { display: none; }
+      /* Floats over the bottom of the mirror while it is scrolled back into history. */
+      #panel-live { position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%); z-index: 1; padding: 5px 12px;
+        font-size: 12px; white-space: nowrap; border-radius: 999px !important; box-shadow: 0 4px 14px #0009; }
+      #panel-live[hidden] { display: none; }
       #panel-slash li { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: baseline; padding: 4px 8px; border-radius: 5px; cursor: pointer; }
       #panel-slash li[aria-selected="true"] { background: #2e3350; }
       #panel-slash li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -506,6 +510,7 @@
       <div id="panel-term"></div>
       <form id="panel-input" autocomplete="off">
         <ul id="panel-slash" role="listbox" aria-label="Commands" hidden></ul>
+        <button type="button" id="panel-live" title="Back to the latest output" hidden>Jump to bottom ↓</button>
         <div class="compose">
           <textarea id="panel-text" rows="1" spellcheck="false" autocapitalize="off" role="combobox" aria-expanded="false" aria-label="Message to send to the pane"></textarea>
           <button type="button" id="panel-take" title="Use the suggestion (Tab)" hidden>Tab ↹</button>

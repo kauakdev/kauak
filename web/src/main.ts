@@ -121,7 +121,7 @@ scene.onBuild = (target, x, y) => {
 };
 scene.onSelectPane = (pane) => select(pane.pane_id);
 scene.onEmptyClick = () => { panel.close(); build.close(); };
-panel.onRead = (id, seq) => bridge.readPane(id, seq);
+panel.onRead = (id, seq, lines) => bridge.readPane(id, seq, lines);
 panel.onInput = (id, ops, inputId) => bridge.sendInput(id, ops, inputId);
 panel.onListCommands = (id) => bridge.listCommands(id);
 // Global shortcuts stay off while the terminal or the build form has the keyboard.

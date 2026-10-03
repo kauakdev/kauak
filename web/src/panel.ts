@@ -1,7 +1,11 @@
 // Terminal side panel. The top is a read-only xterm.js mirror of the selected
-// pane's visible viewport (polled from the bridge, redrawn only when the text
-// changes). Below it, a message box and a row of key buttons send input to the
-// pane through the bridge.
+// pane's screen and the history above it (polled from the bridge, redrawn
+// only when the text changes). Below it, a message box and a row of key
+// buttons send input to the pane through the bridge.
+//
+// History is Herdr's scrollback, so a program on the alternate screen (Claude
+// Code's fullscreen mode) has none: its transcript is its own, and the wheel
+// scrolls it with Page Up and Page Down.
 //
 // Herdr hands out snapshots of the screen, with no cursor position and no
 // output stream, so the mirror does not pretend to be a live terminal: you
@@ -20,6 +24,15 @@ import { SlashMenu } from "./slash";
 import type { InputOp, PaneInfo, SlashCommand, Snapshot } from "./types";
 
 const POLL_MS = 400;
+// Rows of history read above the pane's screen. Every poll carries them
+// (~75 KB for 1000 styled rows), so this is how far back the mirror goes.
+const HISTORY_ROWS = 1000;
+// A page key scrolls Claude Code's transcript by about 40% of its screen; a
+// wheel turn that far over the mirror sends one.
+const PAGE_UP = "\x1b[5~";
+const PAGE_DOWN = "\x1b[6~";
+const WHEEL_PAGE = 0.4;
+const WHEEL_LINE_PX = 16;
 // Once Herdr has the input, read right away, then again once the program has
 // had time to react.
 const AFTER_INPUT_READS_MS = [0, 120];
@@ -50,6 +63,7 @@ export class TerminalPanel {
   private box = document.getElementById("panel-text") as HTMLTextAreaElement;
   private sendBtn = document.getElementById("panel-send") as HTMLButtonElement;
   private takeBtn = document.getElementById("panel-take") as HTMLButtonElement;
+  private liveBtn = document.getElementById("panel-live") as HTMLButtonElement;
   private menu = new SlashMenu(document.getElementById("panel-slash")!, this.box);
   private term: Terminal;
   private pane: PaneInfo | null = null;
@@ -63,6 +77,9 @@ export class TerminalPanel {
   private readRows = 0; // rows in the last read of this pane
   private readCols = 0; // widest row read from this pane so far
   private pinned = true; // the mirror stays scrolled to the bottom, where the prompt is
+  private history = false; // the pane has scrollback above its screen
+  private held: string | null = null; // a read that came in while scrolled back into history
+  private wheel = 0; // wheel travel toward the next page key
   // Reads are numbered so late, out-of-order replies are dropped.
   private readSeq = 0;
   private appliedSeq = 0;
@@ -71,7 +88,7 @@ export class TerminalPanel {
   private snapshot: Snapshot | null = null;
   private hintTimer: number | null = null;
 
-  onRead: (paneId: string, seq: number) => void = () => {};
+  onRead: (paneId: string, seq: number, lines: number) => void = () => {};
   onInput: (paneId: string, ops: InputOp[], id: number) => boolean = () => false;
   onListCommands: (paneId: string) => void = () => {};
   onFocus: (paneId: string) => void = () => {};
@@ -90,6 +107,9 @@ export class TerminalPanel {
       theme: { background: "#0f1118", foreground: "#e8e9f0" },
     });
     this.term.open(this.host);
+    // With no scrollback of its own, xterm turns the wheel into arrow keys and
+    // cancels it, so the mirror would never scroll. The panel scrolls instead.
+    this.term.attachCustomWheelEventHandler(() => false);
 
     document.getElementById("panel-close")!.addEventListener("click", () => this.close());
     document.getElementById("panel-focus")!.addEventListener("click", () => { if (this.pane) this.onFocus(this.pane.pane_id); });
@@ -114,9 +134,12 @@ export class TerminalPanel {
     // A click on the mirror means "I want to type", unless it selected text to copy.
     this.host.addEventListener("click", () => { if (!this.term.hasSelection() && finePointer()) this.box.focus(); });
     this.host.addEventListener("scroll", () => {
-      const h = this.host;
-      this.pinned = h.scrollTop + h.clientHeight >= h.scrollHeight - 2;
+      this.pinned = this.atEdge(1);
+      if (this.pinned) this.release();
+      this.renderLive();
     });
+    this.host.addEventListener("wheel", (e) => this.onWheel(e), { passive: true });
+    this.liveBtn.addEventListener("click", () => this.toBottom());
     const ro = new ResizeObserver(() => { this.fit(); this.keepBottom(); });
     ro.observe(this.host);
     ro.observe(this.host.querySelector(".xterm-screen")!);
@@ -154,6 +177,9 @@ export class TerminalPanel {
       this.lastText = null;
       this.readRows = this.readCols = 0;
       this.pinned = true;
+      this.history = false;
+      this.held = null;
+      this.renderLive();
       this.term.reset();
       this.resizeToPane();
       this.shadow = null;
@@ -196,12 +222,26 @@ export class TerminalPanel {
   receive(paneId: string, text: string, seq: number) {
     if (!this.pane || paneId !== this.pane.pane_id || seq <= this.appliedSeq) return;
     this.appliedSeq = seq;
+    // Scrolled back into history, the mirror holds still: new rows at the
+    // bottom would push the ones being read off the top of the read.
+    if (!this.pinned && this.history) {
+      if (text !== this.lastText) this.held = text;
+      this.renderLive();
+      return;
+    }
+    this.show(text);
+  }
+
+  private show(text: string) {
+    if (!this.pane) return;
     const rows = text.split("\r\n");
+    const screenRows = this.pane.scroll?.viewport_rows ?? rows.length;
+    this.history = rows.length > screenRows || (this.pane.scroll?.max_offset_from_bottom ?? 0) > 0;
     this.readRows = rows.length;
     this.readCols = Math.max(this.readCols, ...rows.map((r) => width(stripAnsi(r))));
     const resized = this.resizeToPane();
     // Herdr's `revision` does not move on plain output (verified on 0.9.1: it
-    // stayed at 0 after typing and command output), so diff the viewport text.
+    // stayed at 0 after typing and command output), so diff the text.
     if (text === this.lastText && !resized) return;
     this.lastText = text;
     // Rows come back only as long as their content, so a row that got shorter
@@ -211,7 +251,8 @@ export class TerminalPanel {
     // row below it down a line. The cursor stays hidden (?25l): Herdr does not
     // say where it is.
     this.term.write("\x1b[?7l\x1b[H\x1b[2J" + text + "\x1b[?25l", () => this.keepBottom());
-    this.setShadow(this.pane.agent === "claude" ? promptShadow(text) : null);
+    // Only the screen: an old prompt up in the history is not the current one.
+    this.setShadow(this.pane.agent === "claude" ? promptShadow(rows.slice(-screenRows).join("\r\n")) : null);
   }
 
   /** Input reached Herdr: read again soon to show what it did. */
@@ -313,9 +354,10 @@ export class TerminalPanel {
     if (!this.send(ops)) return;
     this.box.value = "";
     this.changed();
+    this.toBottom();
   }
 
-  private sendKey(key: string) { this.send([{ keys: [key] }]); }
+  private sendKey(key: string) { if (this.send([{ keys: [key] }])) this.toBottom(); }
 
   private send(ops: InputOp[]): boolean {
     if (!this.pane) return false;
@@ -367,7 +409,9 @@ export class TerminalPanel {
     this.hintTimer = window.setTimeout(() => { this.hintTimer = null; this.renderHint(); }, 2500);
   }
 
-  private poll() { if (this.pane) this.onRead(this.pane.pane_id, ++this.readSeq); }
+  private poll() {
+    if (this.pane) this.onRead(this.pane.pane_id, ++this.readSeq, (this.pane.scroll?.viewport_rows ?? 0) + HISTORY_ROWS);
+  }
 
   private renderHeader() {
     if (!this.pane) return;
@@ -482,6 +526,52 @@ export class TerminalPanel {
   /** If the pane is taller than the panel, keep its bottom rows (the prompt) in view. */
   private keepBottom() {
     if (this.pinned) this.host.scrollTop = this.host.scrollHeight;
+  }
+
+  /** Whether the mirror is scrolled all the way down (1) or up (-1). */
+  private atEdge(dir: 1 | -1): boolean {
+    const h = this.host;
+    return dir < 0 ? h.scrollTop <= 0 : h.scrollTop + h.clientHeight >= h.scrollHeight - 2;
+  }
+
+  /** Back to the latest rows: after input, or from the button. */
+  private toBottom() {
+    this.pinned = true;
+    this.host.scrollTop = this.host.scrollHeight;
+    this.release();
+    this.renderLive();
+  }
+
+  /** Show the read that waited while the mirror was scrolled back. */
+  private release() {
+    const text = this.held;
+    this.held = null;
+    if (text !== null) this.show(text);
+  }
+
+  private renderLive() {
+    this.liveBtn.hidden = this.pinned || !this.history;
+    this.liveBtn.textContent = this.held !== null ? "New output ↓" : "Jump to bottom ↓";
+  }
+
+  /**
+   * A program on the alternate screen has no scrollback here, so a wheel turn
+   * past the mirror's edge goes to an agent as Page Up or Page Down, which
+   * scroll Claude Code's fullscreen transcript (and do nothing much elsewhere).
+   * Not to a shell: it would type them.
+   */
+  private onWheel(e: WheelEvent) {
+    if (!this.pane?.agent || this.history || e.ctrlKey) return;
+    const screen = this.host.querySelector<HTMLElement>(".xterm-screen")!;
+    const dy = e.deltaY * (e.deltaMode === 1 ? WHEEL_LINE_PX : e.deltaMode === 2 ? this.host.clientHeight : 1);
+    if (dy === 0 || !this.atEdge(dy < 0 ? -1 : 1)) { this.wheel = 0; return; }
+    if (Math.sign(dy) !== Math.sign(this.wheel)) this.wheel = 0;
+    this.wheel += dy;
+    const page = Math.max(40, screen.getBoundingClientRect().height * WHEEL_PAGE);
+    const pages = Math.trunc(this.wheel / page);
+    if (!pages) return;
+    this.wheel -= pages * page;
+    this.send([{ text: (pages < 0 ? PAGE_UP : PAGE_DOWN).repeat(Math.min(Math.abs(pages), 5)) }]);
   }
 }
 

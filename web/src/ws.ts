@@ -22,7 +22,7 @@ export interface BridgeHandlers {
 /** What the page needs from a bridge: the real one below, or the simulated one in demo.ts. */
 export interface BridgeApi {
   focusPane(pane: string): void;
-  readPane(pane: string, seq: number): void;
+  readPane(pane: string, seq: number, lines: number): void;
   sendInput(pane: string, ops: InputOp[], id: number): boolean;
   /** Ask which slash commands the pane's agent has; answered with onCommands. */
   listCommands(pane: string): void;
@@ -93,10 +93,10 @@ export class Bridge implements BridgeApi {
     this.send({ type: "focus", machine, pane_id: id });
   }
 
-  /** `seq` is echoed back on the reply. */
-  readPane(pane: string, seq: number) {
+  /** The last `lines` rows: the pane's screen and the history above it. `seq` is echoed back on the reply. */
+  readPane(pane: string, seq: number, lines: number) {
     const { machine, id } = splitKey(pane);
-    this.send({ type: "read", machine, pane_id: id, source: "visible", seq });
+    this.send({ type: "read", machine, pane_id: id, source: "recent", lines, seq });
   }
 
   /** Send keystrokes to a pane; `id` comes back on the ack. Returns false if the bridge is offline (input is dropped, not queued). */

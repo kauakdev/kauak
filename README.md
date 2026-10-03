@@ -65,7 +65,7 @@ Hover a desk for the terminal title and cwd. Click anywhere on a desk (the
 person, the chair, the floor around it: the outline that lights up on hover),
 or a roster row, to select it: a plumbob appears over it, the camera glides to it and the pane's
 terminal opens in a side panel (xterm.js, polled a few times a second and
-redrawn only when the viewport text changes). The terminal itself is a
+redrawn only when the text changes). The terminal itself is a
 read-only mirror: Herdr hands out snapshots of the screen, with no cursor
 position and no output stream, so the panel does not pretend to be a live
 terminal. To answer an agent or run a command, type into the message box under
@@ -84,7 +84,12 @@ button beside it) takes it. Text goes through Herdr's `pane.send_text` and keys 
 `pane.send_keys`, so the pane's own key encoding (application cursor keys,
 kitty protocol) is honored. Unsent text is kept per pane. The terminal keeps
 the pane's exact size and shrinks its font until the pane's width fits the
-panel; a pane taller than the panel scrolls, kept at the bottom. Drag the
+panel; a pane taller than the panel scrolls, kept at the bottom. Scroll up
+for the last 1000 rows of the pane's history: the mirror holds still while you
+read, and a button takes you back to the latest output (sending anything does
+too). A program on the alternate screen, such as Claude Code in fullscreen
+mode, keeps its history to itself, so for an agent there the wheel sends
+Page Up and Page Down to scroll its own transcript. Drag the
 panel's left edge to widen it, so a wide pane gets bigger text (the width is
 remembered; double-click the edge for the default). "Focus
 in Herdr" switches your Herdr window to the pane. `?pane=w1:p1` in the URL
@@ -211,7 +216,8 @@ keeps one more SSH connection open, running `bridge/context_remote.py` there,
 and asks it for the counts in JSON lines.
 Clients send `{ "type": "focus", "machine": "local", "pane_id": "w1:p1" }` to
 focus a pane, `{ "type": "read", "machine": "local", "pane_id": "w1:p1" }` to
-get the pane's visible viewport as ANSI text (`pane.read`),
+get the pane's visible viewport as ANSI text (`pane.read`; add
+`"source": "recent", "lines": 1040` for the last rows of its history too),
 `{ "type": "input", "machine": "local", "pane_id": "w1:p1", "ops": [{ "text": "ls" }, { "keys": ["enter"] }] }`
 to type into it, `{ "type": "commands", "machine": "local", "pane_id": "w1:p1" }`
 for the pane's slash commands (`bridge/commands.js`; the agent and folder come

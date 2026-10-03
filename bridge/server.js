@@ -32,6 +32,8 @@ const CONFIG_PATH = process.env.AGENT_OFFICE_CONFIG ?? path.join(os.homedir(), "
 // An SSH destination as typed in the UI: `host`, `user@host` or an alias from
 // ~/.ssh/config. Never starting with "-", so it cannot be read as an ssh option.
 const SSH_TARGET = /^[A-Za-z0-9_][A-Za-z0-9._@-]{0,127}$/;
+// The most rows one terminal read may ask Herdr for.
+const MAX_READ_LINES = 5000;
 
 // ---------------------------------------------------------------- machines
 
@@ -198,7 +200,8 @@ wss.on("connection", (ws) => {
         ws.send(JSON.stringify({ type: "error", machine: m.id, message: err.message }));
       }
     } else if (msg.type === "read" && typeof msg.pane_id === "string") {
-      // Terminal view. `visible` = the pane's rendered viewport. Reads run in
+      // Terminal view. `visible` = the pane's rendered viewport; `recent` = the
+      // last `lines` rows of its scrollback and viewport. Reads run in
       // parallel (each Herdr request takes ~100 ms); `seq` is echoed so the
       // client can drop replies that arrive out of order.
       try {
@@ -207,7 +210,7 @@ wss.on("connection", (ws) => {
           source: msg.source ?? "visible",
           format: "ansi",
           strip_ansi: false,
-          lines: msg.lines ?? null,
+          lines: Number.isInteger(msg.lines) && msg.lines > 0 ? Math.min(msg.lines, MAX_READ_LINES) : null,
         });
         ws.send(JSON.stringify({
           type: "pane_output",

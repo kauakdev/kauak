@@ -35,7 +35,7 @@ export interface BridgeApi {
 
 // The bridge only listens on 127.0.0.1 by default; "localhost" may resolve to ::1 first.
 const HOST = ["localhost", "::1", "[::1]"].includes(location.hostname) ? "127.0.0.1" : location.hostname;
-// A built page is served by the bridge itself (`npx agentoffice`), so it connects
+// A built page is served by the bridge itself (`npx kauak`), so it connects
 // back to the port it came from; the Vite dev server has a port of its own.
 const PORT = import.meta.env.VITE_BRIDGE_PORT ?? (import.meta.env.DEV ? 7788 : location.port);
 const URL = `ws://${HOST}:${PORT}`;

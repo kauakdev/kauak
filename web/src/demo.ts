@@ -20,7 +20,7 @@ const ROWS = 30;
 const TICK_MS = 1000;
 const MAX_LOG = 200;
 const MAX_BLOCKED = 3;
-const INSTALL = "npx agentoffice";
+const INSTALL = "npx kauak";
 // Same rule as the bridge: `host`, `user@host` or an ~/.ssh/config alias.
 const SSH_TARGET = /^[A-Za-z0-9_][A-Za-z0-9._@-]{0,127}$/;
 // Same rule as the bridge for a new branch.
@@ -32,9 +32,9 @@ type RoomSeed = { repo: string; branch: string; panes: [agent: string | null, st
 
 const FLOORS: { id: string; label: string; ssh: string | null; host: string; rooms: RoomSeed[] }[] = [
   { id: "local", label: "local", ssh: null, host: "laptop", rooms: [
-    { repo: "agent-office", branch: "main", panes: [["claude", "working"], [null]] },
-    { repo: "agent-office", branch: "feat/elevator", panes: [["codex", "blocked"]] },
-    { repo: "agent-office", branch: "fix/panel-scroll", panes: [["claude", "done"], ["gemini", "working"]] },
+    { repo: "kauak", branch: "main", panes: [["claude", "working"], [null]] },
+    { repo: "kauak", branch: "feat/elevator", panes: [["codex", "blocked"]] },
+    { repo: "kauak", branch: "fix/panel-scroll", panes: [["claude", "done"], ["gemini", "working"]] },
     { repo: "billing-api", branch: "main", panes: [["codex", "idle"], [null]] },
     { repo: "billing-api", branch: "feat/refunds", panes: [["claude", "working"], ["opencode", "working"]] },
     { repo: "docs-site", branch: "main", panes: [["cursor", "idle"]] },
@@ -578,7 +578,7 @@ function runShell(p: DemoPane, room: DemoRoom, floor: DemoFloor) {
     case "echo": return out(args.join(" "));
     case "exit": return out("There is no way out of the office.");
     case "sudo": return out("dev is not in the sudoers file. This incident will be reported.");
-    case "npx": return out(args[0] === "agentoffice" ? "You are already in the office. Run it on your own machine to see your real agents." : `npx: ${args[0] ?? ""}: not in this demo`);
+    case "npx": return out(args[0] === "kauak" ? "You are already in the office. Run it on your own machine to see your real agents." : `npx: ${args[0] ?? ""}: not in this demo`);
     case "help": return out("This is a demo shell. Try ls, git status, git log or clear,", `or start an agent: ${AGENTS.join(", ")}.`);
     case "git":
       if (args[0] === "status") return out(`On branch ${room.branch}`, `Your branch is up to date with 'origin/${room.branch}'.`, "", "Changes not staged for commit:", red("\tmodified:   src/config.ts"));

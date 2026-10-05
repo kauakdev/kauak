@@ -1,9 +1,11 @@
-# Agent Office
+# kauak
+
+![kauak banner](web/public/kauak-banner.png)
 
 A Sims-style isometric office that shows what your [Herdr](https://herdr.dev) coding agents are doing.
 
-**[Try the demo](https://agustinrbeltran.github.io/agent-office/)** (simulated agents, nothing to install),
-or run it on your own agents with `npx agentoffice`.
+**[Try the demo](https://agustinrbeltran.github.io/kauak/)** (simulated agents, nothing to install),
+or run it on your own agents with `npx kauak`.
 
 | Herdr object | In the office |
 |---|---|
@@ -129,7 +131,7 @@ anything), wheel to zoom.
 Requires a running Herdr server (0.9.x, protocol 22) and Node 20+.
 
 ```sh
-npx agentoffice
+npx kauak
 ```
 
 That starts the bridge and opens the office at http://127.0.0.1:7788. Options:
@@ -145,16 +147,21 @@ pnpm dev        # bridge on ws://localhost:7788 + Vite on http://localhost:5178
 Environment variables:
 
 - `HERDR_SOCKET_PATH`: path to this machine's Herdr socket (default `~/.config/herdr/herdr.sock`; `HERDR_SOCKET` also works)
-- `AGENT_OFFICE_PORT`: port of the bridge and the page it serves (default `7788`; `--port` sets it too)
-- `AGENT_OFFICE_HOST`: interface the bridge listens on (default `127.0.0.1`, this computer only)
-- `AGENT_OFFICE_ORIGINS`: extra page hostnames allowed to connect, comma separated (default: only `localhost`/`127.0.0.1`)
-- `AGENT_OFFICE_CONFIG`: saved floors (default `~/.config/agent-office/machines.json`)
+- `KAUAK_PORT`: port of the bridge and the page it serves (default `7788`; `--port` sets it too)
+- `KAUAK_HOST`: interface the bridge listens on (default `127.0.0.1`, this computer only)
+- `KAUAK_ORIGINS`: extra page hostnames allowed to connect, comma separated (default: only `localhost`/`127.0.0.1`)
+- `KAUAK_CONFIG`: saved floors (default `~/.config/kauak/machines.json`)
+- `KAUAK_SSH`: SSH executable (default `ssh`)
 - `VITE_BRIDGE_PORT`: port the page connects to (default: `7788` under `pnpm dev`, else the port the page was served from)
+
+The previous `AGENT_OFFICE_*` environment variables still work as fallbacks. Existing
+`~/.config/agent-office/machines.json` files and browser preferences are reused.
+New installations save floors in `~/.config/kauak/machines.json`.
 
 The bridge can type into your terminals and open SSH connections, so it only
 listens on 127.0.0.1 and refuses WebSocket connections from other web pages.
-To open the office from another device, set `AGENT_OFFICE_HOST=0.0.0.0` and
-`AGENT_OFFICE_ORIGINS=<the hostname you browse to>` (under `pnpm dev`, also run
+To open the office from another device, set `KAUAK_HOST=0.0.0.0` and
+`KAUAK_ORIGINS=<the hostname you browse to>` (under `pnpm dev`, also run
 Vite with `--host`), and keep it on a network you trust.
 
 ## Remote machines (floors)
@@ -172,7 +179,7 @@ SSH login without a password prompt (keys or an agent; the bridge runs ssh with
 A floor that drops keeps its last snapshot, shows why in the elevator (`ssh
 key refused`, `offline · ssh timed out`, `Herdr is not running`, …) and
 reconnects on its own with backoff. Floors are saved in
-`~/.config/agent-office/machines.json`, which you can also edit by hand:
+`~/.config/kauak/machines.json`, which you can also edit by hand:
 
 ```json
 { "machines": [
@@ -187,7 +194,7 @@ Herdr socket (another Herdr session on this machine) as its own floor.
 
 ## Demo
 
-`?demo` in the URL (or `npx agentoffice --demo`) swaps the bridge for a
+`?demo` in the URL (or `npx kauak --demo`) swaps the bridge for a
 simulated one (`web/src/demo.ts`): two floors of made-up agents that work, get
 blocked and finish on their own. The terminal panel works there too: Enter or
 Esc answers a blocked agent, a typed task puts an idle one to work, a finished
@@ -214,7 +221,7 @@ the included provider; custom provider loading is not part of this release.
 ## How it works
 
 `bridge/server.js` also serves the built page (`dist/`) on the same port,
-so `npx agentoffice` (`bin/agentoffice.js`) is one process and one URL.
+so `npx kauak` (`bin/kauak.js`) is one process and one URL.
 `bridge/machine.js` is one Herdr server: it talks to its unix socket
 (newline-delimited JSON, one request per connection) directly or through the
 SSH tunnel, keeps one long-lived `events.subscribe` connection, and on every
@@ -254,4 +261,4 @@ updates when the bridge pushes something new.
 
 [Apache 2.0](LICENSE).
 
-Agent Office is an independent project. It is not affiliated with or endorsed by Herdr.
+kauak is an independent project. It is not affiliated with or endorsed by Herdr.

@@ -147,7 +147,7 @@ export class Hud {
     let ok = false, text: string;
     if (!this.bridgeUp) {
       text = "bridge offline · retrying";
-      this.showEmpty("The bridge is offline", "Start it with npx agentoffice (or pnpm dev in a checkout). This page reconnects on its own.");
+      this.showEmpty("The bridge is offline", "Start it with npx kauak (or pnpm dev in a checkout). This page reconnects on its own.");
     } else if (!f) {
       text = "connecting…";
       this.empty.hidden = true;
@@ -178,7 +178,7 @@ export class Hud {
       chips.push(`<span class="chip st-${st} ${counts[st] === 0 ? "zero" : ""}"><i class="dot"></i>${counts[st]} ${st}</span>`);
     }
     this.stats.innerHTML = chips.join("");
-    document.title = counts.blocked > 0 ? `(${counts.blocked} blocked) Agent Office` : "Agent Office";
+    document.title = counts.blocked > 0 ? `(${counts.blocked} blocked) kauak` : "kauak";
   }
 
   private renderRoster() {

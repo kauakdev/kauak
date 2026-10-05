@@ -3,10 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Agent Office</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 13v8l9-5V8z' fill='%235a6080'/%3E%3Cpath d='M12 13v8l-9-5V8z' fill='%232b2e3b'/%3E%3Cpath d='M12 3 21 8l-9 5-9-5z' fill='%23ffd166'/%3E%3C/svg%3E" />
+    <title>kauak</title>
+    <link rel="icon" type="image/png" href="./kauak.png" />
+    <link rel="apple-touch-icon" href="./kauak.png" />
     <meta name="description" content="A Sims-style isometric office that shows what your Herdr coding agents are doing, live." />
-    <meta property="og:title" content="Agent Office" />
+    <meta property="og:title" content="kauak" />
+    <meta property="og:image" content="https://agustinrbeltran.github.io/kauak/kauak-banner.png" />
+    <meta property="og:image:alt" content="kauak — blue mountains and the kauak logo" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="kauak" />
+    <meta name="twitter:image" content="https://agustinrbeltran.github.io/kauak/kauak-banner.png" />
     <meta property="og:description" content="A Sims-style isometric office that shows what your Herdr coding agents are doing, live." />
     <style>
       :root {
@@ -47,7 +53,7 @@
         background: linear-gradient(to bottom, #171a26f0 0%, #171a26b0 60%, #171a2600 100%); }
       #topbar > * { pointer-events: auto; }
       #brand { display: flex; align-items: center; gap: 9px; font-weight: 700; letter-spacing: .3px; font-size: 14px; }
-      #brand svg { width: 22px; height: 22px; }
+      #brand img { width: 38px; height: 38px; object-fit: contain; background: #eef6ff; border-radius: 8px; }
       #conn { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border-radius: 999px; border: 1px solid var(--line-2);
         background: var(--card-2); font-size: 11px; color: var(--muted); }
       #conn .dot { background: #666; } #conn.ok .dot { background: var(--working); } #conn.bad .dot { background: var(--blocked); animation: pulse 1s infinite; }
@@ -392,14 +398,8 @@
 
     <div id="topbar">
       <div id="brand">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M12 3 21 8v8l-9 5-9-5V8z" fill="#3a3f55" stroke="#8e96b4" stroke-width="1.2"/>
-          <path d="M12 3v10M3 8l9 5 9-5" stroke="#8e96b4" stroke-width="1.2"/>
-          <path d="M12 13v8l9-5V8z" fill="#5a6080"/>
-          <path d="M12 13v8l-9-5V8z" fill="#2b2e3b"/>
-          <path d="M12 3 21 8l-9 5-9-5z" fill="#ffd166"/>
-        </svg>
-        <span>Agent Office</span>
+        <img src="./kauak.png" alt="kauak" width="38" height="38" />
+        <span aria-hidden="true">kauak</span>
       </div>
       <div id="conn" class="bad"><i class="dot"></i><span id="conn-text">connecting…</span></div>
       <div id="stats"></div>
@@ -492,8 +492,8 @@
     <aside id="demo" class="card" hidden aria-label="About this demo">
       <span class="tag">Demo</span>
       <span class="txt">Simulated agents. Click a desk, then give its agent a task.</span>
-      <button class="cmd" data-copy title="Copy the command that runs it on your own machine"><span>$</span> npx agentoffice<i>copy</i></button>
-      <a class="btn" href="https://github.com/agustinrbeltran/agent-office" target="_blank" rel="noopener">GitHub</a>
+      <button class="cmd" data-copy title="Copy the command that runs it on your own machine"><span>$</span> npx kauak<i>copy</i></button>
+      <a class="btn" href="https://github.com/agustinrbeltran/kauak" target="_blank" rel="noopener">GitHub</a>
       <button class="x" data-close aria-label="Hide">✕</button>
     </aside>
 

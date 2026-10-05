@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// `npx agentoffice`: start the bridge, which also serves the built office
+// `npx kauak`: start the bridge, which also serves the built office
 // page, and open it in the browser. Settings are the bridge's environment
 // variables (see README); the flags below are shortcuts for the common ones.
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 
-const HELP = `Usage: agentoffice [options]
+const HELP = `Usage: kauak [options]
 
 Shows your Herdr coding agents as a live isometric office.
 
@@ -17,8 +17,8 @@ Options:
   -v, --version   print the version
   -h, --help      show this help
 
-Environment: HERDR_SOCKET_PATH, AGENT_OFFICE_PORT, AGENT_OFFICE_HOST,
-AGENT_OFFICE_ORIGINS, AGENT_OFFICE_CONFIG (see the README).
+Environment: HERDR_SOCKET_PATH, KAUAK_PORT, KAUAK_HOST,
+KAUAK_ORIGINS, KAUAK_CONFIG (see the README).
 `;
 
 const args = process.argv.slice(2);
@@ -36,7 +36,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === "-p" || a === "--port" || a.startsWith("--port=")) {
     const v = a.startsWith("--port=") ? a.slice(7) : args[++i];
     if (!/^\d+$/.test(v ?? "") || Number(v) < 1 || Number(v) > 65535) fail(`invalid port: ${v ?? "(missing)"}`);
-    process.env.AGENT_OFFICE_PORT = v;
+    process.env.KAUAK_PORT = v;
   }
   else fail(`unknown option: ${a}`);
 }
@@ -46,15 +46,15 @@ const { ready } = await import("../bridge/server.js");
 const { LOCAL_SOCKET } = await import("../bridge/machine.js");
 const url = await ready;
 if (!url) {
-  console.error("agentoffice: the office page is missing from this install (run `pnpm build` in a checkout)");
+  console.error("kauak: the office page is missing from this install (run `pnpm build` in a checkout)");
   process.exit(1);
 }
 
 const page = demo ? `${url}?demo` : url;
-console.log(`\n  Agent Office is running at ${page}\n`);
+console.log(`\n  kauak is running at ${page}\n`);
 if (!demo && !fs.existsSync(LOCAL_SOCKET)) {
   console.log(`  Herdr is not running on this machine (no socket at ${LOCAL_SOCKET}).`);
-  console.log(`  Start Herdr and the office picks it up on its own, or try the demo: npx agentoffice --demo\n`);
+  console.log(`  Start Herdr and the office picks it up on its own, or try the demo: npx kauak --demo\n`);
 }
 console.log("  Press Ctrl+C to stop.\n");
 if (open) openBrowser(page);
@@ -71,6 +71,6 @@ function openBrowser(target) {
 }
 
 function fail(message) {
-  console.error(`agentoffice: ${message}\n\n${HELP}`);
+  console.error(`kauak: ${message}\n\n${HELP}`);
   process.exit(1);
 }

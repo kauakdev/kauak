@@ -2,13 +2,13 @@
 //
 // Each Herdr server is a floor of the office: this machine is always floor 1,
 // and remote machines (reached over SSH, see machine.js) are saved in
-// ~/.config/agent-office/machines.json. The bridge keeps things simple and
+// ~/.config/kauak/machines.json. The bridge keeps things simple and
 // robust: on every Herdr event it re-fetches that machine's full
 // `session.snapshot` (a few KB) and broadcasts it to all clients, with each
 // agent's context use added (see context.js).
 //
 // The same port also serves the built office page (dist/, `pnpm build`), so
-// `npx agentoffice` is one process and one URL. `pnpm dev` serves the page
+// `npx kauak` is one process and one URL. `pnpm dev` serves the page
 // from Vite instead.
 
 import fs from "node:fs";
@@ -21,14 +21,18 @@ import { slashCommands } from "./commands.js";
 import { ContextTracker } from "./context.js";
 import { LOCAL_SOCKET, Machine } from "./machine.js";
 
-const WS_PORT = Number(process.env.AGENT_OFFICE_PORT ?? 7788);
+const WS_PORT = Number(process.env.KAUAK_PORT ?? process.env.AGENT_OFFICE_PORT ?? 7788);
 // The bridge can type into terminals, create panes and worktrees, and open SSH
 // connections, so by default only this computer may connect, and only pages
 // served from it.
-const WS_HOST = process.env.AGENT_OFFICE_HOST ?? "127.0.0.1";
+const WS_HOST = process.env.KAUAK_HOST ?? process.env.AGENT_OFFICE_HOST ?? "127.0.0.1";
 const ALLOWED_ORIGIN_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]",
-  ...(process.env.AGENT_OFFICE_ORIGINS ?? "").split(",").map((h) => h.trim()).filter(Boolean)]);
-const CONFIG_PATH = process.env.AGENT_OFFICE_CONFIG ?? path.join(os.homedir(), ".config", "agent-office", "machines.json");
+  ...(process.env.KAUAK_ORIGINS ?? process.env.AGENT_OFFICE_ORIGINS ?? "").split(",").map((h) => h.trim()).filter(Boolean)]);
+const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config", "kauak", "machines.json");
+const LEGACY_CONFIG_PATH = path.join(os.homedir(), ".config", "agent-office", "machines.json");
+// Reuse existing floors after the rename; fresh installs use the kauak directory.
+const CONFIG_PATH = process.env.KAUAK_CONFIG ?? process.env.AGENT_OFFICE_CONFIG
+  ?? (!fs.existsSync(DEFAULT_CONFIG_PATH) && fs.existsSync(LEGACY_CONFIG_PATH) ? LEGACY_CONFIG_PATH : DEFAULT_CONFIG_PATH);
 // An SSH destination as typed in the UI: `host`, `user@host` or an alias from
 // ~/.ssh/config. Never starting with "-", so it cannot be read as an ssh option.
 const SSH_TARGET = /^[A-Za-z0-9_][A-Za-z0-9._@-]{0,127}$/;
@@ -426,7 +430,7 @@ export const ready = new Promise((resolve) => {
   // ws re-emits the HTTP server's errors (EADDRINUSE…) on the WebSocket server.
   wss.once("error", (err) => {
     console.error(err.code === "EADDRINUSE"
-      ? `[bridge] port ${WS_PORT} is already in use. Is the office already running? Pick another port with --port or AGENT_OFFICE_PORT.`
+      ? `[bridge] port ${WS_PORT} is already in use. Is the office already running? Pick another port with --port or KAUAK_PORT.`
       : `[bridge] cannot listen on ${WS_HOST}:${WS_PORT}: ${err.message}`);
     shutdown(1);
   });

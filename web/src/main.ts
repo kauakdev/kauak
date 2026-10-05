@@ -4,6 +4,7 @@ import { EMPTY_SNAPSHOT, floorOf, keyOf, mergeSnapshots, namespaceSnapshot, type
 import { Hud } from "./hud";
 import { TerminalPanel } from "./panel";
 import { Radio } from "./radio";
+import { AppearanceSettings } from "./plugins/settings";
 import { OfficeScene } from "./scene";
 import type { MachineInfo, Snapshot } from "./types";
 import { Bridge, type BridgeApi, type BridgeHandlers } from "./ws";
@@ -13,6 +14,8 @@ const FLOOR_KEY = "agent-office.floor";
 async function main() {
 const scene = new OfficeScene();
 await scene.init(document.getElementById("app")!);
+const appearance = new AppearanceSettings(scene);
+await appearance.restoreBanner();
 const panel = new TerminalPanel();
 const banner = document.getElementById("floor-banner")!;
 
@@ -125,10 +128,10 @@ panel.onRead = (id, seq, lines) => bridge.readPane(id, seq, lines);
 panel.onInput = (id, ops, inputId) => bridge.sendInput(id, ops, inputId);
 panel.onListCommands = (id) => bridge.listCommands(id);
 // Global shortcuts stay off while the terminal or the build form has the keyboard.
-const typing = () => panel.isTyping() || build.hasFocus();
+const typing = () => panel.isTyping() || build.hasFocus() || appearance.isOpen();
 hud.isTyping = typing;
 elevator.isTyping = typing;
-build.isTyping = () => panel.isTyping();
+build.isTyping = () => panel.isTyping() || appearance.isOpen();
 const radio = new Radio();
 radio.isTyping = typing;
 panel.onFocus = (id) => bridge.focusPane(id);

@@ -198,6 +198,19 @@ adds a made-up machine. `pnpm build:demo` builds it as a static site in
 on every push to `main`. The Claude and Codex agents fill their context meters
 as they work and compact when full.
 
+## Appearance packages and company banners
+
+Open **Appearance** to choose an office and character package independently:
+the original Classic office or the new Orbital workshop. Import declarative
+JSON packages to add more appearances without editing the scene. Upload a
+company banner, choose its entrance or room-wall location, hide, replace or
+remove it. Images and choices stay local to this browser; changing office
+preserves your banner and sessions.
+
+See the [plugin and banner guide](docs/plugins/README.md) for authoring,
+validation, capability contracts, screenshots and current limits. Herdr remains
+the included provider; custom provider loading is not part of this release.
+
 ## How it works
 
 `bridge/server.js` also serves the built page (`dist/`) on the same port,

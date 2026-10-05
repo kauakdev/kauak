@@ -1,0 +1,203 @@
+# Visual plugins and company banners
+
+This release adds declarative appearance packages and local company branding.
+The original **Classic office** is the default. **Orbital workshop** changes the
+architecture, floor treatment, lighting, furniture materials and character
+silhouette. Office and characters can be mixed independently.
+
+Herdr remains the included provider. Appearance changes do not create, close,
+rename, focus or send input to provider sessions. Custom provider adapters are
+outside this release.
+
+## Try it
+
+```sh
+pnpm install --frozen-lockfile
+pnpm web
+```
+
+Open `http://localhost:5178/?demo` for simulated agents, or use the normal app
+with its existing Herdr bridge. The **Appearance** button opens the settings;
+on narrow screens it is a gear with the same accessible name. Pick the office
+and characters separately. Choices apply immediately and are saved on this
+browser and origin. Escape closes settings and restores focus to its button.
+The modal owns keyboard input, so game shortcuts do not act behind it.
+
+Upload your PNG, JPEG or WebP in **Company banner**, then choose **Entrance
+sign** or **First room wall**. **Show me** brings the camera to the panel.
+The same image appears on each populated floor. Choose a light or dark panel
+background to keep your logo readable; the image is contained, not stretched
+or cropped, then projected onto the isometric panel. No default company logo is
+shown. Use the visibility checkbox, replace the file or **Remove image**.
+
+The banner is saved separately from capability selections. Changing office
+keeps the image, visibility and preferred location. When an office lacks that
+location, its first anchor is used and settings explain the fallback; the
+preferred location is retained for offices that support it. Empty floors wait
+for rooms before displaying a panel.
+
+Uploads are capped at 4 MB, 8192 pixels per side and 24 megapixels. Detailed
+images are automatically resized further to fit the local storage budget,
+preserving their proportions and transparency. A static frame is normalized
+to PNG, at most 1600 × 800 within the original aspect
+ratio, with a 1.5-million-character data URL limit. SVG is not accepted. No
+remote image is fetched or retained. Animated PNG/WebP, if decoded by the
+browser, become one static frame; animation is not retained. An unreadable file
+leaves the previous banner intact. Storage/quota errors are visible and leave
+the previously saved configuration active. Clearing site data removes these
+local settings; they do not sync between devices or origins.
+
+## Author and load a package
+
+Copy [harbor.json](harbor.json), change its ID/name and edit its palette. This
+example contributes only an office; either included character package can
+still be selected. Import the JSON through **More appearances**. It is
+validated before saving, appears in the appropriate selectors, survives a
+reload and can be removed from settings. An import does not automatically
+change the current selection. Up to eight custom packages of 64 KB each are
+kept. Replace a package by removing it and importing its new version.
+
+For a package shipped with the repo, add its JSON to `plugins/`, then include
+it in `bundledPackages` in `web/src/plugins/catalog.ts`. There is no per-package
+switch in the scene. IDs starting with `agent-office.` are reserved for
+included packages; custom IDs can use lowercase letters, numbers, dots and
+hyphens, for example `company.harbor`.
+
+The public API is [contracts.ts](../../shared/plugins/contracts.ts). The
+runtime boundary is [registry.ts](../../shared/plugins/registry.ts), which has
+no Pixi, DOM, bridge, layout or session imports. A manifest has:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "company.harbor",
+  "name": "Harbor office",
+  "version": "1.0.0",
+  "description": "An office appearance for our team.",
+  "capabilities": {
+    "office.theme": { "apiVersion": 1, "...": "see the complete example" }
+  }
+}
+```
+
+The fragment above illustrates the envelope; use the complete example for an
+importable file. Validation reconstructs accepted fields, requires six-digit
+hex colors and bounded numeric values, and rejects unknown fields, capabilities,
+API versions, duplicate IDs and resource/code URLs. A missing, removed or
+incompatible saved selection resolves to the included default **for that
+capability**; valid selections and the banner remain independent. A broken
+saved package is skipped with a warning. Bundled defaults are required; a
+developer removing or breaking a default is a build/runtime programming error.
+
+| Capability | Host and implemented contract |
+|---|---|
+| `office.theme` | Browser. Ground, path, walls, wing/focus/rug/light palettes; material colors; wall height; checker/inset floor pattern; botanical/technical décor and lighting intensity; 1–4 banner anchors. |
+| `office.characters` | Browser. Human/robot silhouette templates; skin/hair/shell/visor colors; animation tempo for each of the five states; motion amplitude and working glyphs. Semantic status colors and agent-kind labels stay in the core. |
+| `terminal.provider` | Bridge descriptor for the included Herdr adapter in the same manifest/registry vocabulary. Importing provider packages and selecting another backend are **not implemented**. Browser preferences are fenced to Herdr. |
+
+The scene consumes only validated capability data. The core still owns
+snapshot interpretation, room/desk layout, session identity, camera, selection,
+state meanings, hit testing and depth ordering. Switching appearance rebuilds
+render nodes using the same snapshot/pane references and retained animation
+states. Old render nodes are destroyed; an unchanged banner texture is reused.
+Reduced-motion system preferences stop ambient/character movement and make
+camera/floor transitions immediate.
+
+Furniture has a coherent first extension path through theme **materials** and
+**décor** presets. This version does not provide free furniture placement,
+custom sprite resources or arbitrary renderer templates. New silhouettes or
+primitive templates require a deliberate public API extension, not a plugin
+importing private scene internals.
+
+## Banner anchor contract
+
+Each theme must supply at least one uniquely identified anchor:
+
+```json
+{
+  "id": "entrance",
+  "name": "Entrance sign",
+  "origin": "campus",
+  "x": 0.2, "y": -2.4, "z": 14,
+  "width": 5.8, "height": 58,
+  "facing": "x"
+}
+```
+
+`origin` is `campus` (floor-plan origin) or `first-room` (relative to the first
+room of the displayed floor). Coordinates and width use floor tiles; `z` is
+the panel's bottom height and `height` is pixels in the wall plane. `facing`
+is `x` or `y`, selecting the isometric wall axis. Width is 1–7 tiles, height
+20–64 pixels, x/y offsets −3–8 and z 0–40. Themes own these anchor definitions;
+the user's image and preferred anchor ID remain outside the plugin. Choose
+locations that avoid desks. The included entrance is a supported sign on the
+campus; the room anchor mounts the panel above its back wall.
+
+## Adding a future capability or provider
+
+Use this envelope and capability registry instead of a separate plugin
+system. Add a versioned data contract to `contracts.ts`, capability/runtime
+metadata and a host-side validator to `registry.ts`. Supply a known default
+and an explicit host implementation, then bind that host to resolved data.
+Keep configuration in its own capability selection. A future bridge provider
+also needs an adapter for discovery, terminal operations, updates, identity
+and cleanup; a manifest alone does not implement it. The current bridge is
+unchanged and never executes custom browser package data.
+
+Unknown capabilities currently fail validation. Panels, actions, custom
+provider loading, service management, downloaded JavaScript, dependency
+resolution and a marketplace are outside this release.
+
+## Validation and review evidence
+
+```sh
+npm run test:plugins
+pnpm typecheck
+pnpm build
+pnpm build:demo
+git diff --check
+```
+
+Contract tests cover import incompatibility, bounds, duplicate/reserved IDs,
+code/URL rejection, registry fallback, separate persisted capabilities and
+banners, corrupted storage and quota errors. They compile the public API in
+a temporary directory and do not use a browser or provider.
+
+Browser checks on **5 October 2026** used a separate Chrome context and the
+demo, with a neutral **Company banner test** image. The tool could not access
+this worktree through its native file-chooser helper; the fixture was generated
+inside the page and passed as a real `File` through the same file-input change,
+decoding, normalization, persistence and rendering path. No real company logo
+was invented or used. [test-banner.png](test-banner.png) is the matching fixture.
+
+Observed checks:
+
+- Both included packages render distinctly, including a mixed office/character selection.
+- A separate scene fixture with all five states preserved the original snapshot,
+  the exact pane object references and IDs, selected `blocked` pane, camera
+  `(321, 123, 0.8)` and animation phases through appearance changes.
+- A change in the demo immediately preserved all 16 roster identities/states.
+- Banner upload/containment, location change, hide/show, theme change keeping
+  identical image data, reload restoration, removal surviving reload and re-upload.
+- An invalid image retained the previous banner and explained how to recover.
+- Light/dark panel selection survived reload; a file over 4 MB was rejected
+  without replacing the previous image.
+- Custom Harbor import/selection/removal and Classic fallback; an incompatible
+  API import showed a clear error while retaining the current office.
+- Escape closed the modal and restored button focus. Settings fit at desktop
+  1440 × 780 and emulated mobile 390 × 844 / 320 × 740; the gear stays visible.
+- No browser console errors or warnings in these checks.
+
+An additional check in the in-app browser used a detailed 2172 × 724 PNG
+under the 4 MB upload limit. The original normalization exceeded the storage
+budget and was rejected. Automatic resizing now saves it as a 1311 × 437 PNG
+within the budget, displays it on the entrance sign and restores it after
+reload. The user's image and screenshot are not included in this repository.
+
+Screenshots: [Classic](classic.jpg), [Orbital](orbital.jpg),
+[settings](settings.jpg), [mobile](mobile.jpg). These show evolving simulated
+agents, not a synchronized provider benchmark.
+
+Final checks: **7/7 contract tests**, typecheck, normal build, demo build and
+diff whitespace checks passed.
+Vite still emits its existing warning about chunks larger than 500 KB.

@@ -8,7 +8,10 @@
 // Build mode adds "+" slots to the objects layer: a new desk in every room, a
 // new room at the end of every wing and one below them all (see layout.ts).
 
-import { Application, Container, Graphics, Polygon, Text, TextStyle } from "pixi.js";
+import { Application, Container, Graphics, Matrix, Polygon, Sprite, Text, TextStyle, Texture } from "pixi.js";
+import type { BrandBanner, Characters, Theme } from "../../shared/plugins/contracts";
+import { hex, resolveAnchor } from "../../shared/plugins/registry";
+import { defaultCharacters, defaultTheme } from "./plugins/catalog";
 import { STATUS_COLOR, kindColor, makeCharacter, makeEmptyDesk, type CharState, type DeskNode } from "./character";
 import { contextText } from "./context";
 import { TILE_W, depth, hashStr, mix, rng, shade, toScreen, type Pt } from "./iso";
@@ -16,14 +19,6 @@ import { CELL, WALL, buildOffice, type Desk, type Office, type Plot, type Room, 
 import * as P from "./props";
 import type { PaneInfo, Snapshot } from "./types";
 
-const BG = 0x171a26;
-const GROUND = 0x1f2230;
-const GROUND_LINE = 0x272b3b;
-const PATH = 0x2a2e40;
-const WALL_COLOR = 0x5a6080;
-const WALL_H = 30;
-// Floor tint per wing so repositories read as different departments.
-const WING_TINTS = [0x3a3f55, 0x3d4452, 0x44405a, 0x3a4a4e, 0x4a4040];
 
 const labelStyle = new TextStyle({ fill: 0xe8e9f0, fontSize: 13, fontFamily: "ui-sans-serif, system-ui, sans-serif", fontWeight: "600" });
 const subStyle = new TextStyle({ fill: 0xaab0c8, fontSize: 11, fontFamily: "ui-sans-serif, system-ui, sans-serif" });
@@ -116,6 +111,14 @@ export class OfficeScene {
   private moteList: { g: Graphics; vx: number; vy: number }[] = [];
   private bounds = { minX: -200, maxX: 200, minY: -200, maxY: 200 };
   private snapshot: Snapshot | null = null;
+  private theme = defaultTheme;
+  private characters = defaultCharacters;
+  private materials: P.MaterialPalette = { ...P.PALETTE };
+  private brand: BrandBanner | null = null;
+  private brandImage: HTMLImageElement | null = null;
+  private brandTexture: Texture | null = null;
+  private brandPoint: Pt | null = null;
+  private reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   private building = false;
   private slots: Slot[] = [];
   onSelectPane: (pane: PaneInfo) => void = () => {};
@@ -126,7 +129,7 @@ export class OfficeScene {
   onBuild: (target: BuildTarget, x: number, y: number) => void = () => {};
 
   async init(host: HTMLElement) {
-    await this.app.init({ resizeTo: host, antialias: true, background: BG, resolution: devicePixelRatio, autoDensity: true });
+    await this.app.init({ resizeTo: host, antialias: true, background: hex(this.theme.palette.background), resolution: devicePixelRatio, autoDensity: true });
     host.appendChild(this.app.canvas);
     this.objects.sortableChildren = true;
     this.world.addChild(this.ground, this.platforms, this.floor, this.objects, this.overlay, this.labels, this.motes);
@@ -140,6 +143,34 @@ export class OfficeScene {
     this.app.stage.addChild(this.lift);
     this.setupCamera();
     this.app.ticker.add((tk) => this.tick(tk.deltaMS / 1000));
+    matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change", e => {
+      this.reducedMotion = e.matches;
+      if (this.snapshot) this.setSnapshot(this.snapshot);
+    });
+  }
+
+  /** A visual change reuses snapshot, pane IDs, animation state, selection and camera. */
+  setAppearance(theme: Theme, characters: Characters) {
+    this.theme = theme; this.characters = characters;
+    this.materials = Object.fromEntries(Object.entries(theme.materials).map(([k, c]) => [k, hex(c)])) as unknown as P.MaterialPalette;
+    this.app.renderer.background.color = hex(theme.palette.background);
+    document.documentElement.style.setProperty("--bg", theme.palette.background);
+    document.documentElement.style.setProperty("--accent", theme.palette.accent);
+    if (this.snapshot) this.setSnapshot(this.snapshot);
+  }
+
+  setBanner(banner: BrandBanner | null, image: HTMLImageElement | null) {
+    const previous = this.brandTexture;
+    this.brand = banner;
+    if (image !== this.brandImage) { this.brandImage = image; this.brandTexture = image ? Texture.from(image) : null; }
+    if (this.snapshot) this.setSnapshot(this.snapshot);
+    if (previous && previous !== this.brandTexture) previous.destroy(true);
+  }
+
+  previewBanner() {
+    if (!this.brandPoint) return;
+    const v = this.viewport(), scale = Math.max(1.3, this.world.scale.x);
+    this.camTarget = { scale, x: v.cx - this.brandPoint.x * scale, y: v.cy - this.brandPoint.y * scale };
   }
 
   // ------------------------------------------------------------ camera
@@ -290,7 +321,8 @@ export class OfficeScene {
     const office = buildOffice(snap, this.building);
     this.office = office;
     const now = performance.now();
-    for (const layer of [this.ground, this.platforms, this.floor, this.objects, this.labels]) layer.removeChildren();
+    for (const layer of [this.ground, this.platforms, this.floor, this.objects, this.labels])
+      for (const child of layer.removeChildren()) child.destroy({ children: true });
     this.nodes = [];
     this.slots = [];
     this.blockedRooms = [];
@@ -299,6 +331,7 @@ export class OfficeScene {
 
     this.drawGround(office);
     office.wings.forEach((wing, i) => this.drawWing(wing, i, now));
+    this.drawBrand(office);
     if (office.slot) this.drawRoomSlot(office.slot, "+room", { kind: "room", wing: null }, "Room in another folder", "<b>New room</b>\nin any folder or repository on this floor");
 
     const live = new Set(snap.panes.map((p) => p.pane_id));
@@ -315,6 +348,7 @@ export class OfficeScene {
   }
 
   private drawGround(office: Office) {
+    const GROUND = hex(this.theme.palette.ground), GROUND_LINE = hex(this.theme.palette.groundLine), PATH = hex(this.theme.palette.path);
     const g = new Graphics();
     const m = 3;
     // Campus slab + subtle grid
@@ -336,7 +370,7 @@ export class OfficeScene {
     // A few plants along the spine
     const r = rng(hashStr("campus"));
     for (let y = -1; y < office.h + 1; y += 4) {
-      if (r() < 0.6) { const pg = new Graphics(); P.plant(pg, -2.9, y, Math.floor(r() * 1000)); pg.zIndex = depth(-2.9, y) * 10; pg.eventMode = "none"; this.objects.addChild(pg); }
+      if (r() < 0.6) { const pg = new Graphics(); this.decorPlant(pg, -2.9, y, Math.floor(r() * 1000)); pg.zIndex = depth(-2.9, y) * 10; pg.eventMode = "none"; this.objects.addChild(pg); }
     }
     this.ground.addChild(g);
     const corners = [toScreen(-m, -m), toScreen(office.w + m, -m), toScreen(office.w + m, office.h + m), toScreen(-m, office.h + m)];
@@ -347,7 +381,8 @@ export class OfficeScene {
   }
 
   private drawWing(wing: Wing, index: number, now: number) {
-    const tint = WING_TINTS[index % WING_TINTS.length]!;
+    const tints = this.theme.palette.wings;
+    const tint = hex(tints[index % tints.length]!);
     // Sign: dark plaque with the repo name and a summary line
     const agents = wing.rooms.flatMap((r) => r.desks).filter((d) => d.pane.agent).length;
     const desks = wing.rooms.reduce((n, r) => n + r.desks.length, 0);
@@ -357,7 +392,7 @@ export class OfficeScene {
     const w = Math.max(t.width, sub.width) + 24;
     const bg = new Graphics();
     bg.roundRect(0, 0, w, 44, 8).fill({ color: 0x0f1118, alpha: 0.85 }).stroke({ color: 0x3a3f55, width: 1 });
-    bg.roundRect(0, 0, 4, 44, 2).fill(0xffd166);
+    bg.roundRect(0, 0, 4, 44, 2).fill(hex(this.theme.palette.accent));
     t.position.set(12, 6); sub.position.set(12, 26);
     sign.addChild(bg, t, sub);
     // Anchor the sign at the wing's leftmost corner, beside the corridor spine,
@@ -375,7 +410,7 @@ export class OfficeScene {
     const seed = hashStr(room.workspace.workspace_id);
     const r = rng(seed);
     const anyBlocked = room.desks.some((d) => d.pane.agent_status === "blocked");
-    const focusedTint = mix(tint, 0x5a6aa8, 0.45);
+    const focusedTint = mix(tint, hex(this.theme.palette.focus), 0.45);
 
     // Raised platform: shadow + 6px side faces
     const plat = new Graphics();
@@ -388,26 +423,29 @@ export class OfficeScene {
       for (let y = room.y; y < room.y + room.h; y++) {
         const base = room.focused ? focusedTint : tint;
         floorTile(g, x, y, (x + y) % 2 === 0 ? base : shade(base, 0.93));
+        if (this.theme.architecture.floorPattern === "inset") P.floorPoly(g, x + 0.09, y + 0.09, 0.82, 0.82).stroke({ color: hex(this.theme.palette.accent), alpha: 0.23, width: 1 });
       }
     }
-    P.rug(g, room.x + WALL, room.y + WALL, room.w - WALL * 2, room.h - WALL * 2, r() < 0.5 ? 0xd97757 : 0x6f7bf7);
-    P.lightPool(g, room.x + room.w / 2, room.y + room.h / 2, room.w * 22, room.h * 11);
+    const rugs = this.theme.palette.rugs;
+    P.rug(g, room.x + WALL, room.y + WALL, room.w - WALL * 2, room.h - WALL * 2, hex(rugs[Math.floor(r() * rugs.length)]!));
+    P.lightPool(g, room.x + room.w / 2, room.y + room.h / 2, room.w * 22, room.h * 11, hex(this.theme.palette.light), this.theme.architecture.lightIntensity);
 
     // Back walls with windows, a whiteboard/poster and a clock
     const wall = new Graphics();
+    const WALL_H = this.theme.architecture.wallHeight, WALL_COLOR = hex(this.theme.palette.wall);
     P.box(wall, room.x, room.y - 0.18, room.w, 0.18, WALL_H, WALL_COLOR);
     P.box(wall, room.x - 0.18, room.y, 0.18, room.h, WALL_H, WALL_COLOR);
     const wy = room.y + 0.005, wx = room.x + 0.005;
     for (let x = room.x + 0.6; x + 1.4 <= room.x + room.w; x += 2.2) P.windowOnBackWall(wall, x, x + 1.4, wy, 9, 24);
-    P.clockOnBackWall(wall, room.x + room.w - 0.35, wy, 22);
+    P.clockOnBackWall(wall, room.x + room.w - 0.35, wy, 22, this.materials);
     if (room.h >= 3) {
-      if (r() < 0.6) P.whiteboardOnSideWall(wall, wx, room.y + 0.4, room.y + Math.min(room.h - 0.4, 2.2), 8, 24, seed);
+      if (r() < 0.6) P.whiteboardOnSideWall(wall, wx, room.y + 0.4, room.y + Math.min(room.h - 0.4, 2.2), 8, 24, seed, this.materials);
       else P.posterOnSideWall(wall, wx, room.y + 0.5, room.y + 1.3, 10, 24, kindColor(room.desks[0]?.pane.agent));
     }
 
     // Outline; pulses red when someone is blocked
     const outline = new Graphics();
-    P.floorPoly(outline, room.x, room.y, room.w, room.h, 0.5).stroke({ color: anyBlocked ? STATUS_COLOR.blocked : room.focused ? 0xffd166 : 0x7a82a8, width: anyBlocked ? 3 : 1.5, alpha: anyBlocked ? 0.9 : 0.6 });
+    P.floorPoly(outline, room.x, room.y, room.w, room.h, 0.5).stroke({ color: anyBlocked ? STATUS_COLOR.blocked : room.focused ? hex(this.theme.palette.accent) : 0x7a82a8, width: anyBlocked ? 3 : 1.5, alpha: anyBlocked ? 0.9 : 0.6 });
     if (anyBlocked) this.blockedRooms.push({ g: outline, base: Math.random() * 6 });
     this.floor.addChild(g, wall, outline);
 
@@ -423,18 +461,58 @@ export class OfficeScene {
     };
     const seed = Math.floor(r() * 1e6);
     // Corners in the WALL padding ring
-    add((g) => P.plant(g, room.x + 0.3, room.y + 0.3, seed), room.x + 0.3, room.y + 0.3);
-    if (r() < 0.7) add((g) => (r() < 0.5 ? P.cooler(g, room.x + room.w - 0.7, room.y + 0.3) : P.cabinet(g, room.x + room.w - 0.8, room.y + 0.25)), room.x + room.w - 0.7, room.y + 0.3);
-    if (room.h > 3 && r() < 0.6) add((g) => P.plant(g, room.x + 0.3, room.y + room.h - 0.7, seed >> 3), room.x + 0.3, room.y + room.h - 0.7);
-    if (room.w >= 5 && r() < 0.7) add((g) => P.bookshelf(g, room.x + room.w - 1.2, room.y + room.h - 0.6, seed), room.x + room.w - 1.2, room.y + room.h - 0.6);
+    add((g) => this.decorPlant(g, room.x + 0.3, room.y + 0.3, seed), room.x + 0.3, room.y + 0.3);
+    if (r() < 0.7) add((g) => (r() < 0.5 ? P.cooler(g, room.x + room.w - 0.7, room.y + 0.3) : P.cabinet(g, room.x + room.w - 0.8, room.y + 0.25, this.materials)), room.x + room.w - 0.7, room.y + 0.3);
+    if (room.h > 3 && r() < 0.6) add((g) => this.decorPlant(g, room.x + 0.3, room.y + room.h - 0.7, seed >> 3), room.x + 0.3, room.y + room.h - 0.7);
+    if (room.w >= 5 && r() < 0.7) add((g) => this.theme.architecture.decor === "technical" ? P.cabinet(g, room.x + room.w - 1.2, room.y + room.h - 0.6, this.materials) : P.bookshelf(g, room.x + room.w - 1.2, room.y + room.h - 0.6, seed, this.materials), room.x + room.w - 1.2, room.y + room.h - 0.6);
     // Free desk cells become a lounge (after the new-desk slot in build mode)
     const cols = Math.round((room.w - WALL * 2) / CELL), rows = Math.round((room.h - WALL * 2) / CELL);
     const n = room.desks.length + (room.slot ? 1 : 0);
     for (let i = n; i < cols * rows; i++) {
       const cx = room.x + WALL + (i % cols) * CELL, cy = room.y + WALL + Math.floor(i / cols) * CELL;
       const col = [0x5b6ea6, 0x7a5b8e, 0x4f7f77][i % 3]!;
-      add((g) => { P.sofa(g, cx + 0.9, cy + 0.3, col); P.coffeeTable(g, cx + 1.2, cy + 1.3); P.plant(g, cx + 0.2, cy + 1.4, seed + i); }, cx + 1.2, cy + 1.3);
+      add((g) => { P.sofa(g, cx + 0.9, cy + 0.3, col); P.coffeeTable(g, cx + 1.2, cy + 1.3, this.materials); this.decorPlant(g, cx + 0.2, cy + 1.4, seed + i); }, cx + 1.2, cy + 1.3);
     }
+  }
+
+  private decorPlant(g: Graphics, x: number, y: number, seed: number) {
+    if (this.theme.architecture.decor === "botanical") { P.plant(g, x, y, seed, this.materials); return; }
+    P.box(g, x, y, 0.45, 0.45, 12, this.materials.metal);
+    const p = toScreen(x + 0.22, y + 0.22, 12);
+    g.moveTo(p.x, p.y).lineTo(p.x, p.y - 15).stroke({ color: this.materials.metal, width: 3 });
+    g.circle(p.x, p.y - 16, 4).fill(hex(this.theme.palette.accent));
+    g.ellipse(p.x, p.y - 13, 9, 3).stroke({ color: hex(this.theme.palette.accent), width: 1.5 });
+  }
+
+  /** Contain image in a neutral panel, then project that panel onto a wall plane. */
+  private drawBrand(office: Office) {
+    this.brandPoint = null;
+    if (!this.brand?.visible || !this.brandTexture || !office.wings.length) return;
+    const a = resolveAnchor(this.theme, this.brand.anchorId), room = office.wings[0]!.rooms[0]!;
+    const x = a.x + (a.origin === "first-room" ? room.x : 0), y = a.y + (a.origin === "first-room" ? room.y : 0);
+    const w = a.width * TILE_W / 2, h = a.height;
+    const left = a.facing === "x" ? toScreen(x, y, a.z + h) : toScreen(x, y + a.width, a.z + h);
+    const panel = new Container(); panel.eventMode = "none";
+    const posts = new Graphics();
+    for (const offset of [0.15, a.width - 0.15]) {
+      const px = a.facing === "x" ? x + offset : x, py = a.facing === "x" ? y : y + offset;
+      const base = toScreen(px, py, a.origin === "first-room" ? this.theme.architecture.wallHeight : 0);
+      const top = toScreen(px, py, a.z + h - 4);
+      posts.moveTo(base.x, base.y).lineTo(top.x, top.y).stroke({ color: this.materials.metal, width: 3 });
+      if (a.origin === "campus") P.shadow(posts, px, py, 6, 3, 0.25);
+    }
+    this.floor.addChild(posts);
+    panel.setFromMatrix(new Matrix(1, a.facing === "x" ? 0.5 : -0.5, 0, 1, left.x, left.y));
+    const frame = new Graphics();
+    frame.roundRect(-3, -3, w + 6, h + 6, 3).fill(this.materials.metal);
+    frame.rect(0, 0, w, h).fill(this.brand.background === "dark" ? 0x172638 : 0xf4f6f8);
+    const sprite = new Sprite(this.brandTexture), padding = 6;
+    const scale = Math.min((w - padding * 2) / this.brand.width, (h - padding * 2) / this.brand.height);
+    sprite.scale.set(scale); sprite.position.set((w - sprite.width) / 2, (h - sprite.height) / 2);
+    panel.addChild(frame, sprite);
+    // Dedicated floor layer stays behind the people and labels; avoids hiding desks.
+    this.floor.addChild(panel);
+    this.brandPoint = { x: left.x + w / 2, y: left.y + h / 2 + (a.facing === "x" ? 0.25 : -0.25) * w };
   }
 
   private drawRoomPlaque(room: Room) {
@@ -464,7 +542,7 @@ export class OfficeScene {
       : { phase: Math.random() * 10, status: pane.agent_status, lastChange: 0 };
     this.states.set(pane.pane_id, state);
 
-    const node = pane.agent ? makeCharacter(desk, state) : makeEmptyDesk(desk, state);
+    const node = pane.agent ? makeCharacter(desk, state, this.characters, this.materials, this.reducedMotion) : makeEmptyDesk(desk, state, this.materials);
     this.nodes.push(node);
     const root = node.root;
     root.zIndex = depth(desk.x, desk.y) * 10;
@@ -561,13 +639,13 @@ export class OfficeScene {
   // ------------------------------------------------------------ ambient
 
   private buildMotes(office: Office) {
-    this.motes.removeChildren();
+    for (const child of this.motes.removeChildren()) child.destroy();
     this.moteList = [];
     const r = rng(7);
     const n = Math.min(80, 20 + office.w * office.h / 3);
     for (let i = 0; i < n; i++) {
       const g = new Graphics();
-      g.circle(0, 0, 0.8 + r() * 1.2).fill({ color: 0xfff2d0, alpha: 0.10 + r() * 0.12 });
+      g.circle(0, 0, 0.8 + r() * 1.2).fill({ color: hex(this.theme.palette.light), alpha: 0.10 + r() * 0.12 });
       g.position.set(this.bounds.minX + r() * (this.bounds.maxX - this.bounds.minX), this.bounds.minY + r() * (this.bounds.maxY - this.bounds.minY));
       this.motes.addChild(g);
       this.moteList.push({ g, vx: (r() - 0.5) * 4, vy: -3 - r() * 5 });
@@ -575,7 +653,8 @@ export class OfficeScene {
   }
 
   private tick(dt: number) {
-    const now = performance.now();
+    if (this.reducedMotion) dt = 0;
+    const now = this.reducedMotion ? 0 : performance.now();
     for (const n of this.nodes) n.tick(dt, now);
     for (const sl of this.slots) sl.badge.y = sl.badgeY + Math.sin(now / 300) * 2;
     for (const b of this.blockedRooms) b.g.alpha = 0.6 + Math.sin(now / 180 + b.base) * 0.4;
@@ -591,14 +670,14 @@ export class OfficeScene {
       if (m.g.y < this.bounds.minY) { m.g.y = this.bounds.maxY; m.g.x = this.bounds.minX + Math.random() * (this.bounds.maxX - this.bounds.minX); }
     }
     if (this.arrival) {
-      const t = Math.min(1, (now - this.arrival.at) / 420);
+      const t = this.reducedMotion ? 1 : Math.min(1, (now - this.arrival.at) / 420);
       const e = 1 - Math.pow(1 - t, 3);
       this.lift.alpha = e;
       this.lift.y = (1 - e) * -60 * this.arrival.dir;
       if (t >= 1) { this.arrival = null; this.lift.y = 0; this.lift.alpha = 1; }
     }
     if (this.camTarget) {
-      const k = 1 - Math.exp(-dt * 6);
+      const k = this.reducedMotion ? 1 : 1 - Math.exp(-dt * 6);
       const c = this.camTarget;
       const s = this.world.scale.x + (c.scale - this.world.scale.x) * k;
       this.world.scale.set(s);

@@ -15,6 +15,7 @@
   "scripts": {
     "dev": "concurrently -k -n bridge,web -c blue,magenta \"node bridge/server.js\" \"vite\"",
     "bridge": "node bridge/server.js",
+    "test:plugins": "node --test shared/plugins/registry.test.mjs",
     "web": "vite",
     "build": "vite build",
     "build:demo": "vite build --mode demo",

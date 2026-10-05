@@ -3,19 +3,14 @@
 
 import { Graphics } from "pixi.js";
 import { mix, shade, toScreen } from "./iso";
+import { hex } from "../../shared/plugins/registry";
+import { defaultTheme } from "./plugins/catalog";
 
-export const PALETTE = {
-  wood: 0x8b6b4a,
-  woodDark: 0x6f5238,
-  metal: 0x6b7089,
-  chair: 0x2b2e3b,
-  pot: 0xa0563b,
-  leaf: 0x4f9d5a,
-  leafDark: 0x3a7a44,
-  paper: 0xd8dbe6,
-  screenOff: 0x0d1017,
-  white: 0xe6e8f0,
-};
+export interface MaterialPalette {
+  wood: number; woodDark: number; metal: number; chair: number; pot: number;
+  leaf: number; leafDark: number; paper: number; screenOff: number; white: number;
+}
+export const PALETTE = Object.fromEntries(Object.entries(defaultTheme.materials).map(([k, c]) => [k, hex(c)])) as unknown as MaterialPalette;
 
 /** Axis-aligned iso box; base at tile (x,y), footprint (w,d), from height z0 to z0+h px. */
 export function box(g: Graphics, x: number, y: number, w: number, d: number, h: number, color: number, z0 = 0) {
@@ -51,27 +46,27 @@ export function shadow(g: Graphics, x: number, y: number, rx: number, ry: number
 
 // ------------------------------------------------------------------ furniture
 
-export function plant(g: Graphics, x: number, y: number, seed: number) {
+export function plant(g: Graphics, x: number, y: number, seed: number, palette: MaterialPalette = PALETTE) {
   shadow(g, x + 0.2, y + 0.2, 11, 5, 0.22);
-  box(g, x, y, 0.4, 0.4, 9, PALETTE.pot);
+  box(g, x, y, 0.4, 0.4, 9, palette.pot);
   const c = toScreen(x + 0.2, y + 0.2, 9);
   const leaves = 4 + (seed % 3);
   for (let i = 0; i < leaves; i++) {
     const a = (i / leaves) * Math.PI * 2 + seed;
     const r = 5 + ((seed >> (i + 2)) & 3);
-    const col = i % 2 ? PALETTE.leaf : PALETTE.leafDark;
+    const col = i % 2 ? palette.leaf : palette.leafDark;
     g.circle(c.x + Math.cos(a) * 6, c.y - 8 + Math.sin(a) * 3.5, r).fill(col);
   }
-  g.circle(c.x, c.y - 12, 6).fill(PALETTE.leaf);
+  g.circle(c.x, c.y - 12, 6).fill(palette.leaf);
 }
 
-export function cabinet(g: Graphics, x: number, y: number) {
+export function cabinet(g: Graphics, x: number, y: number, palette: MaterialPalette = PALETTE) {
   shadow(g, x + 0.3, y + 0.3, 14, 7, 0.22);
-  box(g, x, y, 0.55, 0.45, 24, PALETTE.metal);
+  box(g, x, y, 0.55, 0.45, 24, palette.metal);
   // drawer lines on the front-left face
   for (const z of [7, 15]) {
     const a = toScreen(x + 0.06, y + 0.45, z), b = toScreen(x + 0.49, y + 0.45, z);
-    g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color: shade(PALETTE.metal, 0.5), width: 1 });
+    g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color: shade(palette.metal, 0.5), width: 1 });
     const h = toScreen(x + 0.28, y + 0.45, z + 3);
     g.circle(h.x, h.y, 1.2).fill(0xd0d4e2);
   }
@@ -85,9 +80,9 @@ export function cooler(g: Graphics, x: number, y: number) {
   g.ellipse(c.x, c.y - 12, 5, 4).fill({ color: 0xc9ecff, alpha: 0.5 });
 }
 
-export function bookshelf(g: Graphics, x: number, y: number, seed: number) {
+export function bookshelf(g: Graphics, x: number, y: number, seed: number, palette: MaterialPalette = PALETTE) {
   shadow(g, x + 0.45, y + 0.25, 22, 8, 0.22);
-  box(g, x, y, 0.9, 0.3, 30, PALETTE.woodDark);
+  box(g, x, y, 0.9, 0.3, 30, palette.woodDark);
   // books on two shelves of the front-left face
   const books = [0xe07a5f, 0x81b29a, 0xf2cc8f, 0x3d5a80, 0xee6c4d, 0x98c1d9, 0xd9a5b3];
   for (const shelf of [3, 16]) {
@@ -113,11 +108,11 @@ export function sofa(g: Graphics, x: number, y: number, color: number) {
   g.moveTo(c.x - 4, c.y + 1).lineTo(c.x + 4, c.y - 1).stroke({ color: shade(color, 0.7), width: 1 });
 }
 
-export function coffeeTable(g: Graphics, x: number, y: number) {
+export function coffeeTable(g: Graphics, x: number, y: number, palette: MaterialPalette = PALETTE) {
   shadow(g, x + 0.3, y + 0.2, 15, 6, 0.18);
-  box(g, x, y, 0.6, 0.4, 8, PALETTE.wood);
+  box(g, x, y, 0.6, 0.4, 8, palette.wood);
   const c = toScreen(x + 0.3, y + 0.2, 8);
-  g.circle(c.x - 4, c.y - 1, 2.2).fill(PALETTE.white);
+  g.circle(c.x - 4, c.y - 1, 2.2).fill(palette.white);
   g.rect(c.x + 1, c.y - 4, 7, 4).fill(0xc7a97a);
 }
 
@@ -126,9 +121,9 @@ export function rug(g: Graphics, x: number, y: number, w: number, d: number, col
   floorPoly(g, x + 0.12, y + 0.12, w - 0.24, d - 0.24, 0.5).stroke({ color, alpha: 0.4, width: 1 });
 }
 
-export function lightPool(g: Graphics, x: number, y: number, rx: number, ry: number) {
+export function lightPool(g: Graphics, x: number, y: number, rx: number, ry: number, color = 0xfff2d0, intensity = 0.105) {
   const c = toScreen(x, y, 0.5);
-  for (let i = 3; i >= 1; i--) g.ellipse(c.x, c.y, rx * (i / 3), ry * (i / 3)).fill({ color: 0xfff2d0, alpha: 0.035 });
+  for (let i = 3; i >= 1; i--) g.ellipse(c.x, c.y, rx * (i / 3), ry * (i / 3)).fill({ color, alpha: intensity / 3 });
 }
 
 // ------------------------------------------------------------------ wall décor
@@ -148,8 +143,8 @@ export function windowOnBackWall(g: Graphics, x0: number, x1: number, y: number,
   g.poly([f0.x, f0.y, f1.x, f1.y, f2.x, f2.y, f3.x, f3.y]).fill({ color: 0xbfe0ff, alpha: 0.05 });
 }
 
-export function whiteboardOnSideWall(g: Graphics, x: number, y0: number, y1: number, z0: number, z1: number, seed: number) {
-  quadAlongY(g, x, y0, y1, z0, z1).fill(PALETTE.white).stroke({ color: 0x9aa0b4, width: 1.5 });
+export function whiteboardOnSideWall(g: Graphics, x: number, y0: number, y1: number, z0: number, z1: number, seed: number, palette: MaterialPalette = PALETTE) {
+  quadAlongY(g, x, y0, y1, z0, z1).fill(palette.white).stroke({ color: 0x9aa0b4, width: 1.5 });
   const colors = [0x3d5a80, 0xe07a5f, 0x2a9d8f, 0x222222];
   let i = seed;
   for (let k = 0; k < 5; k++) {
@@ -170,9 +165,9 @@ export function posterOnSideWall(g: Graphics, x: number, y0: number, y1: number,
   quadAlongY(g, x, y0 + 0.08, y1 - 0.08, z0 + 3, z1 - 3).fill({ color, alpha: 0.6 });
 }
 
-export function clockOnBackWall(g: Graphics, x: number, y: number, z: number) {
+export function clockOnBackWall(g: Graphics, x: number, y: number, z: number, palette: MaterialPalette = PALETTE) {
   const c = toScreen(x, y, z);
-  g.circle(c.x, c.y, 5).fill(PALETTE.white).stroke({ color: 0x555a70, width: 1 });
+  g.circle(c.x, c.y, 5).fill(palette.white).stroke({ color: 0x555a70, width: 1 });
   g.moveTo(c.x, c.y).lineTo(c.x, c.y - 3.5).stroke({ color: 0x222222, width: 1 });
   g.moveTo(c.x, c.y).lineTo(c.x + 2.5, c.y + 1).stroke({ color: 0x222222, width: 1 });
 }

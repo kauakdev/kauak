@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": "example.harbor",
+  "name": "Harbor office",
+  "version": "1.0.0",
+  "description": "An example custom office palette. Mix it with either included character set.",
+  "capabilities": {
+    "office.theme": {
+      "apiVersion": 1,
+      "palette": {
+        "background": "#182c2b",
+        "ground": "#294542",
+        "groundLine": "#426282",
+        "path": "#4a667f",
+        "wall": "#567b72",
+        "accent": "#e8cb8c",
+        "focus": "#a5cae0",
+        "light": "#b5e6ff",
+        "rugs": [
+          "#87cddd",
+          "#7ca5ce"
+        ],
+        "wings": [
+          "#476962",
+          "#54716b"
+        ]
+      },
+      "materials": {
+        "wood": "#89aaba",
+        "woodDark": "#416580",
+        "metal": "#b6cfda",
+        "chair": "#365276",
+        "pot": "#51738a",
+        "leaf": "#82d8ed",
+        "leafDark": "#446c88",
+        "paper": "#d5e9f1",
+        "screenOff": "#0d1017",
+        "white": "#eef8fa"
+      },
+      "architecture": {
+        "wallHeight": 38,
+        "floorPattern": "inset",
+        "decor": "technical",
+        "lightIntensity": 0.18
+      },
+      "bannerAnchors": [
+        {
+          "id": "entrance",
+          "name": "Entrance sign",
+          "origin": "campus",
+          "x": 0.2,
+          "y": -2.4,
+          "z": 14,
+          "width": 5.8,
+          "height": 58,
+          "facing": "x"
+        },
+        {
+          "id": "studio",
+          "name": "First room wall",
+          "origin": "first-room",
+          "x": 0.5,
+          "y": 0,
+          "z": 32,
+          "width": 3.8,
+          "height": 46,
+          "facing": "x"
+        }
+      ]
+    }
+  }
+}

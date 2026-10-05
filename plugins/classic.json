@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "id": "agent-office.classic",
+  "name": "Classic office",
+  "version": "1.0.0",
+  "description": "The original office: warm wood desks, leafy corners and people at work.",
+  "capabilities": {
+    "office.theme": {
+      "apiVersion": 1,
+      "palette": {
+        "background": "#171a26",
+        "ground": "#1f2230",
+        "groundLine": "#272b3b",
+        "path": "#2a2e40",
+        "wall": "#5a6080",
+        "accent": "#ffd166",
+        "focus": "#5a6aa8",
+        "light": "#fff2d0",
+        "rugs": [
+          "#d97757",
+          "#6f7bf7"
+        ],
+        "wings": [
+          "#3a3f55",
+          "#3d4452",
+          "#44405a",
+          "#3a4a4e",
+          "#4a4040"
+        ]
+      },
+      "materials": {
+        "wood": "#8b6b4a",
+        "woodDark": "#6f5238",
+        "metal": "#6b7089",
+        "chair": "#2b2e3b",
+        "pot": "#a0563b",
+        "leaf": "#4f9d5a",
+        "leafDark": "#3a7a44",
+        "paper": "#d8dbe6",
+        "screenOff": "#0d1017",
+        "white": "#e6e8f0"
+      },
+      "architecture": {
+        "wallHeight": 30,
+        "floorPattern": "checker",
+        "decor": "botanical",
+        "lightIntensity": 0.105
+      },
+      "bannerAnchors": [
+        {
+          "id": "entrance",
+          "name": "Entrance sign",
+          "origin": "campus",
+          "x": 0.2,
+          "y": -2.4,
+          "z": 14,
+          "width": 5.8,
+          "height": 58,
+          "facing": "x"
+        },
+        {
+          "id": "studio",
+          "name": "First room wall",
+          "origin": "first-room",
+          "x": 0.5,
+          "y": 0,
+          "z": 32,
+          "width": 3.8,
+          "height": 46,
+          "facing": "x"
+        }
+      ]
+    },
+    "office.characters": {
+      "apiVersion": 1,
+      "model": "human",
+      "skin": [
+        "#f1d3b3",
+        "#e0b48f",
+        "#c68642",
+        "#8d5524",
+        "#ffdbac"
+      ],
+      "hair": [
+        "#2b1d14",
+        "#5a3a22",
+        "#c7813a",
+        "#1b1b1f",
+        "#8c2f2f",
+        "#e0c080",
+        "#4a4e69"
+      ],
+      "shell": "#e6e8f0",
+      "visor": "#2ec4b6",
+      "animation": {
+        "tempo": {
+          "working": 1,
+          "idle": 1,
+          "blocked": 1,
+          "done": 1,
+          "unknown": 1
+        },
+        "amplitude": 1,
+        "glyphs": [
+          "{",
+          "}",
+          ";",
+          "=>",
+          "()",
+          "fn",
+          "if",
+          "\u03bb",
+          "0x",
+          "//",
+          "<>",
+          "&&"
+        ]
+      }
+    }
+  }
+}

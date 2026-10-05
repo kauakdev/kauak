@@ -4,8 +4,11 @@
 import { Container, Graphics, Text, TextStyle, type PointData } from "pixi.js";
 import { CONTEXT_COLOR, contextLevel, contextShare } from "./context";
 import { hashStr, mix, shade, toScreen } from "./iso";
+import type { Characters } from "../../shared/plugins/contracts";
+import { hex } from "../../shared/plugins/registry";
+import { defaultCharacters } from "./plugins/catalog";
 import type { Desk } from "./layout";
-import { PALETTE, box, quadAlongX, shadow } from "./props";
+import { PALETTE, box, quadAlongX, shadow, type MaterialPalette } from "./props";
 import type { AgentStatus, ContextUsage } from "./types";
 
 export const STATUS_COLOR: Record<AgentStatus, number> = {
@@ -33,13 +36,9 @@ export function kindColor(kind: string | null | undefined): number {
   return 0x404040 + (hashStr(kind) & 0xbfbfbf);
 }
 
-const HAIR = [0x2b1d14, 0x5a3a22, 0xc7813a, 0x1b1b1f, 0x8c2f2f, 0xe0c080, 0x4a4e69];
-const SKIN = [0xf1d3b3, 0xe0b48f, 0xc68642, 0x8d5524, 0xffdbac];
-
 const tagStyle = new TextStyle({ fill: 0x111111, fontSize: 9, fontWeight: "700", fontFamily: "ui-sans-serif, system-ui, sans-serif", letterSpacing: 0.5 });
 const bubbleStyle = new TextStyle({ fill: 0x111111, fontSize: 13, fontWeight: "800", fontFamily: "ui-sans-serif, system-ui, sans-serif" });
 const glyphStyle = new TextStyle({ fill: 0x5ad87a, fontSize: 10, fontFamily: "ui-monospace, monospace" });
-const GLYPH_CHARS = ["{", "}", ";", "=>", "()", "fn", "if", "λ", "0x", "//", "<>", "&&"];
 
 export interface CharState {
   phase: number;                 // animation clock (s)
@@ -58,12 +57,12 @@ export interface DeskNode {
 
 // ------------------------------------------------------------------ desk
 
-interface DeskParts { screen: Graphics; screenRect: { x0: number; x1: number; y: number; z0: number; z1: number } }
+interface DeskParts { screen: Graphics; palette: MaterialPalette; screenRect: { x0: number; x1: number; y: number; z0: number; z1: number } }
 
-function drawDeskFurniture(root: Container, desk: Desk, seed: number, occupied: boolean): DeskParts {
+function drawDeskFurniture(root: Container, desk: Desk, seed: number, occupied: boolean, palette: MaterialPalette): DeskParts {
   const g = new Graphics();
   shadow(g, desk.x + 0.5, desk.y + 0.45, 30, 12, 0.22);
-  box(g, desk.x, desk.y, 1, 0.7, 14, occupied ? PALETTE.wood : shade(PALETTE.wood, 0.85));
+  box(g, desk.x, desk.y, 1, 0.7, 14, occupied ? palette.wood : shade(palette.wood, 0.85));
   // legs hint: darker strip at the base of the front faces
   // monitor stand + bezel (screen faces the viewer, parallel to the back wall)
   box(g, desk.x + 0.44, desk.y + 0.22, 0.12, 0.1, 5, 0x2a2d3a, 14);
@@ -71,12 +70,12 @@ function drawDeskFurniture(root: Container, desk: Desk, seed: number, occupied: 
   quadAlongX(g, x0, x1, y, z0, z1).fill(0x11131b).stroke({ color: 0x444a66, width: 1 });
   // keyboard, mug, papers
   box(g, desk.x + 0.28, desk.y + 0.48, 0.44, 0.14, 2, 0x3a3f55, 14);
-  if (seed & 1) box(g, desk.x + 0.86, desk.y + 0.5, 0.11, 0.11, 6, seed & 2 ? PALETTE.white : 0xd97757, 14);
-  if (seed & 4) box(g, desk.x + 0.04, desk.y + 0.42, 0.22, 0.2, 1, PALETTE.paper, 14);
+  if (seed & 1) box(g, desk.x + 0.86, desk.y + 0.5, 0.11, 0.11, 6, seed & 2 ? palette.white : 0xd97757, 14);
+  if (seed & 4) box(g, desk.x + 0.04, desk.y + 0.42, 0.22, 0.2, 1, palette.paper, 14);
   root.addChild(g);
   const screen = new Graphics();
   root.addChild(screen);
-  return { screen, screenRect: { x0: x0 + 0.03, x1: x1 - 0.03, y: y - 0.01, z0: z0 + 1.5, z1: z1 - 1.5 } };
+  return { screen, palette, screenRect: { x0: x0 + 0.03, x1: x1 - 0.03, y: y - 0.01, z0: z0 + 1.5, z1: z1 - 1.5 } };
 }
 
 /** Redraws the monitor contents for the given status. Called every frame; cheap. */
@@ -85,7 +84,7 @@ function drawScreen(parts: DeskParts, status: AgentStatus | "off", t: number) {
   const r = parts.screenRect;
   g.clear();
   const c = status === "off" ? 0x7a7f93 : STATUS_COLOR[status];
-  quadAlongX(g, r.x0, r.x1, r.y, r.z0, r.z1).fill(mix(PALETTE.screenOff, c, status === "off" ? 0.06 : 0.28));
+  quadAlongX(g, r.x0, r.x1, r.y, r.z0, r.z1).fill(mix(parts.palette.screenOff, c, status === "off" ? 0.06 : 0.28));
   const h = r.z1 - r.z0, w = r.x1 - r.x0;
   const line = (frac: number, len: number, alpha: number) => {
     const z = r.z0 + 2 + frac * (h - 4);
@@ -118,13 +117,13 @@ function drawScreen(parts: DeskParts, status: AgentStatus | "off", t: number) {
 
 // ------------------------------------------------------------------ empty desk
 
-export function makeEmptyDesk(desk: Desk, state: CharState): DeskNode {
+export function makeEmptyDesk(desk: Desk, state: CharState, palette = PALETTE): DeskNode {
   const root = new Container();
   const seed = hashStr(desk.pane.pane_id);
-  const parts = drawDeskFurniture(root, desk, seed, false);
+  const parts = drawDeskFurniture(root, desk, seed, false, palette);
   const chair = new Graphics();
-  box(chair, desk.x + 0.25, desk.y - 0.7, 0.5, 0.45, 8, PALETTE.chair, 4);
-  box(chair, desk.x + 0.25, desk.y - 0.7, 0.5, 0.1, 22, shade(PALETTE.chair, 1.15), 4);
+  box(chair, desk.x + 0.25, desk.y - 0.7, 0.5, 0.45, 8, palette.chair, 4);
+  box(chair, desk.x + 0.25, desk.y - 0.7, 0.5, 0.1, 22, shade(palette.chair, 1.15), 4);
   root.addChildAt(chair, 0);
   const tag = makeTag("shell", 0x9aa0b4, desk);
   root.addChild(tag);
@@ -162,33 +161,43 @@ function contextMeter(context: ContextUsage, w: number): Graphics {
 
 // ------------------------------------------------------------------ character
 
-export function makeCharacter(desk: Desk, state: CharState): DeskNode {
+export function makeCharacter(desk: Desk, state: CharState, look: Characters = defaultCharacters, palette = PALETTE, reducedMotion = false): DeskNode {
   const pane = desk.pane;
   const root = new Container();
   const seed = hashStr(pane.pane_id);
   const color = kindColor(pane.agent);
-  const skin = SKIN[seed % SKIN.length]!;
-  const hair = HAIR[(seed >> 4) % HAIR.length]!;
+  const skin = look.model === "robot" ? hex(look.shell) : hex(look.skin[seed % look.skin.length]!);
+  const hair = hex(look.hair[(seed >>> 4) % look.hair.length]!);
 
   // Chair behind the desk, then the person, then the desk in front.
   const chair = new Graphics();
   shadow(chair, desk.x + 0.5, desk.y - 0.45, 16, 7, 0.25);
-  box(chair, desk.x + 0.25, desk.y - 0.7, 0.5, 0.45, 8, PALETTE.chair, 4);
-  box(chair, desk.x + 0.25, desk.y - 0.7, 0.5, 0.1, 22, shade(PALETTE.chair, 1.15), 4);
+  box(chair, desk.x + 0.25, desk.y - 0.7, 0.5, 0.45, 8, palette.chair, 4);
+  box(chair, desk.x + 0.25, desk.y - 0.7, 0.5, 0.1, 22, shade(palette.chair, 1.15), 4);
   root.addChild(chair);
 
   const p = toScreen(desk.x + 0.5, desk.y - 0.48);
   const body = new Graphics();
-  body.ellipse(p.x, p.y - 15, 9.5, 12).fill(color).stroke({ color: shade(color, 0.6), width: 1 });   // torso
-  body.circle(p.x, p.y - 33, 7.5).fill(skin).stroke({ color: shade(skin, 0.7), width: 1 });         // head
-  body.moveTo(p.x - 8, p.y - 34).arc(p.x, p.y - 34, 8, Math.PI, Math.PI * 2).closePath().fill(hair); // hair (explicit moveTo: arc() would otherwise start from a stale point)
-  body.circle(p.x - 2.6, p.y - 33, 1).fill(0x222222);
-  body.circle(p.x + 2.6, p.y - 33, 1).fill(0x222222);
+  if (look.model === "robot") {
+    body.roundRect(p.x - 9, p.y - 26, 18, 22, 4).fill(skin).stroke({ color: shade(skin, 0.6), width: 1 });
+    body.roundRect(p.x - 11, p.y - 43, 22, 18, 5).fill(skin).stroke({ color: shade(skin, 0.6), width: 1 });
+    body.roundRect(p.x - 8, p.y - 39, 16, 9, 3).fill(hex(look.visor));
+    body.circle(p.x - 4, p.y - 35, 1.5).fill(color); body.circle(p.x + 4, p.y - 35, 1.5).fill(color);
+    body.moveTo(p.x, p.y - 43).lineTo(p.x, p.y - 48).stroke({ color: skin, width: 2 });
+    body.circle(p.x, p.y - 49, 2).fill(color);
+    body.roundRect(p.x - 5, p.y - 20, 10, 7, 2).fill(color);
+  } else {
+    body.ellipse(p.x, p.y - 15, 9.5, 12).fill(color).stroke({ color: shade(color, 0.6), width: 1 });   // torso
+    body.circle(p.x, p.y - 33, 7.5).fill(skin).stroke({ color: shade(skin, 0.7), width: 1 });         // head
+    body.moveTo(p.x - 8, p.y - 34).arc(p.x, p.y - 34, 8, Math.PI, Math.PI * 2).closePath().fill(hair); // hair (explicit moveTo: arc() would otherwise start from a stale point)
+    body.circle(p.x - 2.6, p.y - 33, 1).fill(0x222222);
+    body.circle(p.x + 2.6, p.y - 33, 1).fill(0x222222);
+  }
   root.addChild(body);
   const hands = new Graphics();
   root.addChild(hands);
 
-  const parts = drawDeskFurniture(root, desk, seed, true);
+  const parts = drawDeskFurniture(root, desk, seed, true, palette);
   root.addChild(makeTag(pane.agent ?? "agent", color, desk, pane.context));
 
   // Status bubble above the head
@@ -218,8 +227,9 @@ export function makeCharacter(desk: Desk, state: CharState): DeskNode {
   applyStatus();
 
   const tick = (dt: number, now: number) => {
-    state.phase += dt;
+    state.phase += reducedMotion ? 0 : dt * look.animation.tempo[state.status];
     const t = state.phase;
+    const motion = reducedMotion ? 0 : look.animation.amplitude;
     if (shown !== state.status) applyStatus();
     hands.clear();
     for (const g of glyphPool) g.visible = false;
@@ -227,15 +237,15 @@ export function makeCharacter(desk: Desk, state: CharState): DeskNode {
 
     switch (state.status) {
       case "working": {
-        const l = Math.sin(t * 14) * 1.5, r = Math.sin(t * 14 + Math.PI) * 1.5;
+        const l = Math.sin(t * 14) * 1.5 * motion, r = Math.sin(t * 14 + Math.PI) * 1.5 * motion;
         hands.circle(p.x - 6, p.y - 5 + l, 2.5).fill(skin);
         hands.circle(p.x + 6, p.y - 5 + r, 2.5).fill(skin);
-        body.y = Math.sin(t * 3) * 0.6;
+        body.y = Math.sin(t * 3) * 0.6 * motion;
         const cycle = (t * 0.9) % 1;
         glyphPool.forEach((g, i) => {
           const k = (cycle + i / glyphPool.length) % 1;
-          g.visible = true;
-          g.text = GLYPH_CHARS[(Math.floor(t * 0.9) + i * 5) % GLYPH_CHARS.length]!;
+          g.visible = !reducedMotion;
+          g.text = look.animation.glyphs[(Math.floor(t * 0.9) + i * 5) % look.animation.glyphs.length]!;
           g.position.set(p.x + 20 + Math.sin(k * 6) * 4 + i * 5, p.y - 14 - k * 36);
           g.alpha = 1 - k;
         });
@@ -243,7 +253,7 @@ export function makeCharacter(desk: Desk, state: CharState): DeskNode {
         break;
       }
       case "idle": {
-        body.y = Math.sin(t * 1.4) * 1.2;
+        body.y = Math.sin(t * 1.4) * 1.2 * motion;
         hands.circle(p.x + 7, p.y - 13 + Math.sin(t * 1.4) * 1.2, 2.5).fill(skin);
         bubble.visible = true; bubble.alpha = 0.9; bubble.scale.set(1);
         bubble.y = p.y - 54;
@@ -251,7 +261,7 @@ export function makeCharacter(desk: Desk, state: CharState): DeskNode {
       }
       case "blocked": {
         bubble.visible = true; bubble.alpha = 1;
-        bubble.scale.set(1 + Math.sin(t * 5) * 0.12);
+        bubble.scale.set(1 + Math.sin(t * 5) * 0.12 * motion);
         bubble.y = p.y - 54;
         hands.circle(p.x + 11, p.y - 31 + Math.sin(t * 5) * 1.5, 2.5).fill(skin);
         body.y = 0;
@@ -259,8 +269,8 @@ export function makeCharacter(desk: Desk, state: CharState): DeskNode {
       }
       case "done": {
         bubble.visible = true; bubble.alpha = 1; bubble.scale.set(1);
-        bubble.y = p.y - 54 - Math.abs(Math.sin(t * 3)) * 5;
-        body.y = -Math.abs(Math.sin(t * 3)) * 2;
+        bubble.y = p.y - 54 - Math.abs(Math.sin(t * 3)) * 5 * motion;
+        body.y = -Math.abs(Math.sin(t * 3)) * 2 * motion;
         break;
       }
       default: {
@@ -270,7 +280,7 @@ export function makeCharacter(desk: Desk, state: CharState): DeskNode {
     }
     // Pop on status change
     const since = now - state.lastChange;
-    if (since < 600) bubble.scale.set(1 + (1 - since / 600) * 0.6);
+    if (!reducedMotion && since < 600) bubble.scale.set(1 + (1 - since / 600) * 0.6);
   };
 
   return { root, desk, state, anchor: { x: p.x, y: p.y - 46 }, tick };

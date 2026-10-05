@@ -1,0 +1,37 @@
+#appearance { color: var(--text); background: #141c2c; border: 1px solid #45536f; border-radius: 16px; padding: 0; width: min(660px, calc(100vw - 32px)); max-height: calc(100dvh - 32px - var(--sat) - var(--sab)); overflow: auto; box-shadow: 0 24px 100px #000a; }
+#appearance::backdrop { background: #080e1fcc; backdrop-filter: blur(4px); }
+#appearance header { display: flex; align-items: start; gap: 20px; justify-content: space-between; padding: 24px 26px 18px; border-bottom: 1px solid #35415a; }
+#appearance h2 { margin: 0 0 6px; font-size: 24px; letter-spacing: -.5px; font-weight: 650; }
+#appearance h3 { margin: 0 0 6px; font-size: 16px; font-weight: 650; }
+#appearance p { margin: 0 0 16px; color: #b6c2d9; line-height: 1.5; }
+#appearance .appearance-body { padding: 0 26px; }
+#appearance section { padding: 22px 0; border-bottom: 1px solid #35415a; }
+#appearance .appearance-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+#appearance label { display: flex; flex-direction: column; gap: 8px; line-height: 1.4; }
+#appearance select { width: 100%; background: #243149; color: #eef4ff; border: 1px solid #526384; border-radius: 7px; padding: 10px; font: inherit; min-height: 40px; }
+#appearance small { color: #a6b5ce; line-height: 1.45; }
+#appearance input[type=file] { width: 100%; font: inherit; color: #a6b5ce; overflow: hidden; }
+#appearance input::file-selector-button { background: #243149; border: 1px solid #526384; color: #eef4ff; border-radius: 7px; padding: 10px; cursor: pointer; margin-right: 10px; font: inherit; }
+#appearance input[type=checkbox] { accent-color: #82d8ed; width: 18px; height: 18px; margin: 0; }
+#appearance .banner-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 18px; }
+#appearance .banner-actions label { flex-direction: row; align-items: center; margin-right: auto; }
+#appearance #banner-preview { height: 104px; background: #eef3f7; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 18px; padding: 12px; color: #53667c; }
+#appearance #banner-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+#appearance #banner-preview.dark { background: #172638; }
+#appearance .banner-background { margin-top: 18px; }
+#appearance .banner-background select { max-width: 180px; }
+#appearance [hidden] { display: none !important; }
+#appearance button { min-height: 36px; }
+#appearance button:disabled, #appearance select:disabled, #appearance input:disabled { opacity: .45; cursor: default; }
+#appearance :focus-visible { outline: 2px solid #82d8ed; outline-offset: 3px; }
+#appearance #appearance-message { margin: 20px 0; color: #a8ddc0; min-height: 20px; }
+#appearance #appearance-message.error, #appearance .appearance-warning { color: #ffd2a6; }
+#appearance .appearance-warning { margin-top: 12px; margin-bottom: 0; }
+#appearance footer { padding: 16px 26px; display: flex; align-items: center; gap: 18px; justify-content: space-between; background: #1c2840; }
+#appearance footer span { color: #afbed5; font-size: 12px; line-height: 1.4; max-width: 360px; }
+#appearance #appearance-packages { padding: 0; margin: 16px 0 0; list-style: none; }
+#appearance #appearance-packages li { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-top: 10px; }
+@media (max-width: 600px) { #appearance .appearance-pair { grid-template-columns: 1fr; gap: 16px; } #appearance header { padding: 20px; } #appearance .appearance-body { padding: 0 20px; } #appearance h2 { font-size: 22px; } #appearance footer { padding: 16px 20px; } #btn-appearance { font-size: 0; width: 32px; } #btn-appearance::after { content: '⚙'; font-size: 16px; } #topbar { gap: 6px; } #tools { gap: 4px; } }
+@media (max-width: 600px) { #conn { padding: 7px; } #conn-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
+@media (max-width: 380px) { #btn-zoom-out, #btn-zoom-in { display: none; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; } }

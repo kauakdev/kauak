@@ -214,6 +214,13 @@ company banner, choose its entrance or room-wall location, hide, replace or
 remove it. Images and choices stay local to this browser; changing office
 preserves your banner and sessions.
 
+In **Appearance → Beyond the office**, compare Alpine dusk, Moonlit summit,
+Contour map, or the original plain background. Backgrounds change independently
+of the office and characters and stay saved in this browser. Use **View in office**
+to close settings and see the full scene. For a preview without changing your
+saved choice, add `&background=alpine` (or `summit`, `contours`, `original`) to a
+demo URL such as `?demo&background=alpine`.
+
 See the [plugin and banner guide](docs/plugins/README.md) for authoring,
 validation, capability contracts, screenshots and current limits. Herdr remains
 the included provider; custom provider loading is not part of this release.

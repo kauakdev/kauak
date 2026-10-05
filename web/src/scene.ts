@@ -129,7 +129,7 @@ export class OfficeScene {
   onBuild: (target: BuildTarget, x: number, y: number) => void = () => {};
 
   async init(host: HTMLElement) {
-    await this.app.init({ resizeTo: host, antialias: true, background: hex(this.theme.palette.background), resolution: devicePixelRatio, autoDensity: true });
+    await this.app.init({ resizeTo: host, antialias: true, background: hex(this.theme.palette.background), backgroundAlpha: 0, resolution: devicePixelRatio, autoDensity: true });
     host.appendChild(this.app.canvas);
     this.objects.sortableChildren = true;
     this.world.addChild(this.ground, this.platforms, this.floor, this.objects, this.overlay, this.labels, this.motes);
@@ -153,7 +153,9 @@ export class OfficeScene {
   setAppearance(theme: Theme, characters: Characters) {
     this.theme = theme; this.characters = characters;
     this.materials = Object.fromEntries(Object.entries(theme.materials).map(([k, c]) => [k, hex(c)])) as unknown as P.MaterialPalette;
+    // Assigning a Pixi background color also resets its alpha to one.
     this.app.renderer.background.color = hex(theme.palette.background);
+    this.app.renderer.background.alpha = 0;
     document.documentElement.style.setProperty("--bg", theme.palette.background);
     document.documentElement.style.setProperty("--accent", theme.palette.accent);
     if (this.snapshot) this.setSnapshot(this.snapshot);

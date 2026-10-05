@@ -2,6 +2,7 @@ import type { BrandBanner, Characters, PluginManifest, Preferences, Theme, Visua
 import { loadPreferences, MAX_PACKAGES, MAX_PACKAGE_BYTES, parsePackage, PluginRegistry, resolveAnchor, savePreferences } from "../../../shared/plugins/registry";
 import { bundledPackages } from "./catalog";
 import { decodeImage, prepareBanner } from "./banner-image";
+import { BACKGROUNDS, type BackgroundId, type OfficeBackground } from "./background";
 import "./settings.css";
 
 interface AppearanceHost {
@@ -19,7 +20,7 @@ export class AppearanceSettings {
   private startupWarnings: string[];
   private storage = { getItem: (k: string) => localStorage.getItem(k), setItem: (k: string, v: string) => localStorage.setItem(k, v) };
 
-  constructor(private host: AppearanceHost) {
+  constructor(private host: AppearanceHost, private background: OfficeBackground) {
     const loaded = loadPreferences(this.storage); this.prefs = loaded.value;
     this.registry = new PluginRegistry(bundledPackages, this.prefs.packages);
     this.startupWarnings = [...loaded.warnings, ...this.registry.warnings];
@@ -28,6 +29,9 @@ export class AppearanceSettings {
       <div class="appearance-body"><section><h3>Office & team</h3><p>Your sessions and agent states stay the same.</p>
         <div class="appearance-pair"><label>Office<select id="appearance-theme"></select><small id="theme-description"></small></label><label>Characters<select id="appearance-characters"></select><small id="characters-description"></small></label></div>
         <p id="appearance-fallback" class="appearance-warning" hidden></p>
+      </section><section aria-labelledby="background-title"><h3 id="background-title">Beyond the office</h3><p>A little of the mountains, wherever you work.</p>
+        <fieldset class="background-options" aria-labelledby="background-title">${BACKGROUNDS.map(b => `<label class="background-choice"><input type="radio" name="office-background" value="${b.id}"><span class="background-swatch" aria-hidden="true" data-background-swatch="${b.id}"></span><span class="background-caption"><strong>${b.name}</strong><small>${b.description}</small></span></label>`).join("")}</fieldset>
+        <div class="background-preview-actions"><small>Switch instantly to compare. Your choice stays on this browser.</small><button class="btn" id="background-view">View in office</button></div>
       </section><section><h3>Company banner</h3><p>Show a logo or banner on this floor. Images keep their proportions.</p>
         <div id="banner-preview"><span>No company image yet</span><img hidden alt="Your company banner preview"></div>
         <div class="appearance-pair"><label><span id="banner-upload-label">Choose an image</span><input id="banner-file" type="file" accept="image/png,image/jpeg,image/webp"><small>PNG, JPEG or WebP · up to 4 MB</small></label><label>Place it at<select id="banner-anchor"></select><small>Appears on every floor with rooms.</small></label></div>
@@ -37,6 +41,7 @@ export class AppearanceSettings {
       </section><section><h3>More appearances</h3><p>Add a local appearance package to this browser.</p><label>Import a package<input id="package-file" type="file" accept=".json,application/json"><small>JSON appearance package · up to 64 KB · no downloaded code</small></label><ul id="appearance-packages"></ul></section>
       <p id="appearance-message" role="status" aria-live="polite">Changes are saved on this browser.</p></div><footer><span>Local to this browser. Your banner stays when you change office.</span><button class="btn primary" data-close>Done</button></footer>`;
     document.body.append(this.dialog);
+    for (const b of BACKGROUNDS) if (b.image) this.dialog.querySelector<HTMLElement>(`[data-background-swatch="${b.id}"]`)!.style.backgroundImage = `url("${b.image}")`;
     this.button.addEventListener("click", () => { this.render(); this.dialog.showModal(); this.button.setAttribute("aria-expanded", "true"); this.el<HTMLSelectElement>("appearance-theme").focus(); });
     this.dialog.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => this.dialog.close()));
     this.dialog.addEventListener("close", () => { this.button.setAttribute("aria-expanded", "false"); this.button.focus(); });
@@ -44,6 +49,12 @@ export class AppearanceSettings {
     window.addEventListener("keydown", e => { if (this.isOpen()) e.stopImmediatePropagation(); }, true);
     for (const [field, cap] of [["appearance-theme", "office.theme"], ["appearance-characters", "office.characters"]] as const)
       this.el(field).addEventListener("change", () => this.commit({ ...this.prefs, selections: { ...this.prefs.selections, [cap]: this.el<HTMLSelectElement>(field).value } }));
+    this.dialog.querySelectorAll<HTMLInputElement>('input[name="office-background"]').forEach(input => input.addEventListener("change", () => {
+      if (!input.checked) return;
+      const saved = this.background.choose(input.value as BackgroundId);
+      this.message(saved ? "Background saved on this browser. View it in the office." : "Background previewed. This browser could not save the choice.", !saved);
+    }));
+    this.el("background-view").addEventListener("click", () => this.dialog.close());
     this.el("banner-file").addEventListener("change", () => void this.uploadBanner());
     this.el("package-file").addEventListener("change", () => void this.importPackage());
     this.el("banner-anchor").addEventListener("change", () => { if (this.prefs.banner) this.commit({ ...this.prefs, banner: { ...this.prefs.banner, anchorId: this.el<HTMLSelectElement>("banner-anchor").value } }); });
@@ -80,6 +91,7 @@ export class AppearanceSettings {
     el.setAttribute("role", error ? "alert" : "status");
   }
   private render(showWarnings = true) {
+    this.dialog.querySelectorAll<HTMLInputElement>('input[name="office-background"]').forEach(input => { input.checked = input.value === this.background.value; });
     const fallback: string[] = [];
     for (const [field, cap, desc] of [["appearance-theme", "office.theme", "theme-description"], ["appearance-characters", "office.characters", "characters-description"]] as const) {
       const select = this.el<HTMLSelectElement>(field), result = this.registry.resolve(cap, this.prefs.selections[cap]);

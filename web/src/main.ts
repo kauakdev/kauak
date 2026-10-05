@@ -5,6 +5,7 @@ import { Hud } from "./hud";
 import { TerminalPanel } from "./panel";
 import { Radio } from "./radio";
 import { AppearanceSettings } from "./plugins/settings";
+import { OfficeBackground } from "./plugins/background";
 import { OfficeScene } from "./scene";
 import type { MachineInfo, Snapshot } from "./types";
 import { Bridge, type BridgeApi, type BridgeHandlers } from "./ws";
@@ -14,7 +15,8 @@ const FLOOR_KEY = "agent-office.floor";
 async function main() {
 const scene = new OfficeScene();
 await scene.init(document.getElementById("app")!);
-const appearance = new AppearanceSettings(scene);
+const background = new OfficeBackground(document.getElementById("app")!);
+const appearance = new AppearanceSettings(scene, background);
 await appearance.restoreBanner();
 const panel = new TerminalPanel();
 const banner = document.getElementById("floor-banner")!;

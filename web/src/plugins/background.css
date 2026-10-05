@@ -1,0 +1,16 @@
+#office-background { position: absolute; inset: 0; pointer-events: none; background-color: #081524; background-position: center; background-size: cover; }
+#office-background[data-background=original] { background-color: var(--bg); }
+#app canvas { position: relative; }
+#appearance .background-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; border: 0; }
+#appearance .background-choice { position: relative; display: block; cursor: pointer; border: 1px solid #45536f; border-radius: 10px; overflow: hidden; background: #192437; }
+#appearance .background-choice:has(input:checked) { border-color: #82d8ed; box-shadow: 0 0 0 1px #82d8ed; }
+#appearance .background-choice:has(input:focus-visible) { outline: 2px solid #82d8ed; outline-offset: 4px; }
+#appearance .background-choice input { position: absolute; top: 11px; right: 11px; accent-color: #82d8ed; width: 18px; height: 18px; margin: 0; }
+#appearance .background-swatch { display: block; height: 96px; background-color: #171a26; background-position: center; background-size: cover; }
+#appearance .background-swatch[data-background-swatch=original] { background-color: var(--bg); }
+#appearance .background-caption { display: block; padding: 12px; }
+#appearance .background-caption strong { display: block; margin-bottom: 4px; font-weight: 600; }
+#appearance .background-caption small { display: block; }
+#appearance .background-preview-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+#appearance .background-preview-actions small { max-width: 340px; }
+@media (max-width: 420px) { #appearance .background-swatch { height: 76px; } #appearance .background-caption { padding: 10px; } }

@@ -5,7 +5,8 @@
 // ~/.config/kauak/machines.json. The bridge keeps things simple and
 // robust: on every Herdr event it re-fetches that machine's full
 // `session.snapshot` (a few KB) and broadcasts it to all clients, with each
-// agent's context use added (see context.js).
+// agent's context use added (see context.js) and each room's git checkout,
+// whose edits its printer prints as they happen (see diffs.js).
 //
 // The same port also serves the built office page (dist/, `pnpm build`), so
 // `npx kauak` is one process and one URL. `pnpm dev` serves the page
@@ -19,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { slashCommands } from "./commands.js";
 import { ContextTracker } from "./context.js";
+import { DiffTracker } from "./diffs.js";
 import { LOCAL_SOCKET, Machine } from "./machine.js";
 
 const WS_PORT = Number(process.env.KAUAK_PORT ?? process.env.AGENT_OFFICE_PORT ?? 7788);
@@ -45,6 +47,8 @@ const MAX_READ_LINES = 5000;
 const machines = new Map();
 /** id → ContextTracker */
 const contexts = new Map();
+/** id → DiffTracker */
+const diffs = new Map();
 
 function loadConfig() {
   try {
@@ -68,6 +72,10 @@ function addMachine(cfg) {
   const c = new ContextTracker(m);
   contexts.set(m.id, c);
   c.on("change", () => broadcast(snapshotMessage(m)));
+  const d = new DiffTracker(m);
+  diffs.set(m.id, d);
+  d.on("change", () => broadcast(snapshotMessage(m)));
+  d.on("print", (sheet) => broadcast({ type: "print", machine: m.id, sheet }));
   m.on("status", () => broadcastMachines());
   m.on("snapshot", () => broadcast(snapshotMessage(m)));
   m.on("event", (event, data) => broadcast({ type: "event", machine: m.id, event, data }));
@@ -96,7 +104,8 @@ function machineInfos() {
 }
 
 function snapshotMessage(m) {
-  return { type: "snapshot", machine: m.id, snapshot: contexts.get(m.id)?.annotate(m.snapshot) ?? m.snapshot };
+  const snapshot = contexts.get(m.id)?.annotate(m.snapshot) ?? m.snapshot;
+  return { type: "snapshot", machine: m.id, snapshot: diffs.get(m.id)?.annotate(snapshot) ?? snapshot };
 }
 
 // ---------------------------------------------------------------- page
@@ -160,6 +169,7 @@ wss.on("connection", (ws) => {
   ws.send(JSON.stringify({ type: "machines", machines: machineInfos() }));
   for (const m of machines.values()) {
     if (m.snapshot) ws.send(JSON.stringify(snapshotMessage(m)));
+    ws.send(JSON.stringify({ type: "prints", machine: m.id, sheets: diffs.get(m.id)?.history() ?? [] }));
   }
 
   ws.on("message", async (raw) => {
@@ -189,6 +199,8 @@ wss.on("connection", (ws) => {
       m.stop();
       contexts.get(m.id)?.stop();
       contexts.delete(m.id);
+      diffs.get(m.id)?.stop();
+      diffs.delete(m.id);
       machines.delete(m.id);
       saveConfig();
       broadcastMachines();
@@ -240,6 +252,10 @@ wss.on("connection", (ws) => {
       if (!pane) return;
       const commands = await slashCommands(pane.agent ?? null, pane.foreground_cwd || pane.cwd, !m.ssh);
       ws.send(JSON.stringify({ type: "commands", machine: m.id, pane_id: msg.pane_id, agent: pane.agent ?? null, commands }));
+    } else if (msg.type === "uncommitted" && typeof msg.root === "string") {
+      // A printer's uncommitted view. Only checkouts a room is in are read (diffs.js).
+      const reply = (o) => ws.send(JSON.stringify({ type: "uncommitted", machine: m.id, root: msg.root, id: typeof msg.id === "number" ? msg.id : undefined, ...o }));
+      reply(await diffs.get(m.id).uncommitted(msg.root));
     } else if (msg.type === "refresh") {
       m.scheduleRefresh();
     } else if (msg.type === "create_desk" || msg.type === "create_room") {
@@ -414,6 +430,7 @@ function queueInput(ws, machine, paneId, ops, id) {
 function stopAll() {
   for (const m of machines.values()) m.stop();
   for (const c of contexts.values()) c.stop();
+  for (const d of diffs.values()) d.stop();
 }
 function shutdown(code = 0) {
   stopAll();

@@ -1,14 +1,19 @@
 // Desks and the people who sit at them. A desk node is created per pane; it
 // owns its own tick() so the scene just loops over them each frame.
+//
+// The person is drawn apart from the desk so an idle agent can leave it (see
+// roam.ts): chair, person and desk are three depth-sorted layers, and the
+// person takes clicks for its desk while away from it.
 
-import { Container, Graphics, Text, TextStyle, type PointData } from "pixi.js";
+import { Container, Graphics, Rectangle, Text, TextStyle, type PointData } from "pixi.js";
 import { CONTEXT_COLOR, contextLevel, contextShare } from "./context";
-import { hashStr, mix, shade, toScreen } from "./iso";
+import { depth, hashStr, mix, shade, toScreen } from "./iso";
 import type { Characters } from "../../shared/plugins/contracts";
 import { hex } from "../../shared/plugins/registry";
 import { defaultCharacters } from "./plugins/catalog";
-import type { Desk } from "./layout";
+import type { Desk, Spot } from "./layout";
 import { PALETTE, box, quadAlongX, shadow, type MaterialPalette } from "./props";
+import { facing, newRoam, poseOf, resumeRoam, settleRoam, spawnAway, stepRoam, vendProgress, type Home, type Lounge, type Pose, type Roam } from "./roam";
 import type { AgentStatus, ContextUsage } from "./types";
 
 export const STATUS_COLOR: Record<AgentStatus, number> = {
@@ -44,16 +49,26 @@ export interface CharState {
   phase: number;                 // animation clock (s)
   status: AgentStatus;
   lastChange: number;            // ms since epoch when status last changed
+  /** Where the agent is when it can leave its desk; kept across rebuilds like the rest. */
+  roam?: Roam;
 }
 
 export interface DeskNode {
+  /** The desk, its monitor and name tag; takes clicks for the desk. */
   root: Container;
+  /** Every container for the depth-sorted layer, root included. Each has its zIndex set. */
+  layers: Container[];
+  /** The person, when it can walk away from the desk; it takes clicks for the desk while away. */
+  person: Container | null;
   desk: Desk;
   state: CharState;
-  /** Screen-space point above the occupant's head (or monitor) for the selection marker. */
+  /** Screen-space point above the occupant's head (or monitor) for the selection marker. Follows a walking person. */
   anchor: PointData;
   tick(dt: number, now: number): void;
 }
+
+/** The room a person can roam: what it offers, and its corner in world tiles. */
+export interface Whereabouts { lounge: Lounge; origin: Spot }
 
 // ------------------------------------------------------------------ desk
 
@@ -127,9 +142,12 @@ export function makeEmptyDesk(desk: Desk, state: CharState, palette = PALETTE): 
   root.addChildAt(chair, 0);
   const tag = makeTag("shell", 0x9aa0b4, desk);
   root.addChild(tag);
+  root.zIndex = depth(desk.x, desk.y) * 10;
+  // Whoever sat here is gone; an agent started here later sits down fresh.
+  state.roam = undefined;
   const top = toScreen(desk.x + 0.5, desk.y + 0.24, 39);
   return {
-    root, desk, state, anchor: { x: top.x, y: top.y - 14 },
+    root, layers: [root], person: null, desk, state, anchor: { x: top.x, y: top.y - 14 },
     tick(dt) { state.phase += dt; drawScreen(parts, "off", state.phase); },
   };
 }
@@ -161,42 +179,105 @@ function contextMeter(context: ContextUsage, w: number): Graphics {
 
 // ------------------------------------------------------------------ character
 
-export function makeCharacter(desk: Desk, state: CharState, look: Characters = defaultCharacters, palette = PALETTE, reducedMotion = false): DeskNode {
+// How much higher the body is drawn off the desk chair: on a bench, or standing on its legs (px).
+const LIFT = 6;
+const SHOE = 0x1d1f29;
+const CANS = [0xe07a5f, 0x81b29a, 0x98c1d9, 0xf2cc8f, 0xee6c4d];
+
+/** Torso and head, `lift` px up from the seat or feet. `back`: seen from behind; `eye` -1/1: looking left/right. */
+function drawBody(g: Graphics, look: Characters, color: number, skin: number, hair: number, lift: number, back: boolean, eye: number) {
+  g.clear();
+  const y = -lift, e = eye * 1.2;
+  if (look.model === "robot") {
+    g.roundRect(-9, y - 26, 18, 22, 4).fill(skin).stroke({ color: shade(skin, 0.6), width: 1 });
+    g.roundRect(-11, y - 43, 22, 18, 5).fill(skin).stroke({ color: shade(skin, 0.6), width: 1 });
+    if (back) g.roundRect(-6, y - 38, 12, 7, 2).fill(shade(skin, 0.85));
+    else {
+      g.roundRect(-8 + e, y - 39, 16, 9, 3).fill(hex(look.visor));
+      g.circle(-4 + e, y - 35, 1.5).fill(color); g.circle(4 + e, y - 35, 1.5).fill(color);
+      g.roundRect(-5, y - 20, 10, 7, 2).fill(color);
+    }
+    g.moveTo(0, y - 43).lineTo(0, y - 48).stroke({ color: skin, width: 2 });
+    g.circle(0, y - 49, 2).fill(color);
+  } else {
+    g.ellipse(0, y - 15, 9.5, 12).fill(color).stroke({ color: shade(color, 0.6), width: 1 });   // torso
+    g.circle(0, y - 33, 7.5).fill(skin).stroke({ color: shade(skin, 0.7), width: 1 });         // head
+    if (back) g.circle(0, y - 33.5, 7.7).fill(hair);
+    else {
+      g.moveTo(-8, y - 34).arc(0, y - 34, 8, Math.PI, Math.PI * 2).closePath().fill(hair); // hair (explicit moveTo: arc() would otherwise start from a stale point)
+      g.circle(-2.6 + e, y - 33, 1).fill(0x222222);
+      g.circle(2.6 + e, y - 33, 1).fill(0x222222);
+    }
+  }
+}
+
+/** Legs off the desk chair: hanging from a bench or sofa, standing (with a shadow), or mid-stride. */
+function drawLegs(g: Graphics, pose: Pose, stride: number, pants: number) {
+  if (pose === "sit") {
+    // Seats face the room: knees forward, toward the viewer's left.
+    for (const s of [-1, 1]) {
+      g.moveTo(s * 3, -9).lineTo(s * 3 - 7, -6).lineTo(s * 3 - 7, 2.5).stroke({ color: pants, width: 4, cap: "round", join: "round" });
+      g.ellipse(s * 3 - 8, 3, 2.6, 1.5).fill(SHOE);
+    }
+    return;
+  }
+  g.ellipse(0, 0, 9, 4).fill({ color: 0x000000, alpha: 0.22 });
+  for (const s of [-1, 1]) {
+    const ph = stride + (s > 0 ? Math.PI : 0);
+    const up = pose === "walk" ? Math.max(0, Math.sin(ph)) * 2.5 : 0;
+    const x = s * 3 + (pose === "walk" ? Math.cos(ph) * 1.8 : 0);
+    g.moveTo(s * 3, -11).lineTo(x, -1.5 - up).stroke({ color: pants, width: 4, cap: "round" });
+    g.ellipse(x, -1 - up, 2.6, 1.5).fill(SHOE);
+  }
+}
+
+/**
+ * An agent at its desk. Given its room (`where`), an idle agent gets up and
+ * roams it (roam.ts) and comes back when there is work.
+ */
+export function makeCharacter(desk: Desk, state: CharState, look: Characters = defaultCharacters, palette = PALETTE, reducedMotion = false, where: Whereabouts | null = null): DeskNode {
   const pane = desk.pane;
   const root = new Container();
   const seed = hashStr(pane.pane_id);
   const color = kindColor(pane.agent);
   const skin = look.model === "robot" ? hex(look.shell) : hex(look.skin[seed % look.skin.length]!);
   const hair = hex(look.hair[(seed >>> 4) % look.hair.length]!);
+  const pants = look.model === "robot" ? shade(skin, 0.72) : shade(color, 0.42);
+  const can = CANS[(seed >>> 8) % CANS.length]!;
 
   // Chair behind the desk, then the person, then the desk in front.
+  const z = depth(desk.x, desk.y) * 10;
+  const back = new Container();
+  back.zIndex = z - 2;
+  back.eventMode = "none";
   const chair = new Graphics();
   shadow(chair, desk.x + 0.5, desk.y - 0.45, 16, 7, 0.25);
   box(chair, desk.x + 0.25, desk.y - 0.7, 0.5, 0.45, 8, palette.chair, 4);
   box(chair, desk.x + 0.25, desk.y - 0.7, 0.5, 0.1, 22, shade(palette.chair, 1.15), 4);
-  root.addChild(chair);
+  back.addChild(chair);
+  root.zIndex = z;
+
+  // In the chair, and the spot beside it to get up to; room-local, as roaming is.
+  const origin = where?.origin ?? { x: 0, y: 0 };
+  const home: Home = {
+    seat: { x: desk.x + 0.5 - origin.x, y: desk.y - 0.48 - origin.y },
+    stand: { x: desk.x - 0.25 - origin.x, y: desk.y - 0.45 - origin.y },
+  };
+  if (where) {
+    if (!state.roam || state.roam.room !== where.lounge.key) {
+      state.roam = newRoam(where.lounge.key, home);
+      if (state.status === "idle" && state.lastChange === 0) spawnAway(state.roam, where.lounge, home);
+    } else resumeRoam(state.roam, where.lounge, home);
+  }
+
+  // The person, drawn around its seat or feet (0, 0).
+  const person = new Container();
+  person.hitArea = new Rectangle(-13, -60, 26, 62);
+  person.eventMode = "none";
+  const legs = new Graphics(), body = new Graphics(), hands = new Graphics();
+  person.addChild(legs, body, hands);
 
   const p = toScreen(desk.x + 0.5, desk.y - 0.48);
-  const body = new Graphics();
-  if (look.model === "robot") {
-    body.roundRect(p.x - 9, p.y - 26, 18, 22, 4).fill(skin).stroke({ color: shade(skin, 0.6), width: 1 });
-    body.roundRect(p.x - 11, p.y - 43, 22, 18, 5).fill(skin).stroke({ color: shade(skin, 0.6), width: 1 });
-    body.roundRect(p.x - 8, p.y - 39, 16, 9, 3).fill(hex(look.visor));
-    body.circle(p.x - 4, p.y - 35, 1.5).fill(color); body.circle(p.x + 4, p.y - 35, 1.5).fill(color);
-    body.moveTo(p.x, p.y - 43).lineTo(p.x, p.y - 48).stroke({ color: skin, width: 2 });
-    body.circle(p.x, p.y - 49, 2).fill(color);
-    body.roundRect(p.x - 5, p.y - 20, 10, 7, 2).fill(color);
-  } else {
-    body.ellipse(p.x, p.y - 15, 9.5, 12).fill(color).stroke({ color: shade(color, 0.6), width: 1 });   // torso
-    body.circle(p.x, p.y - 33, 7.5).fill(skin).stroke({ color: shade(skin, 0.7), width: 1 });         // head
-    body.moveTo(p.x - 8, p.y - 34).arc(p.x, p.y - 34, 8, Math.PI, Math.PI * 2).closePath().fill(hair); // hair (explicit moveTo: arc() would otherwise start from a stale point)
-    body.circle(p.x - 2.6, p.y - 33, 1).fill(0x222222);
-    body.circle(p.x + 2.6, p.y - 33, 1).fill(0x222222);
-  }
-  root.addChild(body);
-  const hands = new Graphics();
-  root.addChild(hands);
-
   const parts = drawDeskFurniture(root, desk, seed, true, palette);
   root.addChild(makeTag(pane.agent ?? "agent", color, desk, pane.context));
 
@@ -206,8 +287,8 @@ export function makeCharacter(desk: Desk, state: CharState, look: Characters = d
   const bubbleText = new Text({ text: "", style: bubbleStyle });
   bubbleText.anchor.set(0.5);
   bubble.addChild(bubbleBg, bubbleText);
-  bubble.position.set(p.x + 16, p.y - 54);
-  root.addChild(bubble);
+  bubble.position.set(16, -54);
+  person.addChild(bubble);
 
   const glyphs = new Container();
   root.addChild(glyphs);
@@ -221,25 +302,25 @@ export function makeCharacter(desk: Desk, state: CharState, look: Characters = d
     bubbleBg.roundRect(-11, -11, 22, 22, 6).fill(c).stroke({ color: shade(c, 0.6), width: 1.5 });
     bubbleBg.poly([-4, 10, 4, 10, -2, 16]).fill(c);
     bubbleText.text = st === "blocked" ? "?" : st === "done" ? "✓" : st === "idle" ? "☕" : st === "unknown" ? "~" : "…";
-    root.alpha = st === "unknown" ? 0.6 : 1;
+    root.alpha = person.alpha = back.alpha = st === "unknown" ? 0.6 : 1;
     shown = st;
   };
   applyStatus();
 
-  const tick = (dt: number, now: number) => {
-    state.phase += reducedMotion ? 0 : dt * look.animation.tempo[state.status];
-    const t = state.phase;
-    const motion = reducedMotion ? 0 : look.animation.amplitude;
-    if (shown !== state.status) applyStatus();
-    hands.clear();
-    for (const g of glyphPool) g.visible = false;
-    drawScreen(parts, state.status, t);
+  const hand = (x: number, y: number) => hands.circle(x, y, 2.5).fill(skin);
+  const drink = (x: number, y: number) => {
+    hands.roundRect(x - 2, y - 7, 4, 6.5, 1).fill(can).stroke({ color: shade(can, 0.6), width: 0.8 });
+    hands.rect(x - 2, y - 7, 4, 1.2).fill(0xd0d4e2);
+    hand(x, y - 1.5);
+  };
 
+  /** In the chair: typing, leaning back, hand up, or bouncing with the news. */
+  const seated = (t: number, motion: number) => {
     switch (state.status) {
       case "working": {
         const l = Math.sin(t * 14) * 1.5 * motion, r = Math.sin(t * 14 + Math.PI) * 1.5 * motion;
-        hands.circle(p.x - 6, p.y - 5 + l, 2.5).fill(skin);
-        hands.circle(p.x + 6, p.y - 5 + r, 2.5).fill(skin);
+        hand(-6, -5 + l);
+        hand(6, -5 + r);
         body.y = Math.sin(t * 3) * 0.6 * motion;
         const cycle = (t * 0.9) % 1;
         glyphPool.forEach((g, i) => {
@@ -254,34 +335,105 @@ export function makeCharacter(desk: Desk, state: CharState, look: Characters = d
       }
       case "idle": {
         body.y = Math.sin(t * 1.4) * 1.2 * motion;
-        hands.circle(p.x + 7, p.y - 13 + Math.sin(t * 1.4) * 1.2, 2.5).fill(skin);
+        hand(7, -13 + Math.sin(t * 1.4) * 1.2);
         bubble.visible = true; bubble.alpha = 0.9; bubble.scale.set(1);
-        bubble.y = p.y - 54;
         break;
       }
       case "blocked": {
         bubble.visible = true; bubble.alpha = 1;
         bubble.scale.set(1 + Math.sin(t * 5) * 0.12 * motion);
-        bubble.y = p.y - 54;
-        hands.circle(p.x + 11, p.y - 31 + Math.sin(t * 5) * 1.5, 2.5).fill(skin);
+        hand(11, -31 + Math.sin(t * 5) * 1.5);
         body.y = 0;
         break;
       }
       case "done": {
         bubble.visible = true; bubble.alpha = 1; bubble.scale.set(1);
-        bubble.y = p.y - 54 - Math.abs(Math.sin(t * 3)) * 5 * motion;
+        bubble.y = -54 - Math.abs(Math.sin(t * 3)) * 5 * motion;
         body.y = -Math.abs(Math.sin(t * 3)) * 2 * motion;
         break;
       }
       default: {
         bubble.visible = true; bubble.alpha = 0.8; bubble.scale.set(1);
-        bubble.y = p.y - 54; body.y = 0;
+        body.y = 0;
       }
     }
+  };
+
+  /** Away from the desk: walking, at the vending machine, sitting down, or standing about with a drink. */
+  const roaming = (r: Roam, pose: Pose, t: number, motion: number) => {
+    const walking = pose === "walk";
+    const stride = r.clock * (r.hurry ? 17 : 10);
+    const sw = walking ? Math.sin(stride) * 2 : 0;
+    const bob = walking ? -Math.abs(Math.sin(stride)) * 1.4 : pose === "sit" ? Math.sin(t * 1.4) * 0.6 * motion : 0;
+    drawLegs(legs, pose, stride, pants);
+    body.y = bob;
+    const y = -13 - LIFT + bob;                                   // hands at the sides
+    if (state.status === "blocked") {
+      hand(-9.5, y - sw);
+      hand(11, -31 - LIFT + bob + Math.sin(t * 5) * 1.5);         // hand up, all the way back
+    } else if (!walking && r.goal.kind === "machine") {
+      const k = vendProgress(r);
+      if (k < 0.45) { hand(-7, -27 - LIFT); hand(9.5, y); }                          // choosing
+      else if (k < 0.7) { body.y = 3; hand(-6, -5 - LIFT); hand(9.5, y + 3); }       // stooping to the hatch
+      else { hand(-9.5, y); drink(9.5, y); }
+    } else if (r.carrying) {
+      hand(-9.5, y - sw);
+      if (!walking && r.clock % 6 > 5) drink(4, -28 - LIFT + bob);                   // a sip
+      else drink(9.5, y + sw);
+    } else {
+      hand(-9.5, y - sw);
+      hand(9.5, y + sw);
+    }
+    bubble.visible = state.status !== "working";
+    bubble.alpha = state.status === "idle" ? 0.9 : state.status === "unknown" ? 0.8 : 1;
+    bubble.scale.set(state.status === "blocked" ? 1 + Math.sin(t * 5) * 0.12 * motion : 1);
+    bubble.y = -54 - LIFT + bob - (state.status === "done" ? Math.abs(Math.sin(t * 3)) * 5 * motion : 0);
+  };
+
+  const anchor = { x: p.x, y: p.y - 46 };
+  let drawn = "";
+  let away = false;
+  const tick = (dt: number, now: number) => {
+    state.phase += reducedMotion ? 0 : dt * look.animation.tempo[state.status];
+    const t = state.phase;
+    const motion = reducedMotion ? 0 : look.animation.amplitude;
+    if (shown !== state.status) applyStatus();
+    const r = state.roam;
+    if (r && where) {
+      const idle = state.status === "idle";
+      if (reducedMotion) settleRoam(r, where.lounge, home, idle);
+      else stepRoam(r, where.lounge, home, idle, dt);
+    }
+    const pose: Pose = r && where ? poseOf(r) : "desk";
+    const lift = pose === "desk" ? 0 : LIFT;
+    const face = r && pose !== "desk" ? facing(r) : { back: false, left: false };
+    const key = `${pose}:${face.back}:${face.left}`;
+    if (key !== drawn) {
+      drawBody(body, look, color, skin, hair, lift, face.back, pose === "stand" || pose === "walk" ? (face.left ? -1 : 1) : 0);
+      drawn = key;
+    }
+
+    // In the chair, or wherever the walk has got to.
+    const at = r && where ? r.pos : home.seat;
+    const wx = origin.x + at.x, wy = origin.y + at.y;
+    const s = toScreen(wx, wy);
+    person.position.set(s.x, s.y);
+    // Between the chair and the desk while sitting there or getting up; elsewhere by depth, like the furniture.
+    const atDesk = pose === "desk" || (wx > desk.x - 0.45 && wx < desk.x + 1.1 && wy > desk.y - 0.75 && wy < desk.y);
+    person.zIndex = atDesk ? z - 1 : depth(wx, wy) * 10 + 1;
+    if (away !== (pose !== "desk")) { away = pose !== "desk"; person.eventMode = away ? "static" : "none"; }
+    anchor.x = s.x; anchor.y = s.y - 46 - lift;
+
+    hands.clear(); legs.clear();
+    for (const g of glyphPool) g.visible = false;
+    drawScreen(parts, state.status, t);
+    bubble.y = -54;
+    if (pose === "desk") seated(t, motion);
+    else roaming(r!, pose, t, motion);
     // Pop on status change
     const since = now - state.lastChange;
     if (!reducedMotion && since < 600) bubble.scale.set(1 + (1 - since / 600) * 0.6);
   };
 
-  return { root, desk, state, anchor: { x: p.x, y: p.y - 46 }, tick };
+  return { root, layers: [back, person, root], person, desk, state, anchor, tick };
 }

@@ -20,6 +20,8 @@ export interface WorkspaceInfo {
   active_tab_id: string;
   agent_status: AgentStatus;
   worktree?: WorktreeInfo | null;
+  /** Added by the bridge, not Herdr: the git checkout the room is in, whose edits its printer prints (bridge/diffs.js). */
+  git_root?: string | null;
 }
 
 export interface TabInfo {
@@ -82,6 +84,42 @@ export interface Snapshot {
   layouts: LayoutInfo[];
 }
 
+/** What changed in one file of a room's git checkout (bridge/diffs.js). */
+export interface FileDiff {
+  /** Relative to the checkout. */
+  path: string;
+  change: "added" | "modified" | "deleted" | "renamed";
+  /** Where a renamed file was. */
+  from?: string;
+  /** Not known to git yet (the uncommitted view only). */
+  untracked?: boolean;
+  added: number;
+  removed: number;
+  /** Unified hunks: "@@ -12,6 +12,7 @@" headers, then " ", "-" and "+" rows. Empty with a `note`. */
+  diff: string;
+  /** Rows were left off the end. */
+  truncated: boolean;
+  /** Why there is no diff (a binary or very large file). */
+  note?: string;
+}
+
+/** One edit to a file: a sheet out of the room's printer. */
+export interface DiffSheet extends FileDiff {
+  id: string;
+  /** The checkout it happened in; rooms find it by their `git_root`. */
+  root: string;
+  /** ms since epoch. */
+  at: number;
+}
+
+/** Everything not committed in a checkout: its diff against HEAD and the untracked files, by path. */
+export interface Uncommitted {
+  files: FileDiff[];
+  /** There was more than fits in one printout. */
+  incomplete: boolean;
+  error?: string;
+}
+
 /** One Herdr server; the office shows each as a floor. */
 export interface MachineInfo {
   id: string;
@@ -99,6 +137,10 @@ export type BridgeMessage =
   | { type: "machine_error"; message: string }
   | { type: "snapshot"; machine: string; snapshot: Snapshot }
   | { type: "event"; machine: string; event: string; data: unknown }
+  /** Every sheet a floor's printers hold, on connecting. */
+  | { type: "prints"; machine: string; sheets: DiffSheet[] }
+  | { type: "print"; machine: string; sheet: DiffSheet }
+  | ({ type: "uncommitted"; machine: string; root: string; id?: number } & Uncommitted)
   | { type: "pane_output"; machine: string; pane_id: string; text: string; revision: number; truncated: boolean; seq?: number }
   | { type: "input_ack"; machine: string; pane_id: string; id?: number }
   | { type: "commands"; machine: string; pane_id: string; agent: string | null; commands: SlashCommand[] }

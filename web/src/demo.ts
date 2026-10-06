@@ -8,11 +8,13 @@
 // made-up commands.
 // Build mode works too: new desks and rooms appear on the simulated floors.
 // Claude and Codex desks fill their context windows as they work and compact
-// when full, as the real bridge reports them.
+// when full, as the real bridge reports them. Printers print made-up edits
+// while their room's agents work, over a few sheets already on the tray, and
+// their uncommitted view is those edits plus a few from before the page came.
 
 import { kindColor } from "./character";
 import { keyOf, splitKey } from "./floors";
-import type { AgentStatus, InputOp, MachineInfo, PaneInfo, RoomSpec, SlashCommand, Snapshot } from "./types";
+import type { AgentStatus, DiffSheet, FileDiff, InputOp, MachineInfo, PaneInfo, RoomSpec, SlashCommand, Snapshot } from "./types";
 import type { BridgeApi, BridgeHandlers } from "./ws";
 
 const COLS = 100;
@@ -123,6 +125,33 @@ const SLASH: Record<string, SlashCommand[]> = {
 };
 const VERBS = ["Thinking", "Reading", "Editing", "Testing", "Refactoring", "Pondering", "Wiring", "Tidying"];
 const SPINNER = ["·", "✢", "✳", "✶", "✻", "✽"];
+// A working agent's chance, each tick, of saving a file (its room's printer prints it).
+const PRINT_CHANCE = 0.07;
+// Rows for made-up diffs, by kind of file.
+const SNIPPETS: Record<string, string[]> = {
+  ts: [
+    "export async function snapshot(machine: Machine) {", "  const res = await machine.request(\"session.snapshot\");", "  if (!res) return null;",
+    "  return res.snapshot;", "}", "const retries = opts.retries ?? 3;", "  await queue.drain();", "  if (!session) return null;",
+    "  return rows.map(toInvoice);", "  timeout: 30_000,", "  logger.warn(\"slow snapshot\", { ms });", "export function fit(scene: Scene) {",
+    "  clock = options.clock ?? Date;", "  for (const pane of panes) {", "    if (pane.agent_status === \"blocked\") blocked++;", "  }",
+    "import { backoff } from \"./retry\";", "  const page = Math.max(1, Number(query.page) || 1);", "  expect(res.status).toBe(200);",
+  ],
+  py: [
+    "def run(cases, model):", "    results = []", "    for case in cases:", "        score = grade(case, model)", "        results.append(score)",
+    "    return results", "import asyncio", "    await asyncio.sleep(backoff)", "CACHE_SIZE = 4096", "@lru_cache(maxsize=CACHE_SIZE)",
+    "def tokenize(text: str) -> list[int]:",
+  ],
+  md: [
+    "## Remote floors", "Floors are saved in `~/.config/kauak/machines.json`.", "Run `npx kauak` to start the office.", "",
+    "- **working**: typing at the desk", "- **blocked**: hand raised, waiting for you", "See the plugin guide for themes.",
+  ],
+  sql: [
+    "CREATE TABLE refunds (", "  id bigserial PRIMARY KEY,", "  invoice_id bigint NOT NULL REFERENCES invoices(id),",
+    "  amount_cents integer NOT NULL CHECK (amount_cents > 0),", "  created_at timestamptz NOT NULL DEFAULT now()", ");",
+    "CREATE INDEX refunds_invoice_idx ON refunds (invoice_id);",
+  ],
+  json: ['  "ws": "^8.18.0",', '  "vite": "^6.0.0",', '  "typescript": "^5.6.0",', '  "test": "vitest run",', '  "build": "vite build",'],
+};
 const COMMITS = [
   "Merge pull request #42 from feat/refunds", "Retry webhooks with backoff", "Fix the session timer race",
   "Add pagination to invoices", "Bump ws to 8.18",
@@ -172,6 +201,8 @@ const codexy = (p: DemoPane) => p.agent === "codex" || p.agent === "aider";
 
 export class DemoBridge implements BridgeApi {
   private floors: DemoFloor[] = [];
+  /** printer ("machine/<root>") → what is not committed there, by path */
+  private worktrees = new Map<string, Map<string, FileDiff>>();
 
   constructor(private h: BridgeHandlers) {
     const now = Date.now();
@@ -183,7 +214,7 @@ export class DemoBridge implements BridgeApi {
     setTimeout(() => {
       this.h.onStatus(true);
       this.pushMachines();
-      for (const f of this.floors) this.pushSnapshot(f);
+      for (const f of this.floors) { this.pushSnapshot(f); this.pushPrints(f); }
     }, 0);
     setInterval(() => this.tick(), TICK_MS);
   }
@@ -246,6 +277,7 @@ export class DemoBridge implements BridgeApi {
         floor.info.message = "";
         this.pushMachines();
         this.pushSnapshot(floor);
+        this.pushPrints(floor);
       }, 1400);
     }, 250);
     return true;
@@ -297,6 +329,17 @@ export class DemoBridge implements BridgeApi {
     return true;
   }
 
+  requestUncommitted(printer: string, id: number): boolean {
+    const { machine, id: root } = splitKey(printer);
+    setTimeout(() => {
+      const known = this.floors.some((f) => f.info.id === machine && f.rooms.some((r) => !r.plain && r.dir === root));
+      if (!known) return this.h.onUncommitted?.(printer, id, { files: [], incomplete: false, error: "That room is not in a git checkout." });
+      const files = [...(this.worktrees.get(printer)?.values() ?? [])].sort((a, b) => (a.path < b.path ? -1 : 1));
+      this.h.onUncommitted?.(printer, id, { files, incomplete: false });
+    }, 350);
+    return true;
+  }
+
   /** A new shell pane in `room`; an agent, if asked for, sits down there right away. */
   private addPane(floor: DemoFloor, room: DemoRoom, paneId: string, agent: string | null, id: number) {
     const pane = newPane(paneId, null, "idle", room, floor.host, Date.now());
@@ -315,6 +358,26 @@ export class DemoBridge implements BridgeApi {
 
   private pushSnapshot(f: DemoFloor) {
     if (f.info.state === "live") this.h.onSnapshot(f.info.id, snapshotOf(f));
+  }
+
+  /** What the floor's printers already printed: a few sheets in every room with agents, over edits from before. */
+  private pushPrints(f: DemoFloor) {
+    const now = Date.now();
+    const rooms = f.rooms.filter((r) => !r.plain && r.panes.some((p) => p.agent));
+    for (const r of rooms) for (let i = between(0, 3); i > 0; i--) this.record(f, fakeSheet(r, now - 3_600_000));
+    const sheets = rooms.flatMap((r) => Array.from({ length: between(1, 6) }, () => fakeSheet(r, now - between(60_000, 40 * 60_000))));
+    for (const s of sheets) this.record(f, s);
+    this.h.onPrints?.(f.info.id, sheets.sort((a, b) => a.at - b.at));
+  }
+
+  /** A made-up edit joins its room's uncommitted changes. */
+  private record(f: DemoFloor, sheet: DiffSheet) {
+    const key = keyOf(f.info.id, sheet.root);
+    let tree = this.worktrees.get(key);
+    if (!tree) this.worktrees.set(key, (tree = new Map()));
+    const { id: _id, root: _root, at: _at, ...file } = sheet;
+    const prev = tree.get(file.path);
+    tree.set(file.path, prev ? { ...prev, added: prev.added + file.added, removed: prev.removed + file.removed, diff: `${prev.diff}\n${file.diff}` } : file);
   }
 
   private find(key: string) {
@@ -365,6 +428,16 @@ export class DemoBridge implements BridgeApi {
         else startTask(p, pick(TASKS), now);
       }
       if (changed) this.pushSnapshot(f);
+      if (f.info.state !== "live") continue;
+      for (const r of f.rooms) {
+        if (r.plain) continue;
+        for (const p of r.panes) {
+          if (!p.agent || p.status !== "working" || Math.random() >= PRINT_CHANCE) continue;
+          const sheet = fakeSheet(r, now);
+          this.record(f, sheet);
+          this.h.onPrint?.(f.info.id, sheet);
+        }
+      }
     }
   }
 
@@ -651,7 +724,7 @@ function snapshotOf(f: DemoFloor): Snapshot {
     focused_workspace_id: focusedRoom?.id ?? null, focused_tab_id: focusedRoom ? `${focusedRoom.id}:t1` : null, focused_pane_id: f.focused,
     workspaces: f.rooms.map((r) => ({
       workspace_id: r.id, number: r.number, label: r.label ?? (r.branch || r.repo), focused: r === focusedRoom, pane_count: r.panes.length, tab_count: 1,
-      active_tab_id: `${r.id}:t1`, agent_status: worst(r.panes),
+      active_tab_id: `${r.id}:t1`, agent_status: worst(r.panes), git_root: r.plain ? null : r.dir,
       worktree: r.plain ? null : { repo_key: `${f.info.id}:${r.repo}`, repo_name: r.repo, repo_root: repoRoot(r), checkout_path: r.dir, is_linked_worktree: r.dir !== repoRoot(r) },
     })),
     tabs: f.rooms.map((r) => ({
@@ -663,6 +736,28 @@ function snapshotOf(f: DemoFloor): Snapshot {
       panes: r.panes.map((p, i) => ({ pane_id: p.id, focused: p.id === f.focused, rect: { x: i * COLS, y: 0, width: COLS, height: ROWS } })),
     })),
   };
+}
+
+let sheetSeq = 0;
+
+/** A made-up edit in `room`: a hunk or two in a file, or now and then a new one. */
+function fakeSheet(room: DemoRoom, at: number): DiffSheet {
+  const path = pick(FILES);
+  const pool = SNIPPETS[path.split(".").pop()!] ?? SNIPPETS.ts!;
+  const rows = (n: number, sign: string) => Array.from({ length: n }, () => sign + pick(pool));
+  const base = { id: `demo-${++sheetSeq}`, root: room.dir, path, truncated: false, at };
+  if (Math.random() < 0.12) {
+    const lines = rows(between(4, 14), "+");
+    return { ...base, change: "added", added: lines.length, removed: 0, diff: [`@@ -0,0 +1,${lines.length} @@`, ...lines].join("\n") };
+  }
+  const out: string[] = [];
+  let added = 0, removed = 0, at0 = between(6, 120);
+  for (let h = between(1, 3); h > 0; h--) {
+    const del = between(0, 4), add = between(del ? 0 : 1, 6);
+    out.push(`@@ -${at0},${del + 6} +${at0 + added - removed},${add + 6} @@`, ...rows(3, " "), ...rows(del, "-"), ...rows(add, "+"), ...rows(3, " "));
+    added += add; removed += del; at0 += del + 6 + between(10, 60);
+  }
+  return { ...base, change: "modified", added, removed, diff: out.join("\n") };
 }
 
 /** Rooms for a floor added from the elevator. */

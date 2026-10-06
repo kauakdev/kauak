@@ -18,13 +18,23 @@ or run it on your own agents with `npx kauak`.
 Agent lifecycle states drive the animation:
 
 - **working**: typing, code glyphs float up from the laptop
-- **idle**: leaning back with a coffee bubble
+- **idle**: on a break, away from the desk under a `☕` bubble: gets up for a
+  drink at the room's vending machine, then sits on the bench or a lounge sofa
+  or stands around the room with it. An empty chair means a free agent.
 - **blocked**: hand raised, `?` bubble pulses, room outline pulses red
 - **done**: `✓` bubble hops until the pane is seen
 - **unknown**: greyed out
 
+An agent on a break hurries back to its desk as soon as it has work or a
+question (its bubble already shows the new status on the way), and one first
+seen idle is already somewhere on its break. People walk around the furniture
+and never share a seat or queue at the machine. Click one anywhere in the room
+to select its desk. With reduced motion nobody walks: idle agents are simply
+on the bench, a sofa or at the machine.
+
 Each room is a raised platform with windows, a whiteboard or poster, a rug,
-plants, a bookshelf and a lounge in any spare desk cell. Wings get a floor tint
+plants, a bookshelf, a vending machine, a bench under the windows and a lounge
+in any spare desk cell. Wings get a floor tint
 and a sign with room/desk/agent counts; room plaques show one status dot per
 desk. Monitors show scrolling code while an agent works and a blinking prompt
 when the desk is empty.
@@ -46,6 +56,29 @@ since Codex started there (two Codex panes in one folder get no meter, rather
 than a guess). Claude's window is 1M
 tokens, or 200k on Haiku and models up to 4.5 unless Claude Code runs them with
 1M (`[1m]`).
+
+**Printers**: every room in a git checkout has a printer by the back wall.
+Each time a file there changes, it prints a sheet with what that edit changed
+(not the file's whole diff): the sheet slides out onto the tray, the printer's
+light turns amber and a badge counts the sheets nobody has read. Hover the
+printer for the latest file, click it to pick the newest sheet up off the tray
+and read it: the file, `+`/`−` counts and the numbered diff. ←/→ leaf through
+older and newer sheets, and Esc or a click beside the page puts it back down.
+The **Uncommitted** tab under the page (or `U`) prints everything not
+committed in the checkout right now instead: its diff against the last commit,
+staged or not, and the untracked files, as one long printout with a list of
+files at the top and a page per file (←/→ go from file to file). It is read
+when the tab opens and again whenever another sheet lands, so it also shows
+changes made before the bridge started; a printer with nothing printed yet
+opens on it.
+The bridge finds a room's checkout from its worktree (or first pane's folder),
+looks at it every 2 seconds with `git status` (without taking git's index
+lock), and compares each changed file with the last version it saw, the first
+time the one in `HEAD`. Changes already there when the bridge starts print no
+sheets, rooms in one checkout share its sheets, and the last 50 are kept. On a
+remote floor the bridge runs git and reads the files over SSH with a small
+Python script (`bridge/diffs_remote.py`, run with the machine's `python3`, like
+the context meters; nothing is installed there).
 
 Around the canvas:
 
@@ -241,6 +274,16 @@ panes in each snapshot, from the last token count in the agent's transcript,
 and sends the snapshot again when that count changes. For a remote floor it
 keeps one more SSH connection open, running `bridge/context_remote.py` there,
 and asks it for the counts in JSON lines.
+`bridge/diffs.js` adds `git_root` to every workspace in a git checkout and
+sends `{ "type": "print", "machine": "local", "sheet": {...} }` for each file
+edit there (path, change, counts and unified hunks), plus
+`{ "type": "prints", "machine": "local", "sheets": [...] }` with the ones kept
+so far when a page connects. A page asks for a printer's uncommitted view with
+`{ "type": "uncommitted", "machine": "local", "root": "<git_root>", "id": 1 }`
+and gets `{ "type": "uncommitted", ..., "files": [...], "incomplete": false }`
+back, one entry per file; only checkouts a room is in are read. On a remote
+floor it does its git and file reads through `bridge/diffs_remote.py` over its
+own SSH connection; `bridge/remote.js` runs both remote scripts.
 Clients send `{ "type": "focus", "machine": "local", "pane_id": "w1:p1" }` to
 focus a pane, `{ "type": "read", "machine": "local", "pane_id": "w1:p1" }` to
 get the pane's visible viewport as ANSI text (`pane.read`; add
@@ -261,8 +304,14 @@ floor switcher. `web/src/layout.ts` turns a snapshot into a floor plan in tile u
 and walls, depth-sorted objects, selection overlay, labels, dust). Furniture
 lives in `web/src/props.ts` and desks/people in `web/src/character.ts`; every
 visual is drawn procedurally today so sprites can replace the helpers one at a
-time. `web/src/hud.ts` owns the HTML roster, stats and activity feed, and only
-updates when the bridge pushes something new.
+time. `web/src/roam.ts` decides where idle agents go and walks them there
+round the furniture (A* on a quarter-tile grid per room), in room-local
+positions so a walk carries on when a snapshot rebuilds the office. `web/src/hud.ts` owns the HTML roster, stats and activity feed, and only
+updates when the bridge pushes something new. `web/src/prints.ts` holds every
+printer's sheets and queues new ones for the scene to print one at a time;
+`web/src/printout.ts` is the page you read them on, which flies up from the
+tray with one CSS transform list (the office's 2:1 view of a flat sheet is
+`rotateX(60deg) rotateZ(45deg)`).
 
 ## License
 

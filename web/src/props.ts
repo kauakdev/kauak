@@ -116,6 +116,40 @@ export function coffeeTable(g: Graphics, x: number, y: number, palette: Material
   g.rect(c.x + 1, c.y - 4, 7, 4).fill(0xc7a97a);
 }
 
+/** A drinks machine against a side wall (constant x), its front facing +x. Footprint 0.5 × 0.75. */
+export function vendingMachine(g: Graphics, x: number, y: number, body: number, glow: number, accent: number) {
+  const w = 0.5, f = x + w + 0.002;
+  shadow(g, x + 0.3, y + 0.4, 17, 9, 0.25);
+  box(g, x, y, w, 0.75, 36, body);
+  // glass front with three shelves of drinks
+  quadAlongY(g, f, y + 0.07, y + 0.5, 12, 31).fill(0x141c2c).stroke({ color: shade(body, 0.55), width: 1 });
+  quadAlongY(g, f, y + 0.09, y + 0.48, 13, 30).fill({ color: glow, alpha: 0.16 });
+  const drinks = [0xe07a5f, 0xf2cc8f, 0x81b29a, 0x98c1d9, 0xee6c4d, 0xd9a5b3];
+  for (let row = 0; row < 3; row++) {
+    const z = 15 + row * 5.5;
+    const a = toScreen(f, y + 0.09, z - 0.5), b = toScreen(f, y + 0.48, z - 0.5);
+    g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color: shade(body, 1.3), width: 1, alpha: 0.5 });
+    for (let k = 0; k < 3; k++) {
+      const p = toScreen(f, y + 0.16 + k * 0.12, z);
+      g.roundRect(p.x - 1.6, p.y - 4, 3.2, 4, 0.8).fill(drinks[(row * 3 + k * 2) % drinks.length]!);
+    }
+  }
+  // keypad, coin slot, the hatch the drink drops into, a lit sign on top
+  quadAlongY(g, f, y + 0.55, y + 0.69, 17, 31).fill(shade(body, 0.6));
+  for (let k = 0; k < 4; k++) { const p = toScreen(f, y + 0.62, 20 + k * 2.6); g.circle(p.x, p.y, 0.9).fill(accent); }
+  const slot = toScreen(f, y + 0.62, 15);
+  g.rect(slot.x - 0.6, slot.y - 2, 1.2, 2.5).fill(0x0b0e15);
+  quadAlongY(g, f, y + 0.14, y + 0.46, 3, 8).fill(0x0b0e15).stroke({ color: shade(body, 0.5), width: 1 });
+  quadAlongY(g, f, y + 0.05, y + 0.7, 32.5, 35).fill({ color: glow, alpha: 0.9 });
+}
+
+/** A low bench against the back wall (constant y), `w` tiles long. */
+export function bench(g: Graphics, x: number, y: number, w: number, palette: MaterialPalette = PALETTE) {
+  shadow(g, x + w / 2, y + 0.2, w * 17, 6, 0.2);
+  for (const lx of [x + 0.08, x + w - 0.16]) box(g, lx, y + 0.06, 0.08, 0.22, 5, palette.metal);
+  box(g, x, y, w, 0.34, 3, palette.wood, 5);
+}
+
 export function rug(g: Graphics, x: number, y: number, w: number, d: number, color: number) {
   floorPoly(g, x, y, w, d, 0.5).fill({ color, alpha: 0.32 });
   floorPoly(g, x + 0.12, y + 0.12, w - 0.24, d - 0.24, 0.5).stroke({ color, alpha: 0.4, width: 1 });
@@ -124,6 +158,88 @@ export function rug(g: Graphics, x: number, y: number, w: number, d: number, col
 export function lightPool(g: Graphics, x: number, y: number, rx: number, ry: number, color = 0xfff2d0, intensity = 0.105) {
   const c = toScreen(x, y, 0.5);
   for (let i = 3; i >= 1; i--) g.ellipse(c.x, c.y, rx * (i / 3), ry * (i / 3)).fill({ color, alpha: intensity / 3 });
+}
+
+// ------------------------------------------------------------------ printer
+//
+// The room's printer (scene.ts): a printer on a low stand, paper standing in
+// its feed at the back and printed sheets landing on a tray in front of it
+// (+y). The sheets and the light are drawn apart, so the scene can animate them.
+
+/** Its footprint from its back corner, in tiles; where a sheet lies on the tray; heights in px. */
+export const PRINTER = {
+  w: 0.6, d: 0.84,
+  sheet: { x: 0.15, y: 0.47, w: 0.3, d: 0.33 },
+  slotY: 0.443, slotZ: 16.2,
+  trayZ: 11.9, sheetH: 0.6, stackMax: 6,
+};
+const PRINTER_BODY = 0xe2e5ed;
+const PAPER = 0xfbfaf5;
+const PAPER_EDGE = 0xb4b0a4;
+
+export function printer(g: Graphics, x: number, y: number, palette: MaterialPalette = PALETTE) {
+  shadow(g, x + 0.3, y + 0.42, 18, 9, 0.24);
+  // A small cabinet to stand on
+  box(g, x, y, 0.6, 0.46, 11, palette.metal);
+  const s0 = toScreen(x + 0.3, y + 0.46, 2), s1 = toScreen(x + 0.3, y + 0.46, 9.5);
+  g.moveTo(s0.x, s0.y).lineTo(s1.x, s1.y).stroke({ color: shade(palette.metal, 0.55), width: 1 });
+  for (const hx of [0.25, 0.35]) { const h = toScreen(x + hx, y + 0.46, 7); g.circle(h.x, h.y, 0.9).fill(0xd0d4e2); }
+  // Body, with paper standing in the feed at the back and a control panel
+  box(g, x + 0.02, y + 0.02, 0.56, 0.42, 9, PRINTER_BODY, 11);
+  floorPoly(g, x + 0.1, y + 0.05, 0.36, 0.16, 20.02).fill(shade(PRINTER_BODY, 0.72));
+  const a = toScreen(x + 0.13, y + 0.15, 20), b = toScreen(x + 0.43, y + 0.15, 20), c = toScreen(x + 0.43, y + 0.07, 28), d = toScreen(x + 0.13, y + 0.07, 28);
+  g.poly([a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y]).fill(PAPER).stroke({ color: PAPER_EDGE, width: 0.8 });
+  floorPoly(g, x + 0.4, y + 0.27, 0.15, 0.14, 20.02).fill(0x2a2e3f);
+  // The slot sheets come out of, and the tray they land on
+  quadAlongX(g, x + 0.1, x + 0.5, y + PRINTER.slotY, PRINTER.slotZ - 0.9, PRINTER.slotZ + 0.9).fill(0x1c1f2b);
+  box(g, x + 0.1, y + 0.44, 0.4, 0.4, 0.7, shade(PRINTER_BODY, 0.82), PRINTER.trayZ - 0.7);
+}
+
+/** The printer's light, on its control panel. */
+export function printerLight(g: Graphics, x: number, y: number, color: number, glow: boolean) {
+  const p = toScreen(x + 0.49, y + 0.34, 20.3);
+  if (glow) g.ellipse(p.x, p.y, 5, 2.8).fill({ color, alpha: 0.28 });
+  g.ellipse(p.x, p.y, 2.2, 1.3).fill(color);
+}
+
+/** Height of the top of `n` sheets on the tray (only a few are drawn). */
+export function paperTop(n: number): number {
+  return PRINTER.trayZ + Math.min(n, PRINTER.stackMax) * PRINTER.sheetH;
+}
+
+/** `n` printed sheets on the tray, the top one with rows of print. */
+export function paperStack(g: Graphics, x: number, y: number, n: number) {
+  const s = PRINTER.sheet, shown = Math.min(n, PRINTER.stackMax);
+  for (let i = 0; i < shown; i++) {
+    const jx = (((i * 7919) % 5) - 2) * 0.01, jy = (((i * 104729) % 5) - 2) * 0.008;
+    const z = paperTop(i + 1);
+    floorPoly(g, x + s.x + jx, y + s.y + jy, s.w, s.d, z).fill(i % 2 ? PAPER : shade(PAPER, 0.95)).stroke({ color: PAPER_EDGE, width: 0.6 });
+    if (i === shown - 1) printRows(g, x + s.x + jx, y + s.y + jy, z, 1);
+  }
+}
+
+/**
+ * The sheet being printed: `out` (0..1) of it is out of the slot, and it has
+ * fallen `fall` (0..1) of the way from the slot onto `landZ`.
+ */
+export function printingSheet(g: Graphics, x: number, y: number, out: number, fall: number, landZ: number) {
+  const s = PRINTER.sheet;
+  const sy = y + PRINTER.slotY + (s.y - PRINTER.slotY) * fall;
+  const z = PRINTER.slotZ + (landZ - PRINTER.slotZ) * fall;
+  floorPoly(g, x + s.x, sy, s.w, s.d * out, z).fill(PAPER).stroke({ color: PAPER_EDGE, width: 0.6 });
+  printRows(g, x + s.x, sy, z, out);
+}
+
+/** Rows of a diff on a sheet lying at height z, as far as `share` (0..1) of it is out. */
+function printRows(g: Graphics, x: number, y: number, z: number, share: number) {
+  const lens = [0.17, 0.12, 0.2, 0.2, 0.09, 0.15];
+  const ink = [0x3d4256, 0x8a8f9e, 0x2f9e44, 0xd9480f, 0x8a8f9e, 0x8a8f9e];
+  lens.forEach((len, k) => {
+    const ry = y + 0.05 + k * 0.045;
+    if (ry > y + PRINTER.sheet.d * share - 0.02) return;
+    const a = toScreen(x + 0.04 + (k === 1 || k === 4 ? 0.03 : 0), ry, z), b = toScreen(x + 0.04 + len, ry, z);
+    g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color: ink[k]!, width: 0.8, alpha: 0.9 });
+  });
 }
 
 // ------------------------------------------------------------------ wall décor

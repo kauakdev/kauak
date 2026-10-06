@@ -3,6 +3,8 @@ import { Elevator } from "./elevator";
 import { EMPTY_SNAPSHOT, floorOf, keyOf, mergeSnapshots, namespaceSnapshot, type Floor } from "./floors";
 import { Hud } from "./hud";
 import { TerminalPanel } from "./panel";
+import { Prints } from "./prints";
+import { Printout } from "./printout";
 import { Radio } from "./radio";
 import { AppearanceSettings } from "./plugins/settings";
 import { OfficeBackground } from "./plugins/background";
@@ -19,6 +21,12 @@ const background = new OfficeBackground(document.getElementById("app")!);
 const appearance = new AppearanceSettings(scene, background);
 await appearance.restoreBanner();
 const panel = new TerminalPanel();
+// Every room's printer: a sheet per file edit, picked up and read in the printout.
+const prints = new Prints();
+scene.prints = prints;
+const printout = new Printout(prints);
+scene.onOpenPrinter = (key, room, label) => printout.open(key, label, () => scene.printerTray(key, room));
+printout.request = (key, id) => bridge.requestUncommitted(key, id);
 const banner = document.getElementById("floor-banner")!;
 
 // Floors in bridge order (1F first); snapshots are namespaced (see floors.ts).
@@ -110,6 +118,9 @@ const handlers: BridgeHandlers = {
   onMachineError: (message) => elevator.showError(message),
   onCreated: (pane, id) => build.created(pane, id),
   onCreateError: (message, id, pane) => build.failed(message, id, pane),
+  onPrints: (machine, sheets) => prints.reset(machine, sheets),
+  onPrint: (machine, sheet) => prints.add(machine, sheet),
+  onUncommitted: (key, id, result) => printout.receive(key, id, result),
 };
 const bridge: BridgeApi = demo ? new (await import("./demo")).DemoBridge(handlers) : new Bridge(handlers);
 
@@ -130,10 +141,10 @@ panel.onRead = (id, seq, lines) => bridge.readPane(id, seq, lines);
 panel.onInput = (id, ops, inputId) => bridge.sendInput(id, ops, inputId);
 panel.onListCommands = (id) => bridge.listCommands(id);
 // Global shortcuts stay off while the terminal or the build form has the keyboard.
-const typing = () => panel.isTyping() || build.hasFocus() || appearance.isOpen();
+const typing = () => panel.isTyping() || build.hasFocus() || appearance.isOpen() || printout.isOpen();
 hud.isTyping = typing;
 elevator.isTyping = typing;
-build.isTyping = () => panel.isTyping() || appearance.isOpen();
+build.isTyping = () => panel.isTyping() || appearance.isOpen() || printout.isOpen();
 const radio = new Radio();
 radio.isTyping = typing;
 panel.onFocus = (id) => bridge.focusPane(id);

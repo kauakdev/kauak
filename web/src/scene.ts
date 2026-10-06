@@ -7,16 +7,22 @@
 //
 // Build mode adds "+" slots to the objects layer: a new desk in every room, a
 // new room at the end of every wing and one below them all (see layout.ts).
+//
+// A room in a git checkout has a printer, which prints a sheet for every file
+// edit there (prints.ts); clicking it opens the sheets (printout.ts).
 
 import { Application, Container, Graphics, Matrix, Polygon, Sprite, Text, TextStyle, Texture } from "pixi.js";
 import type { BrandBanner, Characters, Theme } from "../../shared/plugins/contracts";
 import { hex, resolveAnchor } from "../../shared/plugins/registry";
 import { defaultCharacters, defaultTheme } from "./plugins/catalog";
-import { STATUS_COLOR, kindColor, makeCharacter, makeEmptyDesk, type CharState, type DeskNode } from "./character";
+import { STATUS_COLOR, kindColor, makeCharacter, makeEmptyDesk, type CharState, type DeskNode, type Whereabouts } from "./character";
 import { contextText } from "./context";
 import { TILE_W, depth, hashStr, mix, rng, shade, toScreen, type Pt } from "./iso";
 import { CELL, WALL, buildOffice, type Desk, type Office, type Plot, type Room, type Spot, type Wing } from "./layout";
 import * as P from "./props";
+import { printerOf, type Prints } from "./prints";
+import type { Tray } from "./printout";
+import { makeLounge, whereabouts, type Block, type Seat } from "./roam";
 import type { PaneInfo, Snapshot } from "./types";
 
 
@@ -26,7 +32,9 @@ const wingStyle = new TextStyle({ fill: 0xffd166, fontSize: 15, fontFamily: "ui-
 const wingSubStyle = new TextStyle({ fill: 0xaab0c8, fontSize: 11, fontFamily: "ui-sans-serif, system-ui, sans-serif" });
 const slotStyle = new TextStyle({ fill: 0xffd166, fontSize: 12, fontFamily: "ui-sans-serif, system-ui, sans-serif", fontWeight: "700", letterSpacing: 0.5 });
 const plusStyle = new TextStyle({ fill: 0x1a1a1a, fontSize: 16, fontFamily: "ui-sans-serif, system-ui, sans-serif", fontWeight: "800" });
+const printBadgeStyle = new TextStyle({ fill: 0x1a1a1a, fontSize: 11, fontFamily: "ui-sans-serif, system-ui, sans-serif", fontWeight: "800" });
 const BUILD = 0xffd166;
+const VENDING = 0xb8433a;
 
 // A desk's floor footprint (chair, person, desk and name tag), in tiles from the desk's corner.
 const DESK_FOOT = { dx: -0.35, dy: -1.0, w: 1.7, d: 2.0 };
@@ -34,6 +42,13 @@ const DESK_FOOT = { dx: -0.35, dy: -1.0, w: 1.7, d: 2.0 };
 const DESK_HIT_H = 60;
 // A press that moves further than this (px) is a pan, not a click.
 const DRAG_SLOP = 4;
+// One sheet through the printer; sheets that pile up past the last few (a floor
+// nobody was looking at, a big refactor) go straight onto the tray.
+const PRINT_MS = 1700;
+const PRINT_BACKLOG = 3;
+// How far above its footprint the printer stays clickable (px): up to its badge.
+const PRINTER_HIT_H = 52;
+const PRINTER_LIGHT = { idle: 0x3fbf6a, printing: 0x8dffa8, unread: 0xffd166 };
 
 function floorTile(g: Graphics, x: number, y: number, color: number) {
   P.floorPoly(g, x, y, 1, 1).fill(color).stroke({ color: shade(color, 0.82), width: 1 });
@@ -80,8 +95,31 @@ export type BuildTarget = { kind: "desk"; room: Room } | { kind: "room"; wing: W
 /** A "+" slot on screen. `key` stays the same across rebuilds, like a pane id. */
 interface Slot { root: Container; key: string; target: BuildTarget; badge: Container; badgeY: number }
 
-/** What a pointer is on: a desk or a build-mode slot. */
-type Hit = { key: string; pane: PaneInfo } | { key: string; slot: Slot };
+/** A room's printer. Rooms in one checkout share its sheets (`key`), each with a printer of its own. */
+interface PrinterNode {
+  key: string;
+  room: string;
+  label: string;
+  /** Back corner, world tiles. */
+  at: Spot;
+  root: Container;
+  /** Hums while it prints. */
+  body: Container;
+  stack: Graphics;
+  sheet: Graphics;
+  light: Graphics;
+  badge: Container;
+  badgeBg: Graphics;
+  badgeText: Text;
+  badgeY: number;
+  /** What is drawn now, to redraw only on a change. */
+  shown: number;
+  unread: number;
+  lit: string;
+}
+
+/** What a pointer is on: a desk, a printer or a build-mode slot. */
+type Hit = { key: string; pane: PaneInfo } | { key: string; printer: PrinterNode } | { key: string; slot: Slot };
 
 export class OfficeScene {
   readonly app = new Application();
@@ -121,12 +159,19 @@ export class OfficeScene {
   private reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   private building = false;
   private slots: Slot[] = [];
+  private printers: PrinterNode[] = [];
+  /** printer key → when its current sheet started printing; kept across rebuilds. */
+  private printJobs = new Map<string, number>();
+  /** What the printers print; set by the page. */
+  prints: Prints | null = null;
   onSelectPane: (pane: PaneInfo) => void = () => {};
   onHoverPane: (paneId: string | null) => void = () => {};
   /** A click on the office itself, away from every desk. */
   onEmptyClick: () => void = () => {};
   /** A click on a build-mode slot, at screen point (x, y). */
   onBuild: (target: BuildTarget, x: number, y: number) => void = () => {};
+  /** A click on a room's printer. */
+  onOpenPrinter: (key: string, room: string, label: string) => void = () => {};
 
   async init(host: HTMLElement) {
     await this.app.init({ resizeTo: host, antialias: true, background: hex(this.theme.palette.background), backgroundAlpha: 0, resolution: devicePixelRatio, autoDensity: true });
@@ -199,6 +244,7 @@ export class OfficeScene {
       if (hit.key !== press.hit) return;
       this.tip.style.display = "none"; // a panel or form is about to cover the pointer
       if ("pane" in hit) this.onSelectPane(hit.pane);
+      else if ("printer" in hit) this.onOpenPrinter(hit.printer.key, hit.printer.room, hit.printer.label);
       else this.onBuild(hit.slot.target, e.global.x, e.global.y);
     });
     stage.on("pointerupoutside", () => (drag = null));
@@ -327,6 +373,7 @@ export class OfficeScene {
       for (const child of layer.removeChildren()) child.destroy({ children: true });
     this.nodes = [];
     this.slots = [];
+    this.printers = [];
     this.blockedRooms = [];
     // The object under the tooltip is gone; Pixi re-sends pointerover to its replacement.
     this.tip.style.display = "none";
@@ -451,30 +498,201 @@ export class OfficeScene {
     if (anyBlocked) this.blockedRooms.push({ g: outline, base: Math.random() * 6 });
     this.floor.addChild(g, wall, outline);
 
-    this.drawRoomProps(room, r);
+    // What people walk around (room-local), and the desks themselves, where nobody stops to stand.
+    const blocks: Block[] = [], avoid: Block[] = [], seats: Seat[] = [];
+    for (const d of [...room.desks, ...(room.slot ? [room.slot] : [])]) {
+      const x = d.x - room.x, y = d.y - room.y;
+      blocks.push({ x, y, w: 1, d: 0.7 }, { x: x + 0.25, y: y - 0.7, w: 0.5, d: 0.45 });
+      avoid.push({ x: x + DESK_FOOT.dx, y: y + DESK_FOOT.dy, w: DESK_FOOT.w, d: DESK_FOOT.d + 0.4 });
+    }
+    this.drawRoomProps(room, r, blocks, seats);
+    const printer = printerOf(room.workspace);
+    if (printer) this.drawPrinter(room, printer, blocks);
+    const machine = this.drawBreakArea(room, g, blocks, seats);
+    const lounge = makeLounge(room.workspace.workspace_id, room.w, room.h, blocks, machine, seats, avoid);
     this.drawRoomPlaque(room);
-    for (const desk of room.desks) this.drawDesk(desk, now);
+    // States first: everyone in the room is a member of its lounge before anyone picks a seat.
+    const states = room.desks.map((d) => this.stateFor(d.pane, now));
+    lounge.members = states.filter((_, i) => room.desks[i]!.pane.agent);
+    const where: Whereabouts = { lounge, origin: { x: room.x, y: room.y } };
+    room.desks.forEach((desk, i) => this.drawDesk(desk, states[i]!, where));
     if (room.slot) this.drawDeskSlot(room, room.slot);
   }
 
-  private drawRoomProps(room: Room, r: () => number) {
-    const add = (draw: (g: Graphics) => void, x: number, y: number) => {
-      const g = new Graphics(); draw(g); g.zIndex = depth(x, y) * 10; g.eventMode = "none"; this.objects.addChild(g);
-    };
+  /** A depth-sorted prop; `foot` (world tiles) is added to the room's `blocks` for people to walk around. */
+  private addProp(draw: (g: Graphics) => void, x: number, y: number, foot?: { room: Room; blocks: Block[]; w: number; d: number }) {
+    const g = new Graphics(); draw(g); g.zIndex = depth(x, y) * 10; g.eventMode = "none"; this.objects.addChild(g);
+    if (foot) foot.blocks.push({ x: x - foot.room.x, y: y - foot.room.y, w: foot.w, d: foot.d });
+  }
+
+  private drawRoomProps(room: Room, r: () => number, blocks: Block[], seats: Seat[]) {
+    const add = (draw: (g: Graphics) => void, x: number, y: number, w: number, d: number) => this.addProp(draw, x, y, { room, blocks, w, d });
     const seed = Math.floor(r() * 1e6);
     // Corners in the WALL padding ring
-    add((g) => this.decorPlant(g, room.x + 0.3, room.y + 0.3, seed), room.x + 0.3, room.y + 0.3);
-    if (r() < 0.7) add((g) => (r() < 0.5 ? P.cooler(g, room.x + room.w - 0.7, room.y + 0.3) : P.cabinet(g, room.x + room.w - 0.8, room.y + 0.25, this.materials)), room.x + room.w - 0.7, room.y + 0.3);
-    if (room.h > 3 && r() < 0.6) add((g) => this.decorPlant(g, room.x + 0.3, room.y + room.h - 0.7, seed >> 3), room.x + 0.3, room.y + room.h - 0.7);
-    if (room.w >= 5 && r() < 0.7) add((g) => this.theme.architecture.decor === "technical" ? P.cabinet(g, room.x + room.w - 1.2, room.y + room.h - 0.6, this.materials) : P.bookshelf(g, room.x + room.w - 1.2, room.y + room.h - 0.6, seed, this.materials), room.x + room.w - 1.2, room.y + room.h - 0.6);
-    // Free desk cells become a lounge (after the new-desk slot in build mode)
+    add((g) => this.decorPlant(g, room.x + 0.3, room.y + 0.3, seed), room.x + 0.3, room.y + 0.3, 0.45, 0.45);
+    if (r() < 0.7) {
+      const cool = r() < 0.5;
+      add((g) => (cool ? P.cooler(g, room.x + room.w - 0.7, room.y + 0.3) : P.cabinet(g, room.x + room.w - 0.8, room.y + 0.25, this.materials)), room.x + room.w - 0.8, room.y + 0.25, 0.55, 0.45);
+    }
+    if (room.h > 3 && r() < 0.6) add((g) => this.decorPlant(g, room.x + 0.3, room.y + room.h - 0.7, seed >> 3), room.x + 0.3, room.y + room.h - 0.7, 0.45, 0.45);
+    if (room.w >= 5 && r() < 0.7) add((g) => this.theme.architecture.decor === "technical" ? P.cabinet(g, room.x + room.w - 1.2, room.y + room.h - 0.6, this.materials) : P.bookshelf(g, room.x + room.w - 1.2, room.y + room.h - 0.6, seed, this.materials), room.x + room.w - 1.2, room.y + room.h - 0.6, 0.9, 0.45);
+    // Free desk cells become a lounge (after the new-desk slot in build mode).
+    // Separate props, so whoever sits on the sofa sorts between it and the table.
     const cols = Math.round((room.w - WALL * 2) / CELL), rows = Math.round((room.h - WALL * 2) / CELL);
     const n = room.desks.length + (room.slot ? 1 : 0);
     for (let i = n; i < cols * rows; i++) {
       const cx = room.x + WALL + (i % cols) * CELL, cy = room.y + WALL + Math.floor(i / cols) * CELL;
       const col = [0x5b6ea6, 0x7a5b8e, 0x4f7f77][i % 3]!;
-      add((g) => { P.sofa(g, cx + 0.9, cy + 0.3, col); P.coffeeTable(g, cx + 1.2, cy + 1.3, this.materials); this.decorPlant(g, cx + 0.2, cy + 1.4, seed + i); }, cx + 1.2, cy + 1.3);
+      add((g) => P.sofa(g, cx + 0.9, cy + 0.3, col), cx + 0.9, cy + 0.3, 1.2, 0.55);
+      add((g) => P.coffeeTable(g, cx + 1.2, cy + 1.3, this.materials), cx + 1.2, cy + 1.3, 0.6, 0.4);
+      add((g) => this.decorPlant(g, cx + 0.2, cy + 1.4, seed + i), cx + 0.2, cy + 1.4, 0.45, 0.45);
+      for (const sx of [cx + 1.25, cx + 1.75]) seats.push({ at: { x: sx - room.x, y: cy + 0.63 - room.y }, stand: { x: sx - room.x, y: cy + 1.1 - room.y } });
     }
+  }
+
+  /**
+   * Where idle agents take a break: a vending machine on the side wall, near
+   * the front, and a bench under the windows. Returns where to stand to use
+   * the machine (room-local).
+   */
+  private drawBreakArea(room: Room, floor: Graphics, blocks: Block[], seats: Seat[]): Spot {
+    const technical = this.theme.architecture.decor === "technical";
+    const mx = room.x + 0.04, my = room.y + room.h - 1.65;
+    P.lightPool(floor, mx + 0.9, my + 0.38, 30, 15, hex(this.theme.palette.light), this.theme.architecture.lightIntensity * 1.4);
+    this.addProp((g) => P.vendingMachine(g, mx, my, technical ? this.materials.metal : VENDING, hex(this.theme.palette.light), hex(this.theme.palette.accent)), mx, my, { room, blocks, w: 0.5, d: 0.75 });
+    const bw = room.w >= 8 ? 2.4 : 1.6, bx = room.x + 0.95, by = room.y + 0.06;
+    this.addProp((g) => P.bench(g, bx, by, bw, this.materials), bx, by, { room, blocks, w: bw, d: 0.34 });
+    for (let x = bx + 0.4; x < bx + bw; x += 0.8) seats.push({ at: { x: x - room.x, y: 0.27 }, stand: { x: x - room.x, y: 0.85 } });
+    return { x: mx + 0.92 - room.x, y: my + 0.38 - room.y };
+  }
+
+  // ------------------------------------------------------------ printers
+
+  /** The room's printer, under the windows near the back corner, clear of the bench and the corner cabinet. */
+  private drawPrinter(room: Room, key: string, blocks: Block[]) {
+    const x = room.x + room.w - 1.55, y = room.y + 0.2;
+    const root = new Container(), body = new Container();
+    const base = new Graphics();
+    P.printer(base, x, y, this.materials);
+    const stack = new Graphics(), sheet = new Graphics(), light = new Graphics();
+    body.addChild(base, stack, sheet, light);
+    const badge = new Container(), badgeBg = new Graphics(), badgeText = new Text({ text: "", style: printBadgeStyle });
+    badgeText.anchor.set(0, 0.5);
+    badge.addChild(badgeBg, badgeText);
+    const top = toScreen(x + P.PRINTER.w / 2, y + 0.3, 44);
+    badge.position.set(top.x, top.y);
+    badge.visible = false;
+    root.addChild(body, badge);
+    root.zIndex = depth(x, y) * 10;
+    root.eventMode = "static";
+    root.interactiveChildren = false;
+    root.cursor = "pointer";
+    root.hitArea = printerHitArea(x, y);
+    const label = room.workspace.label || room.workspace.workspace_id;
+    const node: PrinterNode = {
+      key, room: room.workspace.workspace_id, label, at: { x, y }, root, body, stack, sheet, light,
+      badge, badgeBg, badgeText, badgeY: top.y, shown: -1, unread: -1, lit: "",
+    };
+    root.on("pointerover", (e) => { this.ringPrinter(node); this.showPrinterTip(node, e.global.x, e.global.y); });
+    root.on("pointermove", (e) => this.showPrinterTip(node, e.global.x, e.global.y));
+    root.on("pointerout", () => { this.hoverRing.clear(); this.hoveredId = null; this.tip.style.display = "none"; });
+    this.objects.addChild(root);
+    this.printers.push(node);
+    blocks.push({ x: x - room.x, y: y - room.y, w: P.PRINTER.w, d: P.PRINTER.d });
+    this.paintPrinter(node, this.reducedMotion ? 0 : performance.now());
+  }
+
+  /** Where a printer's top sheet is on screen (CSS px) and the zoom; null when that room's printer is not drawn. */
+  printerTray(key: string, room: string): Tray | null {
+    const n = this.printers.find((p) => p.key === key && p.room === room) ?? this.printers.find((p) => p.key === key);
+    if (!n) return null;
+    const s = P.PRINTER.sheet;
+    const at = this.world.toGlobal(toScreen(n.at.x + s.x + s.w / 2, n.at.y + s.y + s.d / 2, P.paperTop(n.shown)));
+    const box = this.app.canvas.getBoundingClientRect();
+    return { x: box.left + at.x, y: box.top + at.y, scale: this.world.scale.x };
+  }
+
+  /** Start the next sheet of each printer, and finish the one that is out. */
+  private tickPrinters(now: number) {
+    const prints = this.prints;
+    if (!prints) return;
+    const seen = new Set<string>();
+    for (const n of this.printers) {
+      if (seen.has(n.key)) continue;
+      seen.add(n.key);
+      if (this.reducedMotion) {
+        this.printJobs.delete(n.key);
+        prints.done(n.key, true);
+        continue;
+      }
+      const started = this.printJobs.get(n.key);
+      if (started !== undefined && now - started >= PRINT_MS) { prints.done(n.key); this.printJobs.delete(n.key); }
+      if (!this.printJobs.has(n.key) && prints.queuedCount(n.key) > 0) {
+        while (prints.queuedCount(n.key) > PRINT_BACKLOG) prints.done(n.key);
+        this.printJobs.set(n.key, now);
+      }
+    }
+    for (const n of this.printers) this.paintPrinter(n, now);
+  }
+
+  private paintPrinter(n: PrinterNode, now: number) {
+    const prints = this.prints;
+    const count = prints?.printedCount(n.key) ?? 0;
+    if (count !== n.shown) {
+      n.shown = count;
+      n.stack.clear();
+      P.paperStack(n.stack, n.at.x, n.at.y, count);
+    }
+    const started = this.printJobs.get(n.key);
+    n.sheet.clear();
+    n.body.x = 0;
+    if (started !== undefined) {
+      const t = Math.min(1, (now - started) / PRINT_MS);
+      const out = Math.min(1, t / 0.75), fall = t <= 0.75 ? 0 : ((t - 0.75) / 0.25) ** 2;
+      P.printingSheet(n.sheet, n.at.x, n.at.y, out, fall, P.paperTop(count + 1));
+      if (t < 0.75) n.body.x = Math.sin(now / 18) * 0.5;
+    }
+    const unread = prints?.unread(n.key) ?? 0;
+    const lit = started !== undefined ? (Math.floor(now / 160) % 2 ? "printing" : "idle")
+      : unread > 0 ? (this.reducedMotion || Math.floor(now / 700) % 2 ? "unread" : "dim") : "idle";
+    if (lit !== n.lit) {
+      n.lit = lit;
+      n.light.clear();
+      if (lit === "dim") P.printerLight(n.light, n.at.x, n.at.y, shade(PRINTER_LIGHT.unread, 0.55), false);
+      else P.printerLight(n.light, n.at.x, n.at.y, PRINTER_LIGHT[lit as keyof typeof PRINTER_LIGHT], lit !== "idle");
+    }
+    if (unread !== n.unread) {
+      n.unread = unread;
+      n.badge.visible = unread > 0;
+      n.badgeText.text = String(unread);
+      const accent = hex(this.theme.palette.accent);
+      const w = 25 + n.badgeText.width;
+      n.badgeBg.clear();
+      n.badgeBg.roundRect(-w / 2, -10, w, 20, 6).fill(accent).stroke({ color: shade(accent, 0.6), width: 1.5 });
+      n.badgeBg.poly([-4, 9, 4, 9, -1, 15]).fill(accent);
+      // a little sheet with rows on it
+      n.badgeBg.rect(-w / 2 + 6, -6.5, 9, 12).fill(0xfbfaf5).stroke({ color: shade(accent, 0.5), width: 1 });
+      for (const [ry, rw] of [[-3.5, 5], [-1, 3.5], [1.5, 5]] as const) n.badgeBg.rect(-w / 2 + 8, ry, rw, 1).fill(0x6a6f80);
+      n.badgeText.position.set(-w / 2 + 18, 0.5);
+    }
+    if (n.badge.visible) n.badge.y = n.badgeY - Math.abs(Math.sin(now / 320)) * 4;
+  }
+
+  private ringPrinter(n: PrinterNode) {
+    this.hoveredId = null;
+    this.hoverRing.clear();
+    const accent = hex(this.theme.palette.accent);
+    P.floorPoly(this.hoverRing, n.at.x - 0.08, n.at.y - 0.06, P.PRINTER.w + 0.16, P.PRINTER.d + 0.12, 0.5).fill({ color: accent, alpha: 0.08 }).stroke({ color: accent, width: 2, alpha: 0.9 });
+  }
+
+  private showPrinterTip(n: PrinterNode, x: number, y: number) {
+    const count = this.prints?.printedCount(n.key) ?? 0, unread = this.prints?.unread(n.key) ?? 0;
+    const latest = this.prints?.latest(n.key);
+    const head = `<b>Printer</b> · ${count ? `${count} sheet${count === 1 ? "" : "s"}` : "nothing printed yet"}${unread ? ` · ${unread} new` : ""}`;
+    const body = latest
+      ? `\nlatest: ${escapeHtml(latest.path)} <span class="add">+${latest.added}</span> <span class="del">−${latest.removed}</span>\n<span class="muted">click to read, or to see everything uncommitted</span>`
+      : "\nPrints a sheet each time a file here changes.\n<span class=\"muted\">click to see everything uncommitted</span>";
+    this.placeTip(head + body, "print", x, y);
   }
 
   private decorPlant(g: Graphics, x: number, y: number, seed: number) {
@@ -536,32 +754,39 @@ export class OfficeScene {
     this.labels.addChild(c);
   }
 
-  private drawDesk(desk: Desk, now: number) {
-    const pane = desk.pane;
+  private stateFor(pane: PaneInfo, now: number): CharState {
     const prev = this.states.get(pane.pane_id);
     const state: CharState = prev
       ? (prev.status === pane.agent_status ? prev : { ...prev, status: pane.agent_status, lastChange: now })
       : { phase: Math.random() * 10, status: pane.agent_status, lastChange: 0 };
     this.states.set(pane.pane_id, state);
-
-    const node = pane.agent ? makeCharacter(desk, state, this.characters, this.materials, this.reducedMotion) : makeEmptyDesk(desk, state, this.materials);
-    this.nodes.push(node);
-    const root = node.root;
-    root.zIndex = depth(desk.x, desk.y) * 10;
-    root.eventMode = "static";
-    root.hitArea = deskHitArea(desk);
-    root.interactiveChildren = false;
-    root.cursor = "pointer";
-    root.on("pointerover", (e) => { this.setHover(pane.pane_id); this.showTip(pane, e.global.x, e.global.y); });
-    root.on("pointermove", (e) => this.showTip(pane, e.global.x, e.global.y));
-    root.on("pointerout", () => { this.setHover(null); this.tip.style.display = "none"; });
-    this.objects.addChild(root);
+    return state;
   }
 
-  /** The desk or slot `target` is (they are the only objects that take clicks). */
+  private drawDesk(desk: Desk, state: CharState, where: Whereabouts) {
+    const pane = desk.pane;
+    const node = pane.agent ? makeCharacter(desk, state, this.characters, this.materials, this.reducedMotion, where) : makeEmptyDesk(desk, state, this.materials);
+    this.nodes.push(node);
+    node.root.eventMode = "static";
+    node.root.hitArea = deskHitArea(desk);
+    // The desk takes clicks, and so does its person while away from it (the person sets its own eventMode).
+    for (const target of [node.root, node.person]) {
+      if (!target) continue;
+      target.interactiveChildren = false;
+      target.cursor = "pointer";
+      target.on("pointerover", (e) => { this.setHover(pane.pane_id); this.showTip(pane, e.global.x, e.global.y); });
+      target.on("pointermove", (e) => this.showTip(pane, e.global.x, e.global.y));
+      target.on("pointerout", () => { this.setHover(null); this.tip.style.display = "none"; });
+    }
+    for (const layer of node.layers) this.objects.addChild(layer);
+  }
+
+  /** The desk or slot `target` is (they are the only objects that take clicks, with people away from their desks). */
   private hitOf(target: unknown): Hit | null {
-    const node = this.nodes.find((n) => n.root === target);
+    const node = this.nodes.find((n) => n.root === target || n.person === target);
     if (node) return { key: node.desk.pane.pane_id, pane: node.desk.pane };
+    const printer = this.printers.find((p) => p.root === target);
+    if (printer) return { key: `printer:${printer.room}`, printer };
     const slot = this.slots.find((sl) => sl.root === target);
     return slot ? { key: slot.key, slot } : null;
   }
@@ -623,7 +848,8 @@ export class OfficeScene {
   }
 
   private showTip(pane: PaneInfo, x: number, y: number) {
-    const who = pane.agent ? `<b>${escapeHtml(pane.agent)}</b> · ${pane.agent_status}` : "<b>shell</b> · no agent";
+    const away = pane.agent ? whereabouts(this.states.get(pane.pane_id)?.roam) : null;
+    const who = pane.agent ? `<b>${escapeHtml(pane.agent)}</b> · ${pane.agent_status}${away ? ` · ${away}` : ""}` : "<b>shell</b> · no agent";
     const title = pane.terminal_title_stripped || pane.terminal_title || "";
     const context = pane.context ? `\ncontext: ${contextText(pane.context)}` : "";
     this.placeTip(`${who}\n${escapeHtml(title)}${context}\n<span class="muted">${escapeHtml(shortPath(pane.foreground_cwd || pane.cwd))}\n${pane.pane_id}${pane.focused ? " · focused in Herdr" : ""}</span>`, pane.agent_status, x, y);
@@ -658,6 +884,7 @@ export class OfficeScene {
     if (this.reducedMotion) dt = 0;
     const now = this.reducedMotion ? 0 : performance.now();
     for (const n of this.nodes) n.tick(dt, now);
+    this.tickPrinters(now);
     for (const sl of this.slots) sl.badge.y = sl.badgeY + Math.sin(now / 300) * 2;
     for (const b of this.blockedRooms) b.g.alpha = 0.6 + Math.sin(now / 180 + b.base) * 0.4;
     if (this.plumbob.visible) {
@@ -688,6 +915,13 @@ export class OfficeScene {
       if (Math.abs(c.x - this.world.x) < 0.5 && Math.abs(c.y - this.world.y) < 0.5 && Math.abs(c.scale - s) < 0.001) this.camTarget = null;
     }
   }
+}
+
+/** The printer's footprint plus the column above it, like a desk's. */
+function printerHitArea(x: number, y: number): Polygon {
+  const x0 = x - 0.05, y0 = y - 0.05, x1 = x + P.PRINTER.w + 0.05, y1 = y + P.PRINTER.d + 0.05, H = PRINTER_HIT_H;
+  const top = toScreen(x0, y0), right = toScreen(x1, y0), bottom = toScreen(x1, y1), left = toScreen(x0, y1);
+  return new Polygon([top.x, top.y - H, right.x, right.y - H, right.x, right.y, bottom.x, bottom.y, left.x, left.y, left.x, left.y - H]);
 }
 
 function shortPath(p: string): string {

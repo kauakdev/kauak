@@ -1,5 +1,5 @@
 import { keyOf, splitKey } from "./floors";
-import type { BridgeMessage, InputOp, MachineInfo, RoomSpec, SlashCommand, Snapshot } from "./types";
+import type { BridgeMessage, DiffSheet, InputOp, MachineInfo, RoomSpec, SlashCommand, Snapshot, Uncommitted } from "./types";
 
 /** Pane arguments and callbacks use floor keys ("machine/pane_id", see floors.ts). */
 export interface BridgeHandlers {
@@ -17,6 +17,12 @@ export interface BridgeHandlers {
   onCreated?(pane: string, id: number | undefined): void;
   /** It failed, or (with `pane`) the desk exists but its agent did not start. */
   onCreateError?(message: string, id: number | undefined, pane?: string): void;
+  /** Everything a floor's printers hold, on (re)connecting. */
+  onPrints?(machine: string, sheets: DiffSheet[]): void;
+  /** A printer printed a new sheet. */
+  onPrint?(machine: string, sheet: DiffSheet): void;
+  /** A printer's uncommitted view, answering requestUncommitted (`printer` as in prints.ts). */
+  onUncommitted?(printer: string, id: number | undefined, result: Uncommitted): void;
 }
 
 /** What the page needs from a bridge: the real one below, or the simulated one in demo.ts. */
@@ -31,6 +37,8 @@ export interface BridgeApi {
   /** A new desk (a new Herdr tab) in a room (`workspace` is a floor key), with an optional agent kind. */
   createDesk(workspace: string, agent: string | null, id: number): boolean;
   createRoom(machine: string, room: RoomSpec, agent: string | null, id: number): boolean;
+  /** Everything not committed in a printer's checkout (`printer` as in prints.ts); answered with onUncommitted. */
+  requestUncommitted(printer: string, id: number): boolean;
 }
 
 // The bridge only listens on 127.0.0.1 by default; "localhost" may resolve to ::1 first.
@@ -69,6 +77,13 @@ export class Bridge implements BridgeApi {
         this.handlers.onCreated?.(keyOf(msg.machine, msg.pane_id), msg.id);
       } else if (msg.type === "create_error") {
         this.handlers.onCreateError?.(msg.message, msg.id, msg.pane_id ? keyOf(msg.machine, msg.pane_id) : undefined);
+      } else if (msg.type === "prints") {
+        this.handlers.onPrints?.(msg.machine, msg.sheets);
+      } else if (msg.type === "print") {
+        this.handlers.onPrint?.(msg.machine, msg.sheet);
+      } else if (msg.type === "uncommitted") {
+        const { files, incomplete, error } = msg;
+        this.handlers.onUncommitted?.(keyOf(msg.machine, msg.root), msg.id, { files, incomplete, error });
       } else if (msg.type === "error") {
         console.warn("[bridge]", msg.message);
         const pane = msg.machine && msg.pane_id ? keyOf(msg.machine, msg.pane_id) : undefined;
@@ -128,5 +143,10 @@ export class Bridge implements BridgeApi {
 
   createRoom(machine: string, room: RoomSpec, agent: string | null, id: number): boolean {
     return this.send({ type: "create_room", machine, room, agent, id });
+  }
+
+  requestUncommitted(printer: string, id: number): boolean {
+    const { machine, id: root } = splitKey(printer);
+    return this.send({ type: "uncommitted", machine, root, id });
   }
 }

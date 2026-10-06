@@ -22,12 +22,12 @@
 // Transcripts only grow, so each one is read incrementally from where the
 // last read stopped.
 
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SSH, SSH_OPTS, lastLine } from "./machine.js";
+import { RemoteScript } from "./remote.js";
 
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
 const CODEX_DIR = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
@@ -46,14 +46,6 @@ const CLAUDE_WINDOW = 1_000_000;
 const CLAUDE_WINDOW_SMALL = 200_000;
 const CLAUDE_SMALL_MODEL = /^claude-(?:3|haiku)|^claude-(?:opus|sonnet)-4(?:-[015])?(?:-\d{8})?$/;
 const SESSION_ID = /^[A-Za-z0-9-]{1,64}$/;
-// The remote reader runs with the machine's python3 (Herdr's own agent hooks need it too).
-const REMOTE_SCRIPT = fs.readFileSync(new URL("./context_remote.py", import.meta.url)).toString("base64");
-const REMOTE_COMMAND = `python3 -u -c "import base64; exec(base64.b64decode('${REMOTE_SCRIPT}'))"`;
-// The first answer waits for the SSH connection.
-const REMOTE_TIMEOUT_MS = 20_000;
-// After the remote reader dies: 30 s, or 5 min when python3 is missing there.
-const REMOTE_RETRY_MS = 30_000;
-const REMOTE_NO_PYTHON_RETRY_MS = 5 * 60_000;
 
 /**
  * Emits "change" when any pane's context use changes. The tracker decides
@@ -273,81 +265,19 @@ class LocalReader {
  * connection, kept open across reads (the script keeps its caches), and
  * restarted when it dies.
  */
+/** Runs context_remote.py on the floor's machine (with its python3; Herdr's own agent hooks need it too). */
 class RemoteReader {
   constructor(machine) {
-    this.m = machine;
-    this.child = null;
-    this.buf = "";
-    this.stderr = "";
-    this.seq = 0;
-    /** request id → resolve */
-    this.waiting = new Map();
-    this.retryAt = 0;
-    this.stopped = false;
+    this.script = new RemoteScript(machine, "./context_remote.py", "context meters");
   }
 
   stop() {
-    this.stopped = true;
-    this.child?.kill();
+    this.script.stop();
   }
 
-  read(panes) {
-    if (this.stopped) return Promise.resolve(null);
-    if (!this.child) {
-      if (Date.now() < this.retryAt) return Promise.resolve(null);
-      this.start();
-    }
-    const id = ++this.seq;
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.waiting.delete(id);
-        this.child?.kill(); // stuck: start over next time
-        resolve(null);
-      }, REMOTE_TIMEOUT_MS);
-      this.waiting.set(id, (result) => {
-        clearTimeout(timer);
-        resolve(result ? new Map(Object.entries(result)) : null);
-      });
-      this.child.stdin.write(JSON.stringify({ id, panes }) + "\n");
-    });
-  }
-
-  start() {
-    // ControlPath=none, as for the tunnel: a connection of its own, never handed to a shared master.
-    const child = spawn(SSH, [...SSH_OPTS, "-o", "ControlPath=none", "--", this.m.ssh, REMOTE_COMMAND], { stdio: ["pipe", "pipe", "pipe"] });
-    this.child = child;
-    this.buf = "";
-    this.stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdin.on("error", () => {}); // EPIPE once it is gone; "exit" says why
-    child.stdout.on("data", (chunk) => {
-      this.buf += chunk;
-      let nl;
-      while ((nl = this.buf.indexOf("\n")) !== -1) {
-        const line = this.buf.slice(0, nl);
-        this.buf = this.buf.slice(nl + 1);
-        let msg;
-        try { msg = JSON.parse(line); } catch { continue; }
-        const done = this.waiting.get(msg.id);
-        this.waiting.delete(msg.id);
-        done?.(msg.result ?? null);
-      }
-    });
-    child.stderr.on("data", (d) => { this.stderr = (this.stderr + d).slice(-2000); });
-    const gone = (code, signal) => {
-      if (this.child !== child) return;
-      this.child = null;
-      for (const done of this.waiting.values()) done(null);
-      this.waiting.clear();
-      if (this.stopped) return;
-      const noPython = code === 127;
-      this.retryAt = Date.now() + (noPython ? REMOTE_NO_PYTHON_RETRY_MS : REMOTE_RETRY_MS);
-      const why = noPython ? "python3 is not installed there" : lastLine(this.stderr) || (signal ? `killed by ${signal}` : `exit ${code}`);
-      console.warn(`[bridge] ${this.m.label}: context meters stopped (${why}); retrying in ${(this.retryAt - Date.now()) / 1000}s`);
-    };
-    child.once("exit", gone);
-    child.once("error", (err) => { this.stderr += err.message; gone(null, null); });
+  async read(panes) {
+    const result = await this.script.call({ panes });
+    return result ? new Map(Object.entries(result)) : null;
   }
 }
 

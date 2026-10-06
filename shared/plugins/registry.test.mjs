@@ -13,14 +13,14 @@ const build = spawnSync(process.execPath, [compiler, "shared/plugins/registry.ts
 if (build.status !== 0) { fs.rmSync(temp, { recursive: true }); throw new Error(build.stdout + build.stderr); }
 const { PluginRegistry, parsePackage, validateManifest, loadPreferences, savePreferences, defaults, resolveAnchor, SETTINGS_KEY, validateBanner } = createRequire(import.meta.url)(path.join(temp, "registry.js"));
 const read = name => JSON.parse(fs.readFileSync(path.resolve(name), "utf8"));
-const builtins = ["classic", "orbital", "herdr"].map(n => read(`plugins/${n}.json`));
+const builtins = ["classic", "orbital", "basecamp", "herdr"].map(n => read(`plugins/${n}.json`));
 const custom = () => read("docs/plugins/harbor.json");
 test.after(() => fs.rmSync(temp, { recursive: true }));
 
 test("included capabilities share one registry while keeping browser and bridge selections independent", () => {
   const r = new PluginRegistry(builtins, [custom()]);
-  assert.equal(r.list("office.theme").length, 3);
-  assert.equal(r.list("office.characters").length, 2);
+  assert.equal(r.list("office.theme").length, 4);
+  assert.equal(r.list("office.characters").length, 3);
   assert.equal(r.resolve("terminal.provider", "agent-office.orbital").plugin.id, "agent-office.herdr");
   assert.equal(r.resolve("office.characters", "example.harbor").fallback, true);
 });
@@ -29,7 +29,7 @@ test("imports reject incompatible APIs, unknown capabilities, code/URLs and rese
     p => p.schemaVersion = 2, p => p.capabilities["office.theme"].apiVersion = 99,
     p => p.capabilities.actions = {}, p => p.script = "evil.js", p => p.id = "agent-office.classic",
     p => p.capabilities["office.theme"].materials.wood = "url(https://x)",
-    p => p.capabilities["terminal.provider"] = builtins[2].capabilities["terminal.provider"],
+    p => p.capabilities["terminal.provider"] = builtins[3].capabilities["terminal.provider"],
   ]) { const p = custom(); change(p); assert.throws(() => parsePackage(JSON.stringify(p))); }
   assert.throws(() => parsePackage("{"), /valid JSON/);
   assert.throws(() => parsePackage(" ".repeat(65537)), /64 KB/);
@@ -41,6 +41,18 @@ test("bounds reject unsafe geometry and invalid animation data before any render
   c.capabilities["office.characters"].animation.tempo.blocked = -1;
   assert.throws(() => validateManifest(c), /tempo.blocked/);
   assert.throws(() => parsePackage('{"schemaVersion":1,"__proto__":{"script":"x"}}'), /unsupported field/);
+});
+test("the basecamp templates are accepted for custom packages, and unknown templates are not", () => {
+  const p = structuredClone(builtins[2]); p.id = "example.basecamp";
+  const v = validateManifest(p);
+  assert.equal(v.capabilities["office.theme"].architecture.decor, "alpine");
+  assert.equal(v.capabilities["office.theme"].architecture.floorPattern, "planks");
+  assert.equal(v.capabilities["office.characters"].model, "climber");
+  for (const change of [
+    q => q.capabilities["office.characters"].model = "yeti",
+    q => q.capabilities["office.theme"].architecture.decor = "arctic",
+    q => q.capabilities["office.theme"].architecture.floorPattern = "ice",
+  ]) { const q = structuredClone(p); change(q); assert.throws(() => validateManifest(q), /expected/); }
 });
 test("registry rejects collisions and preserves the default when saved packages fail validation", () => {
   const bad = custom(); bad.capabilities["office.theme"].apiVersion = 2;

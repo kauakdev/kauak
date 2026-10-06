@@ -12,11 +12,11 @@ export interface Theme {
     accent: string; focus: string; light: string; rugs: string[]; wings: string[] };
   materials: { wood: string; woodDark: string; metal: string; chair: string; pot: string;
     leaf: string; leafDark: string; paper: string; screenOff: string; white: string };
-  architecture: { wallHeight: number; floorPattern: "checker" | "inset"; decor: "botanical" | "technical"; lightIntensity: number };
+  architecture: { wallHeight: number; floorPattern: "checker" | "inset" | "planks"; decor: "botanical" | "technical" | "alpine"; lightIntensity: number };
   bannerAnchors: BannerAnchor[];
 }
 export interface Characters {
-  apiVersion: 1; model: "human" | "robot";
+  apiVersion: 1; model: "human" | "robot" | "climber";
   skin: string[]; hair: string[]; shell: string; visor: string;
   animation: { tempo: Record<Status, number>; amplitude: number; glyphs: string[] };
 }

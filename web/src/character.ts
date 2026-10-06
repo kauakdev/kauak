@@ -183,12 +183,26 @@ function contextMeter(context: ContextUsage, w: number): Graphics {
 const LIFT = 6;
 const SHOE = 0x1d1f29;
 const CANS = [0xe07a5f, 0x81b29a, 0x98c1d9, 0xf2cc8f, 0xee6c4d];
+// A climber's kit: pack and rope vary per person; boots, gloves, harness and mug do not.
+const PACKS = [0x3d5a80, 0x2f4f4f, 0x6b4f3a, 0x4a4e69, 0x7f2f2f];
+const ROPES = [0xe0533d, 0x3fa7d6, 0xf2c14e, 0x7bd389];
+const BOOT = 0xd98c2b;
+const GLOVE = 0x30343f;
+const HARNESS = 0x2b2e3b;
+const CARABINER = 0xf2c14e;
+const MUG = 0xe8eef2;
+const MUG_RIM = 0x2f6b8a;
+const AXE = 0x8b95a1;
+
+/** What a climber carries; unused by the other models. */
+interface Kit { pack: number; rope: number }
 
 /** Torso and head, `lift` px up from the seat or feet. `back`: seen from behind; `eye` -1/1: looking left/right. */
-function drawBody(g: Graphics, look: Characters, color: number, skin: number, hair: number, lift: number, back: boolean, eye: number) {
+function drawBody(g: Graphics, look: Characters, color: number, skin: number, hair: number, kit: Kit, lift: number, back: boolean, eye: number) {
   g.clear();
   const y = -lift, e = eye * 1.2;
-  if (look.model === "robot") {
+  if (look.model === "climber") drawClimber(g, look, color, skin, hair, kit, y, back, e);
+  else if (look.model === "robot") {
     g.roundRect(-9, y - 26, 18, 22, 4).fill(skin).stroke({ color: shade(skin, 0.6), width: 1 });
     g.roundRect(-11, y - 43, 22, 18, 5).fill(skin).stroke({ color: shade(skin, 0.6), width: 1 });
     if (back) g.roundRect(-6, y - 38, 12, 7, 2).fill(shade(skin, 0.85));
@@ -211,13 +225,66 @@ function drawBody(g: Graphics, look: Characters, color: number, skin: number, ha
   }
 }
 
+/**
+ * A mountaineer: helmet with goggles pushed up on it, a down jacket in the
+ * agent's color, a rope over the shoulder, harness and a pack; from behind,
+ * the pack with a coiled rope and an ice axe.
+ */
+function drawClimber(g: Graphics, look: Characters, color: number, skin: number, hair: number, kit: Kit, y: number, back: boolean, e: number) {
+  const helmet = hex(look.shell), lens = hex(look.visor);
+  const jacket = () => {
+    g.ellipse(0, y - 15, 10.5, 12.5).fill(color).stroke({ color: shade(color, 0.6), width: 1 });
+    for (const q of [-19, -11]) g.moveTo(-9.6, y + q).quadraticCurveTo(0, y + q + 2.5, 9.6, y + q).stroke({ color: shade(color, 0.78), width: 1 });   // quilting
+  };
+  const dome = () => {
+    g.moveTo(-8.8, y - 34.5).arc(0, y - 34.5, 8.8, Math.PI, Math.PI * 2).closePath().fill(helmet).stroke({ color: shade(helmet, 0.6), width: 1 });
+    g.roundRect(-9.6, y - 35.6, 19.2, 2.3, 1).fill(shade(helmet, 0.8));
+  };
+  if (back) {
+    jacket();
+    g.circle(0, y - 33, 7.5).fill(hair);
+    dome();
+    g.moveTo(5, y - 7).lineTo(8.5, y - 37).stroke({ color: AXE, width: 1.6 });                                     // ice axe
+    g.moveTo(4.5, y - 37.5).lineTo(12, y - 35.5).stroke({ color: shade(AXE, 1.2), width: 2 });
+    g.roundRect(-9, y - 28, 18, 23, 4).fill(kit.pack).stroke({ color: shade(kit.pack, 0.6), width: 1 });           // pack
+    g.roundRect(-8, y - 29.5, 16, 6.5, 3).fill(shade(kit.pack, 1.18));                                          // its lid
+    g.ellipse(0, y - 15, 6.5, 3.2).stroke({ color: kit.rope, width: 2.2 });                                      // a coiled rope
+    g.ellipse(0, y - 15, 4, 1.8).stroke({ color: shade(kit.rope, 0.8), width: 1 });
+    g.moveTo(-5, y - 8).lineTo(5, y - 8).stroke({ color: shade(kit.pack, 0.6), width: 1.4 });
+    return;
+  }
+  g.roundRect(-10.5, y - 30.5, 21, 16, 4).fill(kit.pack).stroke({ color: shade(kit.pack, 0.6), width: 1 });       // pack, behind the shoulders
+  jacket();
+  g.moveTo(0, y - 26).lineTo(0, y - 6).stroke({ color: shade(color, 0.6), width: 0.8 });                          // zip
+  g.moveTo(-7.5, y - 24).lineTo(6.5, y - 8).stroke({ color: kit.rope, width: 2.6, cap: "round" });                // rope over the shoulder
+  g.moveTo(-6.5, y - 25).lineTo(7.5, y - 9).stroke({ color: shade(kit.rope, 0.75), width: 0.8 });
+  g.roundRect(-7.5, y - 7.5, 15, 2.6, 1).fill(HARNESS);                                                         // harness
+  g.ellipse(-4, y - 3.4, 1.5, 2.2).stroke({ color: CARABINER, width: 1 });
+  g.circle(0, y - 33, 7.5).fill(skin).stroke({ color: shade(skin, 0.7), width: 1 });                           // head
+  g.ellipse(-7, y - 31.5, 1.6, 2.6).fill(hair);
+  g.ellipse(7, y - 31.5, 1.6, 2.6).fill(hair);
+  dome();
+  g.moveTo(-8.6, y - 38.4).lineTo(8.6, y - 38.4).stroke({ color: 0x1b1d26, width: 1.2 });                        // goggles up on the helmet
+  g.roundRect(-6.4 + e, y - 40.2, 5.6, 3.6, 1.5).fill(lens).stroke({ color: 0x1b1d26, width: 0.8 });
+  g.roundRect(0.8 + e, y - 40.2, 5.6, 3.6, 1.5).fill(lens).stroke({ color: 0x1b1d26, width: 0.8 });
+  g.circle(-2.6 + e, y - 31.6, 1).fill(0x222222);
+  g.circle(2.6 + e, y - 31.6, 1).fill(0x222222);
+}
+
+/** A shoe, or a climber's boot, at (x, y). */
+function foot(g: Graphics, x: number, y: number, boots: boolean) {
+  if (!boots) { g.ellipse(x, y, 2.6, 1.5).fill(SHOE); return; }
+  g.ellipse(x - 0.3, y + 0.5, 3.6, 1.7).fill(SHOE);
+  g.ellipse(x, y - 0.4, 3.1, 2).fill(BOOT);
+}
+
 /** Legs off the desk chair: hanging from a bench or sofa, standing (with a shadow), or mid-stride. */
-function drawLegs(g: Graphics, pose: Pose, stride: number, pants: number) {
+function drawLegs(g: Graphics, pose: Pose, stride: number, pants: number, boots = false) {
   if (pose === "sit") {
     // Seats face the room: knees forward, toward the viewer's left.
     for (const s of [-1, 1]) {
       g.moveTo(s * 3, -9).lineTo(s * 3 - 7, -6).lineTo(s * 3 - 7, 2.5).stroke({ color: pants, width: 4, cap: "round", join: "round" });
-      g.ellipse(s * 3 - 8, 3, 2.6, 1.5).fill(SHOE);
+      foot(g, s * 3 - 8, 3, boots);
     }
     return;
   }
@@ -227,7 +294,7 @@ function drawLegs(g: Graphics, pose: Pose, stride: number, pants: number) {
     const up = pose === "walk" ? Math.max(0, Math.sin(ph)) * 2.5 : 0;
     const x = s * 3 + (pose === "walk" ? Math.cos(ph) * 1.8 : 0);
     g.moveTo(s * 3, -11).lineTo(x, -1.5 - up).stroke({ color: pants, width: 4, cap: "round" });
-    g.ellipse(x, -1 - up, 2.6, 1.5).fill(SHOE);
+    foot(g, x, -1 - up, boots);
   }
 }
 
@@ -240,10 +307,13 @@ export function makeCharacter(desk: Desk, state: CharState, look: Characters = d
   const root = new Container();
   const seed = hashStr(pane.pane_id);
   const color = kindColor(pane.agent);
+  const climber = look.model === "climber";
   const skin = look.model === "robot" ? hex(look.shell) : hex(look.skin[seed % look.skin.length]!);
   const hair = hex(look.hair[(seed >>> 4) % look.hair.length]!);
-  const pants = look.model === "robot" ? shade(skin, 0.72) : shade(color, 0.42);
+  const pants = look.model === "robot" ? shade(skin, 0.72) : climber ? mix(0x2b3140, color, 0.15) : shade(color, 0.42);
   const can = CANS[(seed >>> 8) % CANS.length]!;
+  const kit: Kit = { pack: PACKS[(seed >>> 12) % PACKS.length]!, rope: ROPES[(seed >>> 16) % ROPES.length]! };
+  const palm = climber ? GLOVE : skin;
 
   // Chair behind the desk, then the person, then the desk in front.
   const z = depth(desk.x, desk.y) * 10;
@@ -307,10 +377,19 @@ export function makeCharacter(desk: Desk, state: CharState, look: Characters = d
   };
   applyStatus();
 
-  const hand = (x: number, y: number) => hands.circle(x, y, 2.5).fill(skin);
+  const hand = (x: number, y: number) => hands.circle(x, y, 2.5).fill(palm);
   const drink = (x: number, y: number) => {
-    hands.roundRect(x - 2, y - 7, 4, 6.5, 1).fill(can).stroke({ color: shade(can, 0.6), width: 0.8 });
-    hands.rect(x - 2, y - 7, 4, 1.2).fill(0xd0d4e2);
+    if (climber) {
+      // An enamel mug of something hot
+      hands.moveTo(x - 1, y - 8).quadraticCurveTo(x - 2.6, y - 10, x - 1, y - 12).stroke({ color: 0xffffff, width: 0.8, alpha: 0.55 });
+      hands.moveTo(x + 1.2, y - 8.5).quadraticCurveTo(x - 0.2, y - 10.5, x + 1.2, y - 12.5).stroke({ color: 0xffffff, width: 0.8, alpha: 0.4 });
+      hands.circle(x + 3.1, y - 3.6, 1.5).stroke({ color: MUG, width: 1 });
+      hands.roundRect(x - 2.6, y - 6.6, 5.2, 6, 1).fill(MUG).stroke({ color: shade(MUG, 0.6), width: 0.8 });
+      hands.ellipse(x, y - 6.6, 2.6, 0.9).fill(0x5a3a22).stroke({ color: MUG_RIM, width: 0.8 });
+    } else {
+      hands.roundRect(x - 2, y - 7, 4, 6.5, 1).fill(can).stroke({ color: shade(can, 0.6), width: 0.8 });
+      hands.rect(x - 2, y - 7, 4, 1.2).fill(0xd0d4e2);
+    }
     hand(x, y - 1.5);
   };
 
@@ -350,6 +429,13 @@ export function makeCharacter(desk: Desk, state: CharState, look: Characters = d
         bubble.visible = true; bubble.alpha = 1; bubble.scale.set(1);
         bubble.y = -54 - Math.abs(Math.sin(t * 3)) * 5 * motion;
         body.y = -Math.abs(Math.sin(t * 3)) * 2 * motion;
+        if (climber) {
+          // Summit: a little flag in the agent's color, held up high
+          const up = body.y, wave = Math.sin(t * 6) * 1.5 * motion;
+          hands.moveTo(-11, -24 + up).lineTo(-11, -46 + up).stroke({ color: AXE, width: 1.2 });
+          hands.poly([-11, -46 + up, -20, -43 + up + wave * 0.5, -11, -39 + up]).fill(color).stroke({ color: shade(color, 0.6), width: 0.8 });
+          hand(-11, -25 + up);
+        }
         break;
       }
       default: {
@@ -365,7 +451,7 @@ export function makeCharacter(desk: Desk, state: CharState, look: Characters = d
     const stride = r.clock * (r.hurry ? 17 : 10);
     const sw = walking ? Math.sin(stride) * 2 : 0;
     const bob = walking ? -Math.abs(Math.sin(stride)) * 1.4 : pose === "sit" ? Math.sin(t * 1.4) * 0.6 * motion : 0;
-    drawLegs(legs, pose, stride, pants);
+    drawLegs(legs, pose, stride, pants, climber);
     body.y = bob;
     const y = -13 - LIFT + bob;                                   // hands at the sides
     if (state.status === "blocked") {
@@ -409,7 +495,7 @@ export function makeCharacter(desk: Desk, state: CharState, look: Characters = d
     const face = r && pose !== "desk" ? facing(r) : { back: false, left: false };
     const key = `${pose}:${face.back}:${face.left}`;
     if (key !== drawn) {
-      drawBody(body, look, color, skin, hair, lift, face.back, pose === "stand" || pose === "walk" ? (face.left ? -1 : 1) : 0);
+      drawBody(body, look, color, skin, hair, kit, lift, face.back, pose === "stand" || pose === "walk" ? (face.left ? -1 : 1) : 0);
       drawn = key;
     }
 

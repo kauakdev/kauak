@@ -62,8 +62,8 @@ function theme(v: unknown): Theme {
   const anchors = (o.bannerAnchors as unknown[]).map((v, i) => anchor(v, `${p}.bannerAnchors[${i}]`));
   if (new Set(anchors.map(a => a.id)).size !== anchors.length) fail(`${p}.bannerAnchors`, "duplicate location id");
   return { apiVersion: version(o.apiVersion, `${p}.apiVersion`), palette, materials, bannerAnchors: anchors, architecture: {
-    wallHeight: num(a.wallHeight, `${p}.architecture.wallHeight`, 24, 48), floorPattern: choice(a.floorPattern, ["checker", "inset"], `${p}.architecture.floorPattern`),
-    decor: choice(a.decor, ["botanical", "technical"], `${p}.architecture.decor`), lightIntensity: num(a.lightIntensity, `${p}.architecture.lightIntensity`, 0, 1),
+    wallHeight: num(a.wallHeight, `${p}.architecture.wallHeight`, 24, 48), floorPattern: choice(a.floorPattern, ["checker", "inset", "planks"], `${p}.architecture.floorPattern`),
+    decor: choice(a.decor, ["botanical", "technical", "alpine"], `${p}.architecture.decor`), lightIntensity: num(a.lightIntensity, `${p}.architecture.lightIntensity`, 0, 1),
   } };
 }
 function characters(v: unknown): Characters {
@@ -71,7 +71,7 @@ function characters(v: unknown): Characters {
   const a = object(o.animation, `${p}.animation`); keys(a, ["tempo", "amplitude", "glyphs"], `${p}.animation`);
   const tempo = object(a.tempo, `${p}.animation.tempo`); keys(tempo, [...statuses], `${p}.animation.tempo`);
   if (!Array.isArray(a.glyphs) || a.glyphs.length < 1 || a.glyphs.length > 16) fail(`${p}.animation.glyphs`, "expected 1–16 glyphs");
-  return { apiVersion: version(o.apiVersion, `${p}.apiVersion`), model: choice(o.model, ["human", "robot"], `${p}.model`),
+  return { apiVersion: version(o.apiVersion, `${p}.apiVersion`), model: choice(o.model, ["human", "robot", "climber"], `${p}.model`),
     skin: colors(o.skin, `${p}.skin`), hair: colors(o.hair, `${p}.hair`), shell: color(o.shell, `${p}.shell`), visor: color(o.visor, `${p}.visor`),
     animation: { tempo: Object.fromEntries(statuses.map(s => [s, num(tempo[s], `${p}.animation.tempo.${s}`, 0, 3)])) as Characters["animation"]["tempo"],
       amplitude: num(a.amplitude, `${p}.animation.amplitude`, 0, 2), glyphs: (a.glyphs as unknown[]).map((g, i) => str(g, `${p}.animation.glyphs[${i}]`, 4)) } };

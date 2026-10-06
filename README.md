@@ -241,7 +241,8 @@ as they work and compact when full.
 ## Appearance packages and company banners
 
 Open **Appearance** to choose an office and character package independently:
-the original Classic office or the new Orbital workshop. Import declarative
+the original Classic office, the Orbital workshop or the Alpine basecamp, where
+rooms are timber huts in the snow and agents are climbers in helmets and harnesses. Import declarative
 JSON packages to add more appearances without editing the scene. Upload a
 company banner, choose its entrance or room-wall location, hide, replace or
 remove it. Images and choices stay local to this browser; changing office

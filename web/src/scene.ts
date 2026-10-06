@@ -35,6 +35,9 @@ const plusStyle = new TextStyle({ fill: 0x1a1a1a, fontSize: 16, fontFamily: "ui-
 const printBadgeStyle = new TextStyle({ fill: 0x1a1a1a, fontSize: 11, fontFamily: "ui-sans-serif, system-ui, sans-serif", fontWeight: "800" });
 const BUILD = 0xffd166;
 const VENDING = 0xb8433a;
+// Wool blankets on the basecamp's log benches, and its tents along the trail.
+const BLANKETS = [0xb5452f, 0x2f6b8a, 0xc9a227];
+const TENTS = [0xe8742f, 0xf2c14e, 0xc8452f];
 
 // A desk's floor footprint (chair, person, desk and name tag), in tiles from the desk's corner.
 const DESK_FOOT = { dx: -0.35, dy: -1.0, w: 1.7, d: 2.0 };
@@ -52,6 +55,21 @@ const PRINTER_LIGHT = { idle: 0x3fbf6a, printing: 0x8dffa8, unread: 0xffd166 };
 
 function floorTile(g: Graphics, x: number, y: number, color: number) {
   P.floorPoly(g, x, y, 1, 1).fill(color).stroke({ color: shade(color, 0.82), width: 1 });
+}
+
+/** A tile of floorboards running along x, four to a tile, their joints staggered row by row. */
+function floorBoards(g: Graphics, x: number, y: number, color: number) {
+  const seam = shade(color, 0.72);
+  for (let k = 0; k < 4; k++) {
+    const y0 = y + k / 4, row = y * 4 + k, n = (((x + row) % 3) + 3) % 3;
+    P.floorPoly(g, x, y0, 1, 0.25).fill(shade(color, 0.95 + (((row * 7) % 5) + 5) % 5 * 0.025));
+    const a = toScreen(x, y0), b = toScreen(x + 1, y0);
+    g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color: seam, width: 1 });
+    if (n === 0) {
+      const j = x + 0.2 + (((row * 5) % 3) + 3) % 3 * 0.3, c = toScreen(j, y0), d = toScreen(j, y0 + 0.25);
+      g.moveTo(c.x, c.y).lineTo(d.x, d.y).stroke({ color: seam, width: 1 });
+    }
+  }
 }
 
 function deskFootprint(g: Graphics, d: Spot, z = 0) {
@@ -136,6 +154,8 @@ export class OfficeScene {
   private nodes: DeskNode[] = [];
   private states = new Map<string, CharState>();
   private blockedRooms: { g: Graphics; base: number }[] = [];
+  /** Fires in the basecamp's lounges, flickering. */
+  private fires: { g: Graphics; base: number }[] = [];
   private office: Office | null = null;
   private fitted = false;
   private tip = document.getElementById("tip")!;
@@ -375,6 +395,7 @@ export class OfficeScene {
     this.slots = [];
     this.printers = [];
     this.blockedRooms = [];
+    this.fires = [];
     // The object under the tooltip is gone; Pixi re-sends pointerover to its replacement.
     this.tip.style.display = "none";
 
@@ -419,14 +440,30 @@ export class OfficeScene {
     // A few plants along the spine
     const r = rng(hashStr("campus"));
     for (let y = -1; y < office.h + 1; y += 4) {
-      if (r() < 0.6) { const pg = new Graphics(); this.decorPlant(pg, -2.9, y, Math.floor(r() * 1000)); pg.zIndex = depth(-2.9, y) * 10; pg.eventMode = "none"; this.objects.addChild(pg); }
+      if (r() < 0.6) { const seed = Math.floor(r() * 1000); this.addProp((pg) => this.decorPlant(pg, -2.9, y, seed, true), -2.9, y); }
     }
+    if (this.theme.architecture.decor === "alpine") this.drawWilds(office, m);
     this.ground.addChild(g);
     const corners = [toScreen(-m, -m), toScreen(office.w + m, -m), toScreen(office.w + m, office.h + m), toScreen(-m, office.h + m)];
     this.bounds = {
       minX: Math.min(...corners.map((c) => c.x)), maxX: Math.max(...corners.map((c) => c.x)),
       minY: Math.min(...corners.map((c) => c.y)) - 120, maxY: Math.max(...corners.map((c) => c.y)),
     };
+  }
+
+  /** The basecamp's campus: tents pitched by the trail, and pines and boulders out in the snow. */
+  private drawWilds(office: Office, m: number) {
+    const r = rng(hashStr("wilds"));
+    for (let y = 1; y < office.h; y += 4) if (r() < 0.55) {
+      const color = TENTS[Math.floor(r() * TENTS.length)]!;
+      this.addProp((g) => P.tent(g, -3.05, y, color), -3.05, y);
+    }
+    const scatter = (x: number, y: number) => {
+      const seed = Math.floor(r() * 1000);
+      this.addProp((g) => (seed % 3 ? P.pine(g, x, y, seed, this.materials, true) : P.boulder(g, x, y, seed, this.materials)), x, y);
+    };
+    for (let y = -m + 0.6; y < office.h + m - 1; y += 1.6 + r() * 1.4) if (r() < 0.6) scatter(office.w + 0.9 + r() * (m - 1.6), y);
+    for (let x = -m + 0.6; x < office.w + 0.6; x += 1.6 + r() * 1.4) if (r() < 0.6) scatter(x, office.h + 1.2 + r() * (m - 1.9));
   }
 
   private drawWing(wing: Wing, index: number, now: number) {
@@ -468,11 +505,13 @@ export class OfficeScene {
     this.platforms.addChild(plat);
 
     const g = new Graphics();
+    const pattern = this.theme.architecture.floorPattern;
     for (let x = room.x; x < room.x + room.w; x++) {
       for (let y = room.y; y < room.y + room.h; y++) {
         const base = room.focused ? focusedTint : tint;
+        if (pattern === "planks") { floorBoards(g, x, y, base); continue; }
         floorTile(g, x, y, (x + y) % 2 === 0 ? base : shade(base, 0.93));
-        if (this.theme.architecture.floorPattern === "inset") P.floorPoly(g, x + 0.09, y + 0.09, 0.82, 0.82).stroke({ color: hex(this.theme.palette.accent), alpha: 0.23, width: 1 });
+        if (pattern === "inset") P.floorPoly(g, x + 0.09, y + 0.09, 0.82, 0.82).stroke({ color: hex(this.theme.palette.accent), alpha: 0.23, width: 1 });
       }
     }
     const rugs = this.theme.palette.rugs;
@@ -485,11 +524,16 @@ export class OfficeScene {
     P.box(wall, room.x, room.y - 0.18, room.w, 0.18, WALL_H, WALL_COLOR);
     P.box(wall, room.x - 0.18, room.y, 0.18, room.h, WALL_H, WALL_COLOR);
     const wy = room.y + 0.005, wx = room.x + 0.005;
-    for (let x = room.x + 0.6; x + 1.4 <= room.x + room.w; x += 2.2) P.windowOnBackWall(wall, x, x + 1.4, wy, 9, 24);
+    const alpine = this.theme.architecture.decor === "alpine";
+    for (let x = room.x + 0.6; x + 1.4 <= room.x + room.w; x += 2.2) P.windowOnBackWall(wall, x, x + 1.4, wy, 9, 24, alpine);
     P.clockOnBackWall(wall, room.x + room.w - 0.35, wy, 22, this.materials);
     if (room.h >= 3) {
-      if (r() < 0.6) P.whiteboardOnSideWall(wall, wx, room.y + 0.4, room.y + Math.min(room.h - 0.4, 2.2), 8, 24, seed, this.materials);
-      else P.posterOnSideWall(wall, wx, room.y + 0.5, room.y + 1.3, 10, 24, kindColor(room.desks[0]?.pane.agent));
+      const y1 = room.y + Math.min(room.h - 0.4, 2.2), color = kindColor(room.desks[0]?.pane.agent);
+      if (r() < 0.6) {
+        if (alpine) P.routeMapOnSideWall(wall, wx, room.y + 0.4, y1, 8, 24, seed, this.materials);
+        else P.whiteboardOnSideWall(wall, wx, room.y + 0.4, y1, 8, 24, seed, this.materials);
+      } else if (alpine) P.peakPosterOnSideWall(wall, wx, room.y + 0.5, room.y + 1.3, 10, 24, color, this.materials);
+      else P.posterOnSideWall(wall, wx, room.y + 0.5, room.y + 1.3, 10, 24, color);
     }
 
     // Outline; pulses red when someone is blocked
@@ -528,26 +572,50 @@ export class OfficeScene {
   private drawRoomProps(room: Room, r: () => number, blocks: Block[], seats: Seat[]) {
     const add = (draw: (g: Graphics) => void, x: number, y: number, w: number, d: number) => this.addProp(draw, x, y, { room, blocks, w, d });
     const seed = Math.floor(r() * 1e6);
+    const decor = this.theme.architecture.decor;
     // Corners in the WALL padding ring
     add((g) => this.decorPlant(g, room.x + 0.3, room.y + 0.3, seed), room.x + 0.3, room.y + 0.3, 0.45, 0.45);
     if (r() < 0.7) {
-      const cool = r() < 0.5;
-      add((g) => (cool ? P.cooler(g, room.x + room.w - 0.7, room.y + 0.3) : P.cabinet(g, room.x + room.w - 0.8, room.y + 0.25, this.materials)), room.x + room.w - 0.8, room.y + 0.25, 0.55, 0.45);
+      const cool = r() < 0.5, x = room.x + room.w - 0.8, y = room.y + 0.25;
+      add((g) => (decor === "alpine" ? P.duffels(g, x, y, seed) : cool ? P.cooler(g, room.x + room.w - 0.7, room.y + 0.3) : P.cabinet(g, x, y, this.materials)), x, y, 0.55, 0.45);
     }
     if (room.h > 3 && r() < 0.6) add((g) => this.decorPlant(g, room.x + 0.3, room.y + room.h - 0.7, seed >> 3), room.x + 0.3, room.y + room.h - 0.7, 0.45, 0.45);
-    if (room.w >= 5 && r() < 0.7) add((g) => this.theme.architecture.decor === "technical" ? P.cabinet(g, room.x + room.w - 1.2, room.y + room.h - 0.6, this.materials) : P.bookshelf(g, room.x + room.w - 1.2, room.y + room.h - 0.6, seed, this.materials), room.x + room.w - 1.2, room.y + room.h - 0.6, 0.9, 0.45);
+    if (room.w >= 5 && r() < 0.7) {
+      const x = room.x + room.w - 1.2, y = room.y + room.h - 0.6;
+      add((g) => (decor === "technical" ? P.cabinet(g, x, y, this.materials) : decor === "alpine" ? P.gearRack(g, x, y, seed, this.materials) : P.bookshelf(g, x, y, seed, this.materials)), x, y, 0.9, 0.45);
+    }
     // Free desk cells become a lounge (after the new-desk slot in build mode).
     // Separate props, so whoever sits on the sofa sorts between it and the table.
     const cols = Math.round((room.w - WALL * 2) / CELL), rows = Math.round((room.h - WALL * 2) / CELL);
     const n = room.desks.length + (room.slot ? 1 : 0);
     for (let i = n; i < cols * rows; i++) {
       const cx = room.x + WALL + (i % cols) * CELL, cy = room.y + WALL + Math.floor(i / cols) * CELL;
-      const col = [0x5b6ea6, 0x7a5b8e, 0x4f7f77][i % 3]!;
-      add((g) => P.sofa(g, cx + 0.9, cy + 0.3, col), cx + 0.9, cy + 0.3, 1.2, 0.55);
-      add((g) => P.coffeeTable(g, cx + 1.2, cy + 1.3, this.materials), cx + 1.2, cy + 1.3, 0.6, 0.4);
+      if (decor === "alpine") {
+        // A log bench by a fire pit
+        const blanket = BLANKETS[i % BLANKETS.length]!;
+        add((g) => P.logBench(g, cx + 0.9, cy + 0.3, blanket, this.materials), cx + 0.9, cy + 0.3, 1.2, 0.55);
+        add((g) => P.firePit(g, cx + 1.2, cy + 1.3, hex(this.theme.palette.light), this.materials), cx + 1.2, cy + 1.3, 0.6, 0.4);
+        this.addFire(cx + 1.5, cy + 1.5);
+      } else {
+        const col = [0x5b6ea6, 0x7a5b8e, 0x4f7f77][i % 3]!;
+        add((g) => P.sofa(g, cx + 0.9, cy + 0.3, col), cx + 0.9, cy + 0.3, 1.2, 0.55);
+        add((g) => P.coffeeTable(g, cx + 1.2, cy + 1.3, this.materials), cx + 1.2, cy + 1.3, 0.6, 0.4);
+      }
       add((g) => this.decorPlant(g, cx + 0.2, cy + 1.4, seed + i), cx + 0.2, cy + 1.4, 0.45, 0.45);
       for (const sx of [cx + 1.25, cx + 1.75]) seats.push({ at: { x: sx - room.x, y: cy + 0.63 - room.y }, stand: { x: sx - room.x, y: cy + 1.1 - room.y } });
     }
+  }
+
+  /** Flames over a fire pit centred on (x, y); they flicker in tick(). */
+  private addFire(x: number, y: number) {
+    const g = new Graphics();
+    P.flames(g);
+    const p = toScreen(x, y);
+    g.position.set(p.x, p.y + 0.5);
+    g.zIndex = depth(x, y) * 10 + 1;
+    g.eventMode = "none";
+    this.objects.addChild(g);
+    this.fires.push({ g, base: Math.random() * 10 });
   }
 
   /**
@@ -556,10 +624,10 @@ export class OfficeScene {
    * the machine (room-local).
    */
   private drawBreakArea(room: Room, floor: Graphics, blocks: Block[], seats: Seat[]): Spot {
-    const technical = this.theme.architecture.decor === "technical";
+    const decor = this.theme.architecture.decor;
     const mx = room.x + 0.04, my = room.y + room.h - 1.65;
     P.lightPool(floor, mx + 0.9, my + 0.38, 30, 15, hex(this.theme.palette.light), this.theme.architecture.lightIntensity * 1.4);
-    this.addProp((g) => P.vendingMachine(g, mx, my, technical ? this.materials.metal : VENDING, hex(this.theme.palette.light), hex(this.theme.palette.accent)), mx, my, { room, blocks, w: 0.5, d: 0.75 });
+    this.addProp((g) => P.vendingMachine(g, mx, my, decor === "technical" ? this.materials.metal : decor === "alpine" ? this.materials.woodDark : VENDING, hex(this.theme.palette.light), hex(this.theme.palette.accent)), mx, my, { room, blocks, w: 0.5, d: 0.75 });
     const bw = room.w >= 8 ? 2.4 : 1.6, bx = room.x + 0.95, by = room.y + 0.06;
     this.addProp((g) => P.bench(g, bx, by, bw, this.materials), bx, by, { room, blocks, w: bw, d: 0.34 });
     for (let x = bx + 0.4; x < bx + bw; x += 0.8) seats.push({ at: { x: x - room.x, y: 0.27 }, stand: { x: x - room.x, y: 0.85 } });
@@ -695,8 +763,10 @@ export class OfficeScene {
     this.placeTip(head + body, "print", x, y);
   }
 
-  private decorPlant(g: Graphics, x: number, y: number, seed: number) {
+  /** A potted plant, or the theme's equivalent; `outdoor` on the campus. */
+  private decorPlant(g: Graphics, x: number, y: number, seed: number, outdoor = false) {
     if (this.theme.architecture.decor === "botanical") { P.plant(g, x, y, seed, this.materials); return; }
+    if (this.theme.architecture.decor === "alpine") { P.pine(g, x, y, seed, this.materials, outdoor); return; }
     P.box(g, x, y, 0.45, 0.45, 12, this.materials.metal);
     const p = toScreen(x + 0.22, y + 0.22, 12);
     g.moveTo(p.x, p.y).lineTo(p.x, p.y - 15).stroke({ color: this.materials.metal, width: 3 });
@@ -870,13 +940,16 @@ export class OfficeScene {
     for (const child of this.motes.removeChildren()) child.destroy();
     this.moteList = [];
     const r = rng(7);
-    const n = Math.min(80, 20 + office.w * office.h / 3);
+    // Dust rising in the light, or at the basecamp, snow drifting down on the wind.
+    const snow = this.theme.architecture.decor === "alpine";
+    const n = Math.min(snow ? 140 : 80, 20 + office.w * office.h / 3);
     for (let i = 0; i < n; i++) {
       const g = new Graphics();
-      g.circle(0, 0, 0.8 + r() * 1.2).fill({ color: hex(this.theme.palette.light), alpha: 0.10 + r() * 0.12 });
+      if (snow) g.circle(0, 0, 0.9 + r() * 1.4).fill({ color: 0xffffff, alpha: 0.35 + r() * 0.4 });
+      else g.circle(0, 0, 0.8 + r() * 1.2).fill({ color: hex(this.theme.palette.light), alpha: 0.10 + r() * 0.12 });
       g.position.set(this.bounds.minX + r() * (this.bounds.maxX - this.bounds.minX), this.bounds.minY + r() * (this.bounds.maxY - this.bounds.minY));
       this.motes.addChild(g);
-      this.moteList.push({ g, vx: (r() - 0.5) * 4, vy: -3 - r() * 5 });
+      this.moteList.push(snow ? { g, vx: -4 - r() * 8, vy: 9 + r() * 14 } : { g, vx: (r() - 0.5) * 4, vy: -3 - r() * 5 });
     }
   }
 
@@ -887,6 +960,7 @@ export class OfficeScene {
     this.tickPrinters(now);
     for (const sl of this.slots) sl.badge.y = sl.badgeY + Math.sin(now / 300) * 2;
     for (const b of this.blockedRooms) b.g.alpha = 0.6 + Math.sin(now / 180 + b.base) * 0.4;
+    for (const f of this.fires) f.g.scale.set(1 + Math.sin(now / 130 + f.base) * 0.05, 1 + Math.sin(now / 90 + f.base) * 0.1 + Math.sin(now / 53 + f.base * 2) * 0.06);
     if (this.plumbob.visible) {
       const t = now / 1000;
       this.plumbob.scale.x = 0.55 + Math.abs(Math.cos(t * 2.2)) * 0.45;
@@ -897,6 +971,8 @@ export class OfficeScene {
     for (const m of this.moteList) {
       m.g.x += m.vx * dt; m.g.y += m.vy * dt;
       if (m.g.y < this.bounds.minY) { m.g.y = this.bounds.maxY; m.g.x = this.bounds.minX + Math.random() * (this.bounds.maxX - this.bounds.minX); }
+      else if (m.g.y > this.bounds.maxY) { m.g.y = this.bounds.minY; m.g.x = this.bounds.minX + Math.random() * (this.bounds.maxX - this.bounds.minX); }
+      if (m.g.x < this.bounds.minX) m.g.x = this.bounds.maxX;
     }
     if (this.arrival) {
       const t = this.reducedMotion ? 1 : Math.min(1, (now - this.arrival.at) / 420);

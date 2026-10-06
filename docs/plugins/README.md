@@ -3,7 +3,33 @@
 This release adds declarative appearance packages and local company branding.
 The original **Classic office** is the default. **Orbital workshop** changes the
 architecture, floor treatment, lighting, furniture materials and character
-silhouette. Office and characters can be mixed independently.
+silhouette. **Alpine basecamp** turns rooms into timber huts on the snowline
+and dresses agents as climbers. Office and characters can be mixed independently.
+
+## Alpine basecamp
+
+| Office part | Classic | Basecamp |
+|---|---|---|
+| Floor | checker tiles | `planks`: floorboards with staggered joints |
+| Corner plants | potted plants | pines in stone planters |
+| Back-corner unit | water cooler or cabinet | stacked expedition duffels |
+| Front shelf | bookshelf | gear rack: coiled ropes, helmets, ice axes |
+| Lounge | sofa and coffee table | log bench with a wool blanket by a fire pit (the flames flicker) |
+| Side wall | whiteboard or poster | topo route map or a peak poster |
+| Windows | sky | snowy peaks |
+| Campus | plants along the corridor | tents by the trail; pines and boulders in the snow |
+| Ambient | dust rising in the light | snow drifting down |
+
+The `climber` character model wears a helmet in `shell` with goggles in
+`visor` pushed up on it, a down jacket in the agent's color, a rope over the
+shoulder, a harness with a carabiner, a pack and mountaineering boots.
+From behind you see the pack, with a coiled rope and an ice axe. Climbers wear
+gloves, drink from enamel mugs on a break, and raise a summit flag when their
+agent is done. The working glyphs are climbing grades and altitudes.
+
+It goes well with the **Moonlit summit** background.
+
+![Alpine basecamp](basecamp.jpg)
 
 Herdr remains the included provider. Appearance changes do not create, close,
 rename, focus or send input to provider sessions. Custom provider adapters are
@@ -91,8 +117,8 @@ developer removing or breaking a default is a build/runtime programming error.
 
 | Capability | Host and implemented contract |
 |---|---|
-| `office.theme` | Browser. Ground, path, walls, wing/focus/rug/light palettes; material colors; wall height; checker/inset floor pattern; botanical/technical décor and lighting intensity; 1–4 banner anchors. |
-| `office.characters` | Browser. Human/robot silhouette templates; skin/hair/shell/visor colors; animation tempo for each of the five states; motion amplitude and working glyphs. Semantic status colors and agent-kind labels stay in the core. |
+| `office.theme` | Browser. Ground, path, walls, wing/focus/rug/light palettes; material colors; wall height; checker/inset/planks floor pattern; botanical/technical/alpine décor and lighting intensity; 1–4 banner anchors. |
+| `office.characters` | Browser. Human/robot/climber silhouette templates; skin/hair/shell/visor colors (a robot's body and visor, a climber's helmet and goggles); animation tempo for each of the five states; motion amplitude and working glyphs. Semantic status colors and agent-kind labels stay in the core. |
 | `terminal.provider` | Bridge descriptor for the included Herdr adapter in the same manifest/registry vocabulary. Importing provider packages and selecting another backend are **not implemented**. Browser preferences are fenced to Herdr. |
 
 The scene consumes only validated capability data. The core still owns
@@ -194,7 +220,7 @@ budget and was rejected. Automatic resizing now saves it as a 1311 × 437 PNG
 within the budget, displays it on the entrance sign and restores it after
 reload. The user's image and screenshot are not included in this repository.
 
-Screenshots: [Classic](classic.jpg), [Orbital](orbital.jpg),
+Screenshots: [Classic](classic.jpg), [Orbital](orbital.jpg), [Basecamp](basecamp.jpg),
 [settings](settings.jpg), [mobile](mobile.jpg). These show evolving simulated
 agents, not a synchronized provider benchmark.
 

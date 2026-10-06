@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "id": "agent-office.basecamp",
+  "name": "Alpine basecamp",
+  "version": "1.0.0",
+  "description": "Timber huts on the snowline: plank floors, gear racks, fire pits, route maps, tents along the trail and climbers roped up for the summit.",
+  "capabilities": {
+    "office.theme": {
+      "apiVersion": 1,
+      "palette": {
+        "background": "#0f1c2b",
+        "ground": "#9fb1c2",
+        "groundLine": "#c3d1de",
+        "path": "#7d8fa1",
+        "wall": "#8b6b4c",
+        "accent": "#ff8c42",
+        "focus": "#d9a066",
+        "light": "#ffd9a0",
+        "rugs": [
+          "#b5452f",
+          "#2f6b8a",
+          "#c9a227"
+        ],
+        "wings": [
+          "#6f5d4e",
+          "#66584c",
+          "#745f4a",
+          "#5f5850",
+          "#6d5a52"
+        ]
+      },
+      "materials": {
+        "wood": "#c08f5c",
+        "woodDark": "#6e4f36",
+        "metal": "#98a3ae",
+        "chair": "#3b4656",
+        "pot": "#7c848d",
+        "leaf": "#4c8a63",
+        "leafDark": "#2f5f47",
+        "paper": "#efe6d2",
+        "screenOff": "#0d1017",
+        "white": "#f4f7fa"
+      },
+      "architecture": {
+        "wallHeight": 34,
+        "floorPattern": "planks",
+        "decor": "alpine",
+        "lightIntensity": 0.16
+      },
+      "bannerAnchors": [
+        {
+          "id": "entrance",
+          "name": "Entrance sign",
+          "origin": "campus",
+          "x": 0.2,
+          "y": -2.4,
+          "z": 14,
+          "width": 5.8,
+          "height": 58,
+          "facing": "x"
+        },
+        {
+          "id": "studio",
+          "name": "First room wall",
+          "origin": "first-room",
+          "x": 0.5,
+          "y": 0,
+          "z": 36,
+          "width": 3.8,
+          "height": 46,
+          "facing": "x"
+        }
+      ]
+    },
+    "office.characters": {
+      "apiVersion": 1,
+      "model": "climber",
+      "skin": [
+        "#f1d3b3",
+        "#e0b48f",
+        "#c68642",
+        "#8d5524",
+        "#ffdbac"
+      ],
+      "hair": [
+        "#2b1d14",
+        "#5a3a22",
+        "#c7813a",
+        "#1b1b1f",
+        "#8c2f2f",
+        "#e0c080",
+        "#4a4e69"
+      ],
+      "shell": "#f2c14e",
+      "visor": "#5ec8e5",
+      "animation": {
+        "tempo": {
+          "working": 0.85,
+          "idle": 0.75,
+          "blocked": 0.9,
+          "done": 1.1,
+          "unknown": 0.7
+        },
+        "amplitude": 0.9,
+        "glyphs": [
+          "▲",
+          "↑",
+          "5.9",
+          "5.12",
+          "WI4",
+          "M6",
+          "8a",
+          "+50m",
+          "8000",
+          "❄",
+          "N↑",
+          "△"
+        ]
+      }
+    }
+  }
+}

@@ -22,7 +22,7 @@ const ROWS = 30;
 const TICK_MS = 1000;
 const MAX_LOG = 200;
 const MAX_BLOCKED = 3;
-const INSTALL = "npx kauak";
+const INSTALL = "npx kauak serve";
 // Same rule as the bridge: `host`, `user@host` or an ~/.ssh/config alias.
 const SSH_TARGET = /^[A-Za-z0-9_][A-Za-z0-9._@-]{0,127}$/;
 // Same rule as the bridge for a new branch.
@@ -142,7 +142,7 @@ const SNIPPETS: Record<string, string[]> = {
     "def tokenize(text: str) -> list[int]:",
   ],
   md: [
-    "## Remote floors", "Floors are saved in `~/.config/kauak/machines.json`.", "Run `npx kauak` to start the office.", "",
+    "## Remote floors", "Floors are saved in `~/.config/kauak/machines.json`.", "Run `npx kauak serve` to start the office.", "",
     "- **working**: typing at the desk", "- **blocked**: hand raised, waiting for you", "See the plugin guide for themes.",
   ],
   sql: [

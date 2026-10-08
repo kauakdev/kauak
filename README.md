@@ -5,7 +5,7 @@
 A Sims-style isometric office that shows what your [Herdr](https://herdr.dev) coding agents are doing.
 
 **[Try the demo](https://agustinrbeltran.github.io/kauak/)** (simulated agents, nothing to install),
-or run it on your own agents with `npx kauak`.
+or run it on your own agents with `npx kauak serve`.
 
 | Herdr object | In the office |
 |---|---|
@@ -164,7 +164,7 @@ anything), wheel to zoom.
 Requires a running Herdr server (0.9.x, protocol 22) and Node 20+.
 
 ```sh
-npx kauak
+npx kauak serve
 ```
 
 That starts the bridge and opens the office at http://127.0.0.1:7788. Options:
@@ -227,7 +227,7 @@ Herdr socket (another Herdr session on this machine) as its own floor.
 
 ## Demo
 
-`?demo` in the URL (or `npx kauak --demo`) swaps the bridge for a
+`?demo` in the URL (or `npx kauak serve --demo`) swaps the bridge for a
 simulated one (`web/src/demo.ts`): two floors of made-up agents that work, get
 blocked and finish on their own. The terminal panel works there too: Enter or
 Esc answers a blocked agent, a typed task puts an idle one to work, a finished
@@ -262,7 +262,7 @@ the included provider; custom provider loading is not part of this release.
 ## How it works
 
 `bridge/server.js` also serves the built page (`dist/`) on the same port,
-so `npx kauak` (`bin/kauak.js`) is one process and one URL.
+so `npx kauak serve` (`bin/kauak.js`) is one process and one URL.
 `bridge/machine.js` is one Herdr server: it talks to its unix socket
 (newline-delimited JSON, one request per connection) directly or through the
 SSH tunnel, keeps one long-lived `events.subscribe` connection, and on every

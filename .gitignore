@@ -3,3 +3,9 @@ dist
 dist-demo
 *.tgz
 .vite
+# Local overrides only: nothing needs a .env, but Vite would read one in web/.
+.env
+.env.*
+*.log
+.DS_Store
+.claude/settings.local.json

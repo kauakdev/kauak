@@ -1,0 +1,209 @@
+# Using Kauak
+
+What everything in the office means and how to work with it. For setup see the
+[README](../README.md), for settings and remote machines
+[configuration.md](configuration.md), and for the internals
+[architecture.md](architecture.md).
+
+## The office
+
+| Herdr object | In the office |
+|---|---|
+| Machine running Herdr | Floor (this machine is 1F) |
+| Repository (grouped by `worktree.repo_key`) | Wing (a row of rooms) |
+| Workspace / worktree | Room |
+| Pane | Desk (with or without someone at it) |
+| Agent | Person at the desk, colored by agent kind |
+
+Agent lifecycle states drive the animation:
+
+- **working**: typing, code glyphs float up from the laptop
+- **idle**: on a break, away from the desk under a `☕` bubble: gets up for a
+  drink at the room's vending machine, then sits on the bench or a lounge sofa
+  or stands around the room with it. An empty chair means a free agent.
+- **blocked**: hand raised, `?` bubble pulses, room outline pulses red
+- **done**: `✓` bubble hops until the pane is seen
+- **unknown**: greyed out
+
+An agent on a break hurries back to its desk as soon as it has work or a
+question (its bubble already shows the new status on the way), and one first
+seen idle is already somewhere on its break. People walk around the furniture
+and never share a seat or queue at the machine. Click one anywhere in the room
+to select its desk. With reduced motion nobody walks: idle agents are simply
+on the bench, a sofa or at the machine.
+
+Each room is a raised platform with windows, a whiteboard or poster, a rug,
+plants, a bookshelf, a vending machine, a bench under the windows and a lounge
+in any spare desk cell. Wings get a floor tint
+and a sign with room/desk/agent counts; room plaques show one status dot per
+desk. Monitors show scrolling code while an agent works and a blinking prompt
+when the desk is empty.
+
+## Context meters
+
+A bar under a Claude Code or Codex agent's name tag shows
+how full its context window is, as of its last model call. It is teal, turns
+amber at 60% and red at 85%, where agents start compacting. The same meter is
+in the roster row and the terminal panel's header; hover a desk for the token
+counts ("184k of 1M tokens"). Neither Herdr nor the agents report this over
+an API, so the bridge reads it from the transcripts the agents write to disk
+(`~/.claude/projects`, `~/.codex/sessions`). On a remote floor it does that
+over SSH with a small Python script (`bridge/context_remote.py`, run with the
+machine's `python3`; nothing is installed there). To match a pane with its
+transcript, the bridge uses the session that Herdr's agent integrations report
+(`herdr integration install claude`, or `codex`). Without them, nothing needs
+installing: a Claude Code pane is matched through the Claude process running in
+it, and a Codex pane gets the newest terminal Codex session in the pane's folder
+since Codex started there (two Codex panes in one folder get no meter, rather
+than a guess). Claude's window is 1M
+tokens, or 200k on Haiku and models up to 4.5 unless Claude Code runs them with
+1M (`[1m]`).
+
+## Printers
+
+Every room in a git checkout has a printer by the back wall.
+Each time a file there changes, it prints a sheet with what that edit changed
+(not the file's whole diff): the sheet slides out onto the tray, the printer's
+light turns amber and a badge counts the sheets nobody has read. Hover the
+printer for the latest file, click it to pick the newest sheet up off the tray
+and read it: the file, `+`/`−` counts and the numbered diff. ←/→ leaf through
+older and newer sheets, and Esc or a click beside the page puts it back down.
+The **Uncommitted** tab under the page (or `U`) prints everything not
+committed in the checkout right now instead: its diff against the last commit,
+staged or not, and the untracked files, as one long printout with a list of
+files at the top and a page per file (←/→ go from file to file). It is read
+when the tab opens and again whenever another sheet lands, so it also shows
+changes made before the bridge started; a printer with nothing printed yet
+opens on it.
+The bridge finds a room's checkout from its worktree (or first pane's folder),
+looks at it every 2 seconds with `git status` (without taking git's index
+lock), and compares each changed file with the last version it saw, the first
+time the one in `HEAD`. Changes already there when the bridge starts print no
+sheets, rooms in one checkout share its sheets, and the last 50 are kept. On a
+remote floor the bridge runs git and reads the files over SSH with a small
+Python script (`bridge/diffs_remote.py`, run with the machine's `python3`, like
+the context meters; nothing is installed there).
+
+## Around the canvas
+
+- **Top bar**: the floor on screen and its connection state, live counts per
+  status across all floors (the tab title shows a `(N blocked)` prefix), clock,
+  zoom and fit buttons.
+- **Floors** (top right): the elevator. One button per machine, top floor
+  first, with its connection state and how many agents there are blocked or
+  done, so you notice activity on floors you are not looking at. Click one
+  (or press its number) to take the elevator there. "+ Add floor" adds a
+  machine by SSH target; hover a floor for its full status and a remove button.
+- **Roster** (left): every pane on every floor, grouped by floor, repository and
+  workspace, with the time spent in its current status. Click a row to jump to
+  that desk, on whatever floor it is.
+- **Activity** (bottom right): status changes, arrivals and departures seen
+  during this session, tagged with their floor. Click an entry to jump to the desk.
+- **Radio** (the Radio button; `M` turns it on and off): an FM dial from 87.5
+  to 108 with one station, CLIAMP Lofi (lofi hip hop) at 95.5, credited on the
+  card with a link to [cliamp.stream](https://cliamp.stream). Anywhere else on
+  the dial plays static. It is off until you turn it on; then it plays straight
+  from cliamp.stream, and your browser connects to it directly.
+
+## The terminal panel
+
+Hover a desk for the terminal title and cwd. Click anywhere on a desk (the
+person, the chair, the floor around it: the outline that lights up on hover),
+or a roster row, to select it: a plumbob appears over it, the camera glides to it and the pane's
+terminal opens in a side panel (xterm.js, polled a few times a second and
+redrawn only when the text changes). The terminal itself is a
+read-only mirror: Herdr hands out snapshots of the screen, with no cursor
+position and no output stream, so the panel does not pretend to be a live
+terminal. To answer an agent or run a command, type into the message box under
+it: Enter sends the text and then Enter (an empty box just presses Enter, to
+accept a prompt), Shift+Enter adds a line, and a multi-line message goes as a
+bracketed paste. The key buttons send Esc, Ctrl+C, ↑, ↓, Tab and Shift+Tab;
+from the keyboard, Esc always goes to the pane, and ↑ ↓ Tab Ctrl+C do while
+the box is empty. Typing `/` in a Claude Code or Codex pane lists the agent's
+commands above the box, as its own prompt does: ↑ ↓ pick, Tab completes, Enter
+runs, Esc closes. The list is the agent's built-in commands plus, on this
+machine, the command, skill and plugin files it would load for the pane's
+folder (`.claude/commands`, `.claude/skills` and enabled plugins, or
+`~/.codex/prompts`); remote floors get the built-ins. When Claude Code shows a
+dim suggestion in its empty prompt, the box shows it too, and Tab (or the Tab
+button beside it) takes it. Text goes through Herdr's `pane.send_text` and keys through
+`pane.send_keys`, so the pane's own key encoding (application cursor keys,
+kitty protocol) is honored. Unsent text is kept per pane. The terminal keeps
+the pane's exact size and shrinks its font until the pane's width fits the
+panel; a pane taller than the panel scrolls, kept at the bottom. Scroll up
+for the last 1000 rows of the pane's history: the mirror holds still while you
+read, and a button takes you back to the latest output (sending anything does
+too). A program on the alternate screen, such as Claude Code in fullscreen
+mode, keeps its history to itself, so for an agent there the wheel sends
+Page Up and Page Down to scroll its own transcript. Drag the
+panel's left edge to widen it, so a wide pane gets bigger text (the width is
+remembered; double-click the edge for the default). "Focus
+in Herdr" switches your Herdr window to the pane. `?pane=w1:p1` in the URL
+opens a pane on load (`?pane=<floor>/w1:p1` for another floor; `?floor=<id>`
+just picks the floor).
+
+## Build mode
+
+Build mode (the Build button, or `B`) adds desks and rooms. Every room
+grows a ghost desk with a `+`, every wing ends in a dashed "New room" plot, and
+one more plot below the wings takes a room in any other folder. Click one and
+a small form asks what to create:
+
+- **New desk**: a new Herdr tab in the room (`tab.create`), in the room's
+  folder, with an optional agent. A tab rather than a split, so the new pane
+  gets the whole Herdr window and its terminal fills the side panel.
+- **New room**: a **git branch** (Herdr's `worktree.create`: a new worktree
+  under `~/.herdr/worktrees`, opened as a room in the repository's wing) or a
+  **folder** (`workspace.create`). On this machine `~` is expanded and a
+  folder that does not exist is refused; a remote floor needs an absolute path.
+- **Agent**: none (a plain shell) or any kind Herdr knows (`herdr agent`).
+  The agent's command must be installed on that machine; the bridge starts it
+  with `agent.start` once the new shell is up.
+
+The new desk's terminal opens as soon as Herdr has the pane. Nothing is ever
+closed or removed from here.
+
+## Keys
+
+`J`/`K` next/previous desk, `1`–`9` go to that floor, `PgUp`/`PgDn` one
+floor up/down, `F` fit the office, `R` toggle roster, `A` toggle the activity feed, `B` build mode, `M` radio on/off, `+`/`-`
+zoom, `Esc` close the build form, the add-floor form or the panel, then leave
+build mode. While the message box has keyboard focus
+these shortcuts are off and `Esc` goes to the pane;
+click outside the box to get them back. Click an empty spot in the
+office to close the panel. Drag to pan (a drag never selects or closes
+anything), wheel to zoom.
+
+## Demo
+
+`?demo` in the URL (or `kauak serve --demo`) swaps the bridge for a
+simulated one (`web/src/demo.ts`): two floors of made-up agents that work, get
+blocked and finish on their own. The terminal panel works there too: Enter or
+Esc answers a blocked agent, a typed task puts an idle one to work, a finished
+Claude suggests a next message, `/` lists a few made-up commands, and shell
+panes run a few commands (`help`, `git status`, `claude`…). "+ Add floor"
+adds a made-up machine. `pnpm build:demo` builds it as a static site in
+`dist-demo/`, and `.github/workflows/demo.yml` publishes that to GitHub Pages
+on every push to `main`. The Claude and Codex agents fill their context meters
+as they work and compact when full.
+
+## Appearance packages and company banners
+
+Open **Appearance** to choose an office and character package independently:
+the original Classic office, the Orbital workshop or the Alpine basecamp, where
+rooms are timber huts in the snow and agents are climbers in helmets and harnesses. Import declarative
+JSON packages to add more appearances without editing the scene. Upload a
+company banner, choose its entrance or room-wall location, hide, replace or
+remove it. Images and choices stay local to this browser; changing office
+preserves your banner and sessions.
+
+In **Appearance → Beyond the office**, compare Alpine dusk, Moonlit summit,
+Contour map, or the original plain background. Backgrounds change independently
+of the office and characters and stay saved in this browser. Use **View in office**
+to close settings and see the full scene. For a preview without changing your
+saved choice, add `&background=alpine` (or `summit`, `contours`, `original`) to a
+demo URL such as `?demo&background=alpine`.
+
+See the [plugin and banner guide](plugins/README.md) for authoring,
+validation, capability contracts, screenshots and current limits. Herdr remains
+the included provider; custom provider loading is not part of this release.

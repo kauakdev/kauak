@@ -10,8 +10,10 @@
   "author": "Agustin Renteria Beltran",
   "type": "module",
   "bin": { "kauak": "bin/kauak.js" },
-  "files": ["bin", "cli", "bridge", "dist"],
-  "engines": { "node": ">=20" },
+  "exports": { "./package.json": "./package.json" },
+  "files": ["bin", "cli", "bridge", "dist", "!**/*.test.*", "!**/fixtures", "!**/*.d.ts", "!dist/kauak-banner.png"],
+  "engines": { "node": ">=22" },
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
   "scripts": {
     "dev": "concurrently -k -n bridge,web -c blue,magenta \"node bridge/server.js\" \"vite\"",
     "bridge": "node bridge/server.js",
@@ -22,7 +24,8 @@
     "build:demo": "vite build --mode demo",
     "start": "node bin/kauak.js serve",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run typecheck && npm run build"
+    "prepack": "npm run typecheck && npm run build",
+    "verify:pack": "node scripts/verify-pack.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

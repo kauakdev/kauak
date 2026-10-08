@@ -238,6 +238,11 @@
         background: linear-gradient(var(--accent), var(--accent)) 50% 3px / 3px 11px no-repeat; }
       #radio .vol { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); }
       #radio .vol input { width: 90px; accent-color: var(--accent); }
+      /* Station credits, filled in by radio.ts. */
+      #radio-credit { padding: 8px 14px 10px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.4; color: var(--muted); }
+      #radio-credit p { margin: 0; }
+      #radio-credit a { color: var(--text); text-decoration-color: var(--line-2); text-underline-offset: 2px; }
+      #radio-credit a:hover { text-decoration-color: currentColor; } #radio-credit a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
       @media (prefers-reduced-motion: reduce) { #btn-radio.playing .eq i { animation: none; } }
 
       /* ---- activity feed ---- */
@@ -497,7 +502,7 @@
       <header><span>Radio</span><button id="radio-power" class="mini" aria-pressed="false" title="Turn the radio on or off (M)"><i class="led"></i>Power</button></header>
       <div id="radio-dial" title="Drag or scroll to tune"><div id="radio-scale"><i id="radio-needle"></i></div></div>
       <div class="readout">
-        <span class="freq"><b id="radio-freq">88.3</b> FM</span>
+        <span class="freq"><b id="radio-freq">95.5</b> FM</span>
         <span class="lamp" title="Lit when locked on a station">Tuned</span>
         <span class="bars" title="Signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
       </div>
@@ -509,6 +514,7 @@
         <button class="btn" id="radio-next" title="Seek up to the next station" aria-label="Next station">▶</button>
         <label class="vol">Vol<input id="radio-volume" type="range" min="0" max="100" value="60" aria-label="Volume"></label>
       </div>
+      <footer id="radio-credit"></footer>
     </section>
 
     <aside id="roster" class="card">

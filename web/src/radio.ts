@@ -1,23 +1,11 @@
 // Office radio: lofi internet stations on an FM dial. Between stations the
 // speaker plays static; as the needle nears a station its stream fades in
 // through a low-pass filter that opens up as the signal locks, like tuning a
-// real set. Streams run through Web Audio, so every hop of each stream URL,
-// redirects included, must send CORS headers and accept a foreign Referer (all
-// of these did on 2026-09-29; SomaFM refuses other sites' Referer, so it's out).
+// real set. It's off until turned on, and then the browser fetches the tuned
+// stream straight from the station's server. stations.ts lists the stations
+// and how they're chosen.
 
-interface Station { freq: number; name: string; genre: string; url: string }
-
-const STATIONS: Station[] = [
-  { freq: 88.3, name: "Box Lofi", genre: "lofi hip hop", url: "https://play.streamafrica.net/lofiradio" },
-  { freq: 90.7, name: "laut.fm Lofi", genre: "lofi beats", url: "https://lofi.stream.laut.fm/lofi" },
-  { freq: 93.1, name: "Hunter.FM Lo-Fi", genre: "lofi", url: "https://live.hunter.fm/lofi_high" },
-  { freq: 95.5, name: "CLIAMP Lofi", genre: "lofi hip hop", url: "https://radio.cliamp.stream/lofi/stream" },
-  { freq: 97.9, name: "I♥Chillhop", genre: "chillhop", url: "https://streams.ilovemusic.de/iloveradio17.mp3" },
-  { freq: 100.3, name: "FluxFM Chillhop", genre: "chillhop", url: "https://streams.fluxfm.de/Chillhop/mp3-128/streams.fluxfm.de/" },
-  { freq: 102.7, name: "Hotmix LoFi", genre: "lofi", url: "https://streaming.hotmixradio.com/hotmix-lofi-en-mp3" },
-  { freq: 105.1, name: "Nightwave Plaza", genre: "vaporwave", url: "https://radio.plaza.one/mp3" },
-  { freq: 107.5, name: "ISEKOI Chill Zone", genre: "chill electronic", url: "https://public.isekoi-radio.com/listen/chill/radio.mp3" },
-];
+import { STATIONS, type Station } from "./stations";
 
 const MIN = 87.5, MAX = 108;
 /** How far (MHz) from a station its signal still comes through. */
@@ -43,6 +31,7 @@ export class Radio {
   private freqEl = document.getElementById("radio-freq")!;
   private nameEl = document.getElementById("radio-name")!;
   private infoEl = document.getElementById("radio-info")!;
+  private credit = document.getElementById("radio-credit")!;
   private bars = [...this.card.querySelectorAll<HTMLElement>(".bars i")];
   private audio = new Audio();
   private graph: Graph | null = null;
@@ -65,7 +54,12 @@ export class Radio {
 
   constructor() {
     const saved = restore();
-    if (typeof saved.freq === "number") this.freq = Math.min(MAX, Math.max(MIN, saved.freq));
+    const freq = typeof saved.freq === "number" ? Math.min(MAX, Math.max(MIN, saved.freq)) : null;
+    // A saved frequency with no station in reach (static, or a station since taken off
+    // the dial) starts back on the first station, switched off: the browser shouldn't
+    // connect to a station nobody tuned to.
+    const kept = freq !== null && this.reception(freq).station !== null;
+    if (kept) this.freq = freq;
     if (typeof saved.volume === "number") this.volume.value = String(saved.volume);
 
     const pct = (f: number) => `${((f - MIN) / (MAX - MIN)) * 100}%`;
@@ -76,6 +70,18 @@ export class Radio {
     }
     for (const s of STATIONS) marks += `<b class="st" style="left:${pct(s.freq)}" title="${s.freq} · ${s.name}"></b>`;
     this.scale.insertAdjacentHTML("afterbegin", marks);
+
+    // Credit each station, and say where the sound comes from before anyone turns it on.
+    const host = (s: Station) => new URL(s.site).host;
+    for (const s of STATIONS) {
+      const line = document.createElement("p"), link = document.createElement("a");
+      Object.assign(link, { href: s.site, target: "_blank", rel: "noopener noreferrer", textContent: host(s) });
+      line.append(`Stream: ${s.name} · `, link);
+      this.credit.append(line);
+    }
+    const hosts = [...new Set(STATIONS.map(host))], note = document.createElement("p");
+    note.textContent = `Plays straight from ${hosts.join(", ")}; your browser connects to ${hosts.length > 1 ? "them" : "it"} directly.`;
+    this.credit.append(note);
 
     this.audio.crossOrigin = "anonymous";
     this.audio.preload = "none";
@@ -141,7 +147,7 @@ export class Radio {
       if (!this.card.hidden && !this.card.contains(t) && !this.toggle.contains(t)) this.show(false);
     });
 
-    if (saved.on === true) {
+    if (saved.on === true && kept) {
       this.wantResume = true;
       // Registered after the M handler, so a first M press turns the radio off instead of resuming it.
       const resume = (e: Event) => {
@@ -230,10 +236,10 @@ export class Radio {
   }
 
   /** Nearest station within reach, and how cleanly it comes in (0..1). */
-  private reception(): { station: Station | null; signal: number } {
+  private reception(freq = this.freq): { station: Station | null; signal: number } {
     let best: Station | null = null, d = Infinity;
     for (const s of STATIONS) {
-      const x = Math.abs(s.freq - this.freq);
+      const x = Math.abs(s.freq - freq);
       if (x < d) { d = x; best = s; }
     }
     return d < REACH ? { station: best, signal: 1 - d / REACH } : { station: null, signal: 0 };

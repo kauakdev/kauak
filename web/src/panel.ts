@@ -85,7 +85,6 @@ export class TerminalPanel {
   private appliedSeq = 0;
   private inputId = 0;
   private timer: number | null = null;
-  private snapshot: Snapshot | null = null;
   private hintTimer: number | null = null;
 
   onRead: (paneId: string, seq: number, lines: number) => void = () => {};
@@ -156,7 +155,6 @@ export class TerminalPanel {
   }
 
   setSnapshot(s: Snapshot) {
-    this.snapshot = s;
     if (!this.pane) return;
     const fresh = s.panes.find((p) => p.pane_id === this.pane!.pane_id);
     if (!fresh) { this.close(); return; }
@@ -235,8 +233,8 @@ export class TerminalPanel {
   private show(text: string) {
     if (!this.pane) return;
     const rows = text.split("\r\n");
-    const screenRows = this.pane.scroll?.viewport_rows ?? rows.length;
-    this.history = rows.length > screenRows || (this.pane.scroll?.max_offset_from_bottom ?? 0) > 0;
+    const screenRows = this.pane.screen?.rows ?? rows.length;
+    this.history = rows.length > screenRows || this.pane.scrollback;
     this.readRows = rows.length;
     this.readCols = Math.max(this.readCols, ...rows.map((r) => width(stripAnsi(r))));
     const resized = this.resizeToPane();
@@ -332,7 +330,7 @@ export class TerminalPanel {
   /** Ask the bridge for the menu when the pane, its agent or its folder is new. */
   private askCommands() {
     const p = this.pane;
-    const key = p?.agent ? `${p.pane_id}|${p.agent}|${p.foreground_cwd || p.cwd}` : "";
+    const key = p?.agent ? `${p.pane_id}|${p.agent}|${p.cwd}` : "";
     if (key === this.commandsFor) return;
     this.commandsFor = key;
     if (!p) return;
@@ -410,14 +408,14 @@ export class TerminalPanel {
   }
 
   private poll() {
-    if (this.pane) this.onRead(this.pane.pane_id, ++this.readSeq, (this.pane.scroll?.viewport_rows ?? 0) + HISTORY_ROWS);
+    if (this.pane) this.onRead(this.pane.pane_id, ++this.readSeq, (this.pane.screen?.rows ?? 0) + HISTORY_ROWS);
   }
 
   private renderHeader() {
     if (!this.pane) return;
     const p = this.pane;
-    this.titleEl.textContent = p.terminal_title_stripped || p.terminal_title || p.pane_id;
-    this.metaEl.textContent = `${p.pane_id} · ${(p.foreground_cwd || p.cwd).replace(/^\/home\/[^/]+/, "~")}`;
+    this.titleEl.textContent = p.title || p.pane_id;
+    this.metaEl.textContent = `${p.pane_id} · ${(p.cwd ?? "").replace(/^\/home\/[^/]+/, "~")}`;
     const kind = document.getElementById("panel-kind")!;
     kind.textContent = p.agent ?? "shell";
     kind.dataset.kind = p.agent ?? "";
@@ -443,19 +441,15 @@ export class TerminalPanel {
    * Give xterm the pane's size. A read with more rows than xterm has scrolls
    * the whole screen up and, with no scrollback, drops the top rows. Reads
    * leave out blank rows at the bottom, so the rows come from the reads, else
-   * the pane's `viewport_rows`. The columns are the layout rect's width when
-   * the rect is the pane's real size (its height matches `viewport_rows`; on
-   * Herdr 0.9.1 it stayed at 120×40 whatever size the attached client gave
-   * the pane). Otherwise they grow to fit the widest row read. Returns whether
-   * xterm was resized.
+   * the pane's `screen`. The columns are the screen's when they are `exact`;
+   * otherwise they grow to fit the widest row read. Returns whether xterm was
+   * resized.
    */
   private resizeToPane(): boolean {
     if (!this.pane) return false;
-    const id = this.pane.pane_id;
-    const rect = this.snapshot?.layouts.flatMap((l) => l.panes).find((p) => p.pane_id === id)?.rect;
-    const rows = Math.max(5, this.readRows || this.pane.scroll?.viewport_rows || rect?.height || this.term.rows);
-    const real = rect !== undefined && rect.height === this.pane.scroll?.viewport_rows;
-    const cols = Math.max(20, real ? rect.width : Math.max(this.readCols, rect?.width ?? 0));
+    const screen = this.pane.screen;
+    const rows = Math.max(5, this.readRows || screen?.rows || this.term.rows);
+    const cols = Math.max(20, screen?.exact && screen.cols ? screen.cols : Math.max(this.readCols, screen?.cols ?? 0));
     if (cols === this.term.cols && rows === this.term.rows) return false;
     this.term.resize(cols, rows);
     this.fit();

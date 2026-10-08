@@ -806,8 +806,8 @@ export class OfficeScene {
   }
 
   private drawRoomPlaque(room: Room) {
-    const wt = room.workspace.worktree;
-    const sub = wt ? (wt.is_linked_worktree ? `worktree · ${wt.checkout_path.split("/").pop()}` : "main checkout") : `workspace ${room.workspace.number}`;
+    const repo = room.workspace.repo;
+    const sub = repo ? (repo.linked ? `worktree · ${repo.checkout.split("/").pop()}` : "main checkout") : `workspace ${room.workspace.number}`;
     const label = new Text({ text: room.workspace.label || room.workspace.workspace_id, style: labelStyle });
     const subT = new Text({ text: sub, style: subStyle });
     const dots = new Graphics();
@@ -920,9 +920,8 @@ export class OfficeScene {
   private showTip(pane: PaneInfo, x: number, y: number) {
     const away = pane.agent ? whereabouts(this.states.get(pane.pane_id)?.roam) : null;
     const who = pane.agent ? `<b>${escapeHtml(pane.agent)}</b> · ${pane.agent_status}${away ? ` · ${away}` : ""}` : "<b>shell</b> · no agent";
-    const title = pane.terminal_title_stripped || pane.terminal_title || "";
     const context = pane.context ? `\ncontext: ${contextText(pane.context)}` : "";
-    this.placeTip(`${who}\n${escapeHtml(title)}${context}\n<span class="muted">${escapeHtml(shortPath(pane.foreground_cwd || pane.cwd))}\n${pane.pane_id}${pane.focused ? " · focused in Herdr" : ""}</span>`, pane.agent_status, x, y);
+    this.placeTip(`${who}\n${escapeHtml(pane.title)}${context}\n<span class="muted">${escapeHtml(shortPath(pane.cwd ?? ""))}\n${pane.pane_id}${pane.focused ? " · focused in Herdr" : ""}</span>`, pane.agent_status, x, y);
   }
 
   private placeTip(html: string, status: string, x: number, y: number) {

@@ -99,7 +99,7 @@ export class BuildMode {
       this.setMode("desk");
     } else {
       const wing = target.wing;
-      const repo = wing?.rooms.find((r) => r.workspace.worktree)?.workspace.worktree?.repo_root;
+      const repo = wing?.rooms.find((r) => r.workspace.repo)?.workspace.repo?.root;
       const folder = repo ?? wing?.rooms.flatMap((r) => r.desks)[0]?.pane.cwd ?? "";
       this.title.textContent = wing ? `New room · ${wing.name}` : "New room";
       this.field("cwd").value = folder;

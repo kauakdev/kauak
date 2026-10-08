@@ -7,7 +7,7 @@
 //
 // Which transcript belongs to which pane:
 // - Herdr's agent integrations (`herdr integration install claude`) report the
-//   session on start: `pane.agent_session`, a transcript path or a session id.
+//   session on start, a transcript path or a session id (`paneSession`).
 // - Without it, a Claude Code pane is matched through its process: Claude
 //   Code keeps ~/.claude/sessions/<pid>.json with the session id and folder of
 //   each running instance (verified on 2.1.286; not a documented interface).
@@ -17,7 +17,8 @@
 //   nothing on disk ties a pane's process to its session; when two Codex
 //   panes share a folder there is no telling which is which, and neither gets
 //   a meter.
-// The pane's processes come from Herdr (`pane.process_info`).
+// The pane's processes come from Herdr (`paneProcesses`). The floor's Machine
+// (machine.js) asks Herdr for both; this file only sees its Kauak snapshot.
 //
 // Transcripts only grow, so each one is read incrementally from where the
 // last read stopped.
@@ -77,7 +78,7 @@ export class ContextTracker extends EventEmitter {
     this.reader.stop();
   }
 
-  /** The snapshot with `context` on every pane whose use is known. */
+  /** The Kauak snapshot with `context` on every pane whose use is known. */
   annotate(snapshot) {
     if (!snapshot || this.usage.size === 0) return snapshot;
     return { ...snapshot, panes: snapshot.panes.map((p) => (this.usage.has(p.pane_id) ? { ...p, context: this.usage.get(p.pane_id) } : p)) };
@@ -108,11 +109,8 @@ export class ContextTracker extends EventEmitter {
     if (!snap || this.m.state !== "live") return;
     const panes = [];
     const asked = new Set(); // panes whose processes came from Herdr just now, not from the cache
-    const sessionOf = (pane) => {
-      const s = pane.agent_session;
-      return s && s.agent === pane.agent && typeof s.value === "string" ? { kind: s.kind, value: s.value } : null;
-    };
-    const folderOf = (pane) => pane.foreground_cwd || pane.cwd;
+    const sessionOf = (pane) => this.m.paneSession(pane.pane_id);
+    const folderOf = (pane) => pane.cwd;
     // Codex panes without a session are matched by folder, so one folder must not have two.
     const codexFolders = new Map();
     for (const pane of snap.panes) {
@@ -154,9 +152,8 @@ export class ContextTracker extends EventEmitter {
     this.emit("change");
   }
 
-  async processesOf(paneId) {
-    const res = await this.m.request("pane.process_info", { pane_id: paneId }).catch(() => null);
-    return (res?.process_info?.foreground_processes ?? []).map((p) => p.pid).filter(Number.isInteger);
+  processesOf(paneId) {
+    return this.m.paneProcesses(paneId).catch(() => []);
   }
 }
 

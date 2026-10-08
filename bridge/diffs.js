@@ -1,8 +1,8 @@
 // The printer in every room: each time a file in the room's git checkout
 // changes, the bridge prints a sheet with what that edit changed.
 //
-// A room is matched to a checkout by folder (its worktree's checkout path, or
-// its first pane's cwd) and `git rev-parse --show-toplevel`; rooms in one
+// A room is matched to a checkout by folder (its repository checkout, or its
+// first pane's folder) and `git rev-parse --show-toplevel`; rooms in one
 // checkout share its printer. Every POLL_MS each checkout is scanned with
 // `git status` (without optional locks, so agents' own git commands never
 // trip over ours), and every changed file whose size or mtime moved is read
@@ -90,6 +90,7 @@ export class DiffTracker extends EventEmitter {
     this.host.stop();
   }
 
+  /** The Kauak snapshot with each room's `git_root`. */
   annotate(snapshot) {
     if (!snapshot || this.roots.size === 0) return snapshot;
     return { ...snapshot, workspaces: snapshot.workspaces.map((w) => ({ ...w, git_root: this.roots.get(w.workspace_id) ?? null })) };
@@ -125,7 +126,7 @@ export class DiffTracker extends EventEmitter {
     if (!snap) return;
     const next = new Map();
     for (const ws of snap.workspaces) {
-      const folder = ws.worktree?.checkout_path ?? snap.panes.find((p) => p.workspace_id === ws.workspace_id)?.cwd;
+      const folder = ws.repo?.checkout ?? snap.panes.find((p) => p.workspace_id === ws.workspace_id)?.cwd;
       const root = folder ? await this.rootOf(folder) : null;
       if (root) next.set(ws.workspace_id, root);
     }

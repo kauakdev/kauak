@@ -1,4 +1,9 @@
-// One Herdr server, shown in the office as one floor.
+// One Herdr server, shown in the office as one floor: the bridge's Herdr
+// adapter. server.js asks a Machine for what it needs in Kauak terms (its
+// `info`, its `snapshot`, and operations like `readPane` or `createRoom`); this
+// file turns those into Herdr requests, and herdr.js turns Herdr's answers
+// into the Kauak protocol (protocol.d.ts). Herdr's methods, fields and errors
+// go no further.
 //
 // Herdr only listens on a local unix socket, so a remote machine is reached
 // through an SSH tunnel that forwards a local unix socket to the remote one
@@ -18,6 +23,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { RUNTIME, errorMessage, paneSession, toSnapshot } from "./herdr.js";
 
 export const LOCAL_SOCKET = process.env.HERDR_SOCKET_PATH ?? process.env.HERDR_SOCKET
   ?? path.join(os.homedir(), ".config", "herdr", "herdr.sock");
@@ -28,6 +34,12 @@ const TUNNEL_DIR = path.join(os.tmpdir(), `kauak-${process.getuid?.() ?? "user"}
 const TUNNEL_READY_MS = 20_000;
 const RETRY_MS = [2000, 4000, 8000, 15_000, 30_000];
 const SNAPSHOT_DEBOUNCE_MS = 80;
+// Keys sent in one pane.send_keys.
+const MAX_KEYS_PER_CALL = 64;
+// A new pane's shell is not "available" to Herdr until its prompt is up
+// (verified on 0.9.1: agent.start answers agent_pane_busy for up to ~1 s).
+const AGENT_WAIT_MS = 10_000;
+const AGENT_RETRY_MS = 300;
 // Runs on the remote machine (under `sh`, whatever the login shell is): print
 // where Herdr's socket lives, exit 3 if it is not there.
 const REMOTE_PROBE = `sh -c '${[
@@ -38,6 +50,7 @@ const REMOTE_PROBE = `sh -c '${[
 
 // Events that change what the office looks like. pane.agent_status_changed
 // needs a pane_id, so we rely on pane.updated (fires on status changes too).
+// Kauak has no events of its own: each of these becomes a fresh snapshot.
 const SUBSCRIPTIONS = [
   "workspace.created", "workspace.updated", "workspace.metadata_updated",
   "workspace.renamed", "workspace.moved", "workspace.reordered",
@@ -51,7 +64,10 @@ const SUBSCRIPTIONS = [
 
 let reqSeq = 0;
 
-/** One request / one connection. Resolves with the parsed `result`. */
+/**
+ * One request / one connection. Resolves with the parsed `result`; rejects
+ * with Herdr's error message, its `code` and the `method` on the error.
+ */
 function herdrRequest(socketPath, method, params = {}) {
   return new Promise((resolve, reject) => {
     const id = `office:${++reqSeq}`;
@@ -67,7 +83,7 @@ function herdrRequest(socketPath, method, params = {}) {
       sock.end();
       try {
         const msg = JSON.parse(line);
-        if (msg.error) reject(new Error(`${method}: ${msg.error.code} ${msg.error.message}`));
+        if (msg.error) reject(Object.assign(new Error(msg.error.message), { code: msg.error.code, method }));
         else resolve(msg.result);
       } catch (err) {
         reject(err);
@@ -75,14 +91,14 @@ function herdrRequest(socketPath, method, params = {}) {
     });
     // Through a tunnel, a remote Herdr that is down shows up as a connection
     // that closes without a reply.
-    sock.on("close", () => reject(new Error(`${method}: no reply from Herdr`)));
+    sock.on("close", () => reject(Object.assign(new Error("no reply from Herdr"), { method })));
     sock.on("error", reject);
   });
 }
 
 /**
- * Emits "status" when `state`/`message` change, "snapshot" with a fresh
- * `session.snapshot`, and "event" for every Herdr event.
+ * Emits "status" when `state`/`message` change, and "snapshot" with a fresh
+ * Kauak snapshot after every Herdr event.
  * `state`: "connecting" → "live" ⇄ "down" (retries with backoff while down).
  */
 export class Machine extends EventEmitter {
@@ -95,6 +111,9 @@ export class Machine extends EventEmitter {
     this.socketPath = ssh ? path.join(TUNNEL_DIR, `${id}.sock`) : (socket ?? LOCAL_SOCKET);
     this.state = "connecting";
     this.message = ssh ? `ssh ${ssh}…` : "";
+    /** Herdr's latest `session.snapshot`; only this file and herdr.js read it. */
+    this.raw = null;
+    /** The same as a Kauak Snapshot. */
     this.snapshot = null;
     this.tunnel = null;
     this.sub = null;
@@ -104,8 +123,9 @@ export class Machine extends EventEmitter {
     this.stopped = false;
   }
 
+  /** The floor's Kauak MachineInfo. */
   get info() {
-    return { id: this.id, label: this.label, ssh: this.ssh, state: this.state, message: this.message, version: this.snapshot?.version ?? null };
+    return { id: this.id, label: this.label, ssh: this.ssh, state: this.state, message: this.message, runtime: { name: RUNTIME, version: this.raw?.version ?? null } };
   }
 
   /** Settings that go in the config file. */
@@ -129,6 +149,93 @@ export class Machine extends EventEmitter {
 
   request(method, params) {
     return herdrRequest(this.socketPath, method, params);
+  }
+
+  // ------------------------------------------------------------ Kauak operations
+  //
+  // What server.js and the trackers ask of a floor. Each is a Herdr request or
+  // two; a failure rejects with a message fit to show (herdr.js).
+
+  focusPane(paneId) {
+    return this.call("pane.focus", { pane_id: paneId });
+  }
+
+  /** The pane's screen as ANSI text; with `lines`, the last `lines` rows of its history and screen. */
+  async readPane(paneId, lines = null) {
+    const res = await this.call("pane.read", { pane_id: paneId, source: lines ? "recent" : "visible", format: "ansi", strip_ansi: false, lines });
+    return res.read.text;
+  }
+
+  sendText(paneId, text) {
+    return this.call("pane.send_text", { pane_id: paneId, text });
+  }
+
+  /** Kauak's key names (KEY in protocol.js) are Herdr's own, so they go as they are. */
+  async sendKeys(paneId, keys) {
+    for (let i = 0; i < keys.length; i += MAX_KEYS_PER_CALL) {
+      await this.call("pane.send_keys", { pane_id: paneId, keys: keys.slice(i, i + MAX_KEYS_PER_CALL) });
+    }
+  }
+
+  /**
+   * A new desk: a new tab in the room, in the room's folder. Returns its
+   * pane's id. A tab rather than a split: a split pane gets only part of the
+   * Herdr window, and the side panel mirrors a pane at its real size, so a
+   * desk split off another came out as a narrow strip with the rest of the
+   * panel empty.
+   */
+  async createDesk(workspaceId) {
+    const snap = this.raw;
+    const room = snap?.workspaces.find((w) => w.workspace_id === workspaceId);
+    if (!room) throw new Error("That room is gone.");
+    const panes = snap.panes.filter((p) => p.workspace_id === room.workspace_id);
+    const cwd = room.worktree?.checkout_path ?? (panes.find((p) => p.tab_id === room.active_tab_id) ?? panes[0])?.cwd ?? null;
+    const res = await this.call("tab.create", { workspace_id: room.workspace_id, cwd, focus: false });
+    return res.root_pane.pane_id;
+  }
+
+  /**
+   * A new room (a Kauak RoomSpec, its folder already checked by server.js): a
+   * git worktree on a new branch, or a workspace in a folder. Returns its
+   * first pane's id.
+   */
+  async createRoom(room) {
+    const res = room.kind === "worktree"
+      ? await this.call("worktree.create", { cwd: room.cwd, branch: room.branch, base: room.base ?? null, label: room.label ?? null, focus: false })
+      : await this.call("workspace.create", { cwd: room.cwd, label: room.label ?? null, focus: false });
+    return res.root_pane.pane_id;
+  }
+
+  /** Start an agent of `kind` in a pane, once the pane's shell is ready for it. */
+  async startAgent(kind, paneId) {
+    // Agent names must be unique among live agents; the kind plus a random tag is.
+    const name = `${kind}-${Math.random().toString(36).slice(2, 6)}`.slice(0, 32);
+    for (const started = Date.now(); ; await new Promise((r) => setTimeout(r, AGENT_RETRY_MS))) {
+      try {
+        return await this.request("agent.start", { name, kind, pane_id: paneId });
+      } catch (err) {
+        if (err.code !== "agent_pane_busy" || Date.now() - started > AGENT_WAIT_MS) throw new Error(errorMessage(err));
+      }
+    }
+  }
+
+  /** The agent session reported for the pane's agent (a transcript path or a session id), or null. */
+  paneSession(paneId) {
+    return paneSession(this.raw, paneId);
+  }
+
+  /** The pids of the pane's foreground processes. */
+  async paneProcesses(paneId) {
+    const res = await this.call("pane.process_info", { pane_id: paneId });
+    return (res?.process_info?.foreground_processes ?? []).map((p) => p.pid).filter(Number.isInteger);
+  }
+
+  async call(method, params) {
+    try {
+      return await this.request(method, params);
+    } catch (err) {
+      throw new Error(errorMessage(err));
+    }
   }
 
   // ------------------------------------------------------------ lifecycle
@@ -190,10 +297,7 @@ export class Machine extends EventEmitter {
         let msg;
         try { msg = JSON.parse(line); } catch { continue; }
         if (msg.error) { console.error(`[bridge] ${this.label}: subscribe error:`, msg.error); continue; }
-        if (msg.event) {
-          this.emit("event", msg.event, msg.data);
-          this.scheduleRefresh();
-        }
+        if (msg.event) this.scheduleRefresh();
       }
     });
     const lost = (why) => { if (this.sub === sock) this.fail(why); };
@@ -208,10 +312,11 @@ export class Machine extends EventEmitter {
     }, SNAPSHOT_DEBOUNCE_MS);
   }
 
-  /** Fetch a fresh `session.snapshot` now and emit it. */
+  /** Fetch a fresh `session.snapshot` now and emit it as a Kauak snapshot. */
   async refresh() {
     clearTimeout(this.refreshTimer);
-    this.snapshot = (await this.request("session.snapshot")).snapshot;
+    this.raw = (await this.request("session.snapshot")).snapshot;
+    this.snapshot = toSnapshot(this.raw);
     this.attempt = 0;
     this.setState("live");
     this.emit("snapshot", this.snapshot);

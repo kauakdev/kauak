@@ -266,9 +266,12 @@ so `npx kauak` (`bin/kauak.js`) is one process and one URL.
 `bridge/machine.js` is one Herdr server: it talks to its unix socket
 (newline-delimited JSON, one request per connection) directly or through the
 SSH tunnel, keeps one long-lived `events.subscribe` connection, and on every
-event re-fetches `session.snapshot`. `bridge/server.js` holds the floors and
+event re-fetches `session.snapshot`, which `bridge/herdr.js` turns into a
+Kauak snapshot: the page speaks the Kauak protocol and never sees Herdr's
+fields, methods or errors (see [docs/protocol.md](docs/protocol.md)).
+`bridge/server.js` holds the floors and
 broadcasts `{ "type": "machines", "machines": [...] }` (id, label, SSH target,
-state, message) and `{ "type": "snapshot", "machine": "local", "snapshot": {...} }`
+state, message, runtime) and `{ "type": "snapshot", "machine": "local", "snapshot": {...} }`
 to browser clients over WebSocket. Every pane message names its machine.
 `bridge/context.js` adds `context: { used, max }` to the Claude Code and Codex
 panes in each snapshot, from the last token count in the agent's transcript,
@@ -287,8 +290,8 @@ floor it does its git and file reads through `bridge/diffs_remote.py` over its
 own SSH connection; `bridge/remote.js` runs both remote scripts.
 Clients send `{ "type": "focus", "machine": "local", "pane_id": "w1:p1" }` to
 focus a pane, `{ "type": "read", "machine": "local", "pane_id": "w1:p1" }` to
-get the pane's visible viewport as ANSI text (`pane.read`; add
-`"source": "recent", "lines": 1040` for the last rows of its history too),
+get the pane's visible viewport as ANSI text (add `"lines": 1040` for the
+last rows of its history too),
 `{ "type": "input", "machine": "local", "pane_id": "w1:p1", "ops": [{ "text": "ls" }, { "keys": ["enter"] }] }`
 to type into it, `{ "type": "commands", "machine": "local", "pane_id": "w1:p1" }`
 for the pane's slash commands (`bridge/commands.js`; the agent and folder come
@@ -297,7 +300,7 @@ from the snapshot), and `add_machine` (`ssh`, `label`) / `remove_machine`
 `pane.send_keys`), serialized per pane, and answers with `input_ack`, after
 which the client re-reads the viewport.
 
-Pane, tab and workspace ids are only unique within one Herdr server, so the
+Pane and workspace ids are only unique within one Herdr server, so the
 client prefixes them with their machine (`madryn/w1:p1`, `web/src/floors.ts`)
 and the rest of the UI works with those keys. `web/src/elevator.ts` is the
 floor switcher. `web/src/layout.ts` turns a snapshot into a floor plan in tile units.

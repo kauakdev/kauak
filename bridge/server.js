@@ -3,13 +3,17 @@
 // Each Herdr server is a floor of the office: this machine is always floor 1,
 // and remote machines (reached over SSH, see machine.js) are saved in
 // ~/.config/kauak/machines.json. The bridge keeps things simple and
-// robust: on every Herdr event it re-fetches that machine's full
-// `session.snapshot` (a few KB) and broadcasts it to all clients, with each
-// agent's context use added (see context.js) and each room's git checkout,
-// whose edits its printer prints as they happen (see diffs.js).
+// robust: on every Herdr event it re-fetches that machine's full snapshot (a
+// few KB) and broadcasts it to all clients, with each agent's context use
+// added (see context.js) and each room's git checkout, whose edits its
+// printer prints as they happen (see diffs.js).
+//
+// Pages speak the Kauak protocol (protocol.d.ts, docs/protocol.md), and so
+// does this file: it knows a floor only through its Machine (machine.js, the
+// Herdr adapter), never Herdr's methods, fields or errors.
 //
 // The same port also serves the built office page (dist/, `pnpm build`), so
-// `npx kauak` is one process and one URL. `pnpm dev` serves the page
+// `npx kauak serve` is one process and one URL. `pnpm dev` serves the page
 // from Vite instead.
 
 import fs from "node:fs";
@@ -22,6 +26,7 @@ import { slashCommands } from "./commands.js";
 import { ContextTracker } from "./context.js";
 import { DiffTracker } from "./diffs.js";
 import { LOCAL_SOCKET, Machine } from "./machine.js";
+import { AGENT_KIND, GIT_REF, MAX_INPUT_TEXT, SSH_TARGET, parseClientMessage } from "./protocol.js";
 
 const WS_PORT = Number(process.env.KAUAK_PORT ?? process.env.AGENT_OFFICE_PORT ?? 7788);
 // The bridge can type into terminals, create panes and worktrees, and open SSH
@@ -35,11 +40,6 @@ const LEGACY_CONFIG_PATH = path.join(os.homedir(), ".config", "agent-office", "m
 // Reuse existing floors after the rename; fresh installs use the kauak directory.
 const CONFIG_PATH = process.env.KAUAK_CONFIG ?? process.env.AGENT_OFFICE_CONFIG
   ?? (!fs.existsSync(DEFAULT_CONFIG_PATH) && fs.existsSync(LEGACY_CONFIG_PATH) ? LEGACY_CONFIG_PATH : DEFAULT_CONFIG_PATH);
-// An SSH destination as typed in the UI: `host`, `user@host` or an alias from
-// ~/.ssh/config. Never starting with "-", so it cannot be read as an ssh option.
-const SSH_TARGET = /^[A-Za-z0-9_][A-Za-z0-9._@-]{0,127}$/;
-// The most rows one terminal read may ask Herdr for.
-const MAX_READ_LINES = 5000;
 
 // ---------------------------------------------------------------- machines
 
@@ -78,7 +78,6 @@ function addMachine(cfg) {
   d.on("print", (sheet) => broadcast({ type: "print", machine: m.id, sheet }));
   m.on("status", () => broadcastMachines());
   m.on("snapshot", () => broadcast(snapshotMessage(m)));
-  m.on("event", (event, data) => broadcast({ type: "event", machine: m.id, event, data }));
   m.start();
   return m;
 }
@@ -174,10 +173,11 @@ wss.on("connection", (ws) => {
 
   ws.on("message", async (raw) => {
     let msg;
-    try { msg = JSON.parse(raw.toString()); } catch { return; }
+    try { msg = parseClientMessage(JSON.parse(raw.toString())); } catch { return; }
+    if (!msg) return;
 
     if (msg.type === "add_machine") {
-      const ssh = typeof msg.ssh === "string" ? msg.ssh.trim() : "";
+      const ssh = msg.ssh;
       if (!SSH_TARGET.test(ssh)) {
         ws.send(JSON.stringify({ type: "machine_error", message: "Use an SSH host, user@host, or a Host alias from ~/.ssh/config." }));
         return;
@@ -186,7 +186,7 @@ wss.on("connection", (ws) => {
         ws.send(JSON.stringify({ type: "machine_error", message: `${ssh} already has a floor.` }));
         return;
       }
-      const label = (typeof msg.label === "string" && msg.label.trim()) || ssh.split("@").pop();
+      const label = msg.label || ssh.split("@").pop();
       const m = addMachine({ id: uniqueId(label), label: label.slice(0, 40), ssh });
       saveConfig();
       broadcastMachines();
@@ -209,52 +209,38 @@ wss.on("connection", (ws) => {
 
     const m = machines.get(msg.machine);
     if (!m) return;
-    if (msg.type === "focus" && typeof msg.pane_id === "string") {
+    if (msg.type === "focus") {
       try {
-        await m.request("pane.focus", { pane_id: msg.pane_id });
+        await m.focusPane(msg.pane_id);
       } catch (err) {
         ws.send(JSON.stringify({ type: "error", machine: m.id, message: err.message }));
       }
-    } else if (msg.type === "read" && typeof msg.pane_id === "string") {
-      // Terminal view. `visible` = the pane's rendered viewport; `recent` = the
-      // last `lines` rows of its scrollback and viewport. Reads run in
-      // parallel (each Herdr request takes ~100 ms); `seq` is echoed so the
-      // client can drop replies that arrive out of order.
+    } else if (msg.type === "read") {
+      // Terminal view: the pane's screen, or with `lines` the last `lines`
+      // rows of its history and screen. Reads run in parallel (each Herdr
+      // request takes ~100 ms); `seq` is echoed so the client can drop
+      // replies that arrive out of order.
       try {
-        const res = await m.request("pane.read", {
-          pane_id: msg.pane_id,
-          source: msg.source ?? "visible",
-          format: "ansi",
-          strip_ansi: false,
-          lines: Number.isInteger(msg.lines) && msg.lines > 0 ? Math.min(msg.lines, MAX_READ_LINES) : null,
-        });
-        ws.send(JSON.stringify({
-          type: "pane_output",
-          machine: m.id,
-          pane_id: msg.pane_id,
-          text: res.read.text,
-          revision: res.read.revision,
-          truncated: res.read.truncated,
-          seq: typeof msg.seq === "number" ? msg.seq : undefined,
-        }));
+        const text = await m.readPane(msg.pane_id, msg.lines);
+        ws.send(JSON.stringify({ type: "pane_output", machine: m.id, pane_id: msg.pane_id, text, seq: msg.seq }));
       } catch (err) {
         ws.send(JSON.stringify({ type: "error", machine: m.id, pane_id: msg.pane_id, message: err.message }));
       }
-    } else if (msg.type === "input" && typeof msg.pane_id === "string" && Array.isArray(msg.ops)) {
+    } else if (msg.type === "input") {
       // Keystrokes from the browser terminal. `ops` is an ordered list of
-      // { text } (literal bytes, pane.send_text) and { keys } (named keys such
-      // as "enter" or "ctrl+c", pane.send_keys).
-      queueInput(ws, m, msg.pane_id, msg.ops.slice(0, MAX_INPUT_OPS), typeof msg.id === "number" ? msg.id : undefined);
-    } else if (msg.type === "commands" && typeof msg.pane_id === "string") {
+      // { text } (literal bytes) and { keys } (named keys such as "enter" or
+      // "ctrl+c").
+      queueInput(ws, m, msg.pane_id, msg.ops, msg.id);
+    } else if (msg.type === "commands") {
       // The message box's "/" menu. The agent and its folder come from the
       // snapshot, not the page; only this machine's files are read.
       const pane = m.snapshot?.panes.find((p) => p.pane_id === msg.pane_id);
       if (!pane) return;
-      const commands = await slashCommands(pane.agent ?? null, pane.foreground_cwd || pane.cwd, !m.ssh);
-      ws.send(JSON.stringify({ type: "commands", machine: m.id, pane_id: msg.pane_id, agent: pane.agent ?? null, commands }));
-    } else if (msg.type === "uncommitted" && typeof msg.root === "string") {
+      const commands = await slashCommands(pane.agent, pane.cwd, !m.ssh);
+      ws.send(JSON.stringify({ type: "commands", machine: m.id, pane_id: msg.pane_id, agent: pane.agent, commands }));
+    } else if (msg.type === "uncommitted") {
       // A printer's uncommitted view. Only checkouts a room is in are read (diffs.js).
-      const reply = (o) => ws.send(JSON.stringify({ type: "uncommitted", machine: m.id, root: msg.root, id: typeof msg.id === "number" ? msg.id : undefined, ...o }));
+      const reply = (o) => ws.send(JSON.stringify({ type: "uncommitted", machine: m.id, root: msg.root, id: msg.id, ...o }));
       reply(await diffs.get(m.id).uncommitted(msg.root));
     } else if (msg.type === "refresh") {
       m.scheduleRefresh();
@@ -273,81 +259,37 @@ wss.on("connection", (ws) => {
 // (Herdr waits until it is ready, which can take seconds), and a failure
 // there is a `create_error` that carries the pane id.
 
-// Agent kinds are Herdr's own names (`herdr agent`), in its agent-name alphabet.
-const AGENT_KIND = /^[a-z][a-z0-9_-]{0,31}$/;
-// A branch or base as typed in the build form, never starting with "-".
-const GIT_REF = /^[A-Za-z0-9_.][A-Za-z0-9_./-]{0,199}$/;
-
 async function build(ws, m, msg) {
-  const id = typeof msg.id === "number" ? msg.id : undefined;
-  const reply = (o) => ws.send(JSON.stringify({ machine: m.id, id, ...o }));
-  const agent = typeof msg.agent === "string" && msg.agent ? msg.agent : null;
+  const reply = (o) => ws.send(JSON.stringify({ machine: m.id, id: msg.id, ...o }));
+  const agent = msg.agent;
   let paneId;
   try {
     if (agent && !AGENT_KIND.test(agent)) throw new Error(`Unknown agent kind "${agent}".`);
-    paneId = msg.type === "create_desk" ? await createDesk(m, msg.workspace_id) : await createRoom(m, msg.room);
+    paneId = msg.type === "create_desk" ? await m.createDesk(msg.workspace_id) : await m.createRoom(roomSpec(m, msg.room));
     await m.refresh();
   } catch (err) {
-    reply({ type: "create_error", message: herdrMessage(err) });
+    reply({ type: "create_error", message: err.message });
     return;
   }
   reply({ type: "created", pane_id: paneId });
   if (!agent) return;
   try {
-    await startAgent(m, agent, paneId);
+    await m.startAgent(agent, paneId);
   } catch (err) {
-    reply({ type: "create_error", pane_id: paneId, message: `The desk is ready, but ${agent} did not start: ${herdrMessage(err)}` });
+    reply({ type: "create_error", pane_id: paneId, message: `The desk is ready, but ${agent} did not start: ${err.message}` });
   }
 }
 
-// A new pane's shell is not "available" to Herdr until its prompt is up
-// (verified on 0.9.1: agent.start answers agent_pane_busy for up to ~1 s).
-const AGENT_WAIT_MS = 10_000;
-const AGENT_RETRY_MS = 300;
-
-async function startAgent(m, kind, paneId) {
-  // Agent names must be unique among live agents; the kind plus a random tag is.
-  const name = `${kind}-${Math.random().toString(36).slice(2, 6)}`.slice(0, 32);
-  for (const started = Date.now(); ; await new Promise((r) => setTimeout(r, AGENT_RETRY_MS))) {
-    try {
-      return await m.request("agent.start", { name, kind, pane_id: paneId });
-    } catch (err) {
-      if (!err.message.includes("agent_pane_busy") || Date.now() - started > AGENT_WAIT_MS) throw err;
-    }
-  }
-}
-
-/**
- * A new tab in the room, in the room's folder. Returns its pane's id. A tab
- * rather than a split: a split pane gets only part of the Herdr window, and
- * the side panel mirrors a pane at its real size, so a desk split off another
- * came out as a narrow strip with the rest of the panel empty.
- */
-async function createDesk(m, workspaceId) {
-  const snap = m.snapshot;
-  const room = snap?.workspaces.find((w) => w.workspace_id === workspaceId);
-  if (!room) throw new Error("That room is gone.");
-  const panes = snap.panes.filter((p) => p.workspace_id === room.workspace_id);
-  const cwd = room.worktree?.checkout_path ?? (panes.find((p) => p.tab_id === room.active_tab_id) ?? panes[0])?.cwd ?? null;
-  const res = await m.request("tab.create", { workspace_id: room.workspace_id, cwd, focus: false });
-  return res.root_pane.pane_id;
-}
-
-/** A workspace in a folder, or a git worktree on a new branch. Returns its first pane's id. */
-async function createRoom(m, room) {
-  if (room?.kind !== "worktree" && room?.kind !== "folder") throw new Error("Pick a git branch or a folder.");
+/** A room from the build form, checked: its folder (see roomPath), branch, base and label. */
+function roomSpec(m, room) {
   const cwd = roomPath(m, room.cwd);
-  const label = typeof room.label === "string" && room.label.trim() ? room.label.trim().slice(0, 60) : null;
-  if (room.kind === "worktree") {
-    const branch = typeof room.branch === "string" ? room.branch.trim() : "";
-    const base = typeof room.base === "string" ? room.base.trim() : "";
-    if (!GIT_REF.test(branch)) throw new Error("Enter a branch name like feat/my-change.");
-    if (base && !GIT_REF.test(base)) throw new Error(`"${base}" is not a branch or commit.`);
-    const res = await m.request("worktree.create", { cwd, branch, base: base || null, label, focus: false });
-    return res.root_pane.pane_id;
-  }
-  const res = await m.request("workspace.create", { cwd, label, focus: false });
-  return res.root_pane.pane_id;
+  const label = room.label?.trim() ? room.label.trim().slice(0, 60) : undefined;
+  if (room.kind === "folder") return { kind: "folder", cwd, label };
+  const branch = room.branch.trim();
+  const base = room.base?.trim() || undefined;
+  if (!GIT_REF.test(branch)) throw new Error("Enter a branch name like feat/my-change.");
+  if (base && !GIT_REF.test(base)) throw new Error(`"${base}" is not a branch or commit.`);
+  return { kind: "worktree", cwd, branch, base, label };
 }
 
 /**
@@ -356,7 +298,7 @@ async function createRoom(m, room) {
  * paths are expanded and checked here; a remote one needs an absolute path.
  */
 function roomPath(m, raw) {
-  let p = typeof raw === "string" ? raw.trim() : "";
+  let p = raw.trim();
   if (!p || p.length > 1024) throw new Error("Enter a folder.");
   if (!m.ssh && (p === "~" || p.startsWith("~/"))) p = path.join(os.homedir(), p.slice(1));
   if (!p.startsWith("/")) throw new Error(`Use an absolute path${m.ssh ? ` on ${m.label}` : ""}, like /home/you/code/project.`);
@@ -364,19 +306,11 @@ function roomPath(m, raw) {
   return p;
 }
 
-/** Herdr errors read "method: code message"; git ones end with the line that says what went wrong. */
-function herdrMessage(err) {
-  const text = err.message.replace(/^[\w.]+: [a-z_]+ /, "");
-  return text.split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? text;
-}
-
 // Input is serialized per pane so fast typing cannot reorder across
 // connections. Every Herdr request takes ~100 ms, so keystrokes that arrive
 // while a batch is in flight are merged into the next one ("hello" typed fast
 // becomes one send_text). `input_ack` carries the id of the last message sent.
-const MAX_INPUT_OPS = 256;
-const MAX_INPUT_TEXT = 64 * 1024;
-const MAX_KEYS_PER_CALL = 64;
+// The ops come checked and trimmed from parseClientMessage.
 const inputQueues = new Map();  // "machine/pane" → promise chain
 const openBatches = new Map();  // "machine/pane" → batch still waiting for its turn
 
@@ -397,10 +331,8 @@ function queueInput(ws, machine, paneId, ops, id) {
       if (openBatches.get(key) === b) openBatches.delete(key); // closed to merging once it runs
       try {
         for (const op of b.ops) {
-          if ("text" in op) await machine.request("pane.send_text", { pane_id: paneId, text: op.text });
-          else for (let i = 0; i < op.keys.length; i += MAX_KEYS_PER_CALL) {
-            await machine.request("pane.send_keys", { pane_id: paneId, keys: op.keys.slice(i, i + MAX_KEYS_PER_CALL) });
-          }
+          if ("text" in op) await machine.sendText(paneId, op.text);
+          else await machine.sendKeys(paneId, op.keys);
         }
         b.ws.send(JSON.stringify({ type: "input_ack", machine: machine.id, pane_id: paneId, id: b.id }));
       } catch (err) {
@@ -411,16 +343,11 @@ function queueInput(ws, machine, paneId, ops, id) {
   batch.id = id;
   for (const op of ops) {
     const last = batch.ops[batch.ops.length - 1];
-    if (typeof op?.text === "string" && op.text.length > 0) {
-      const text = op.text.slice(0, MAX_INPUT_TEXT);
-      if (last && "text" in last && last.text.length + text.length <= MAX_INPUT_TEXT) last.text += text;
-      else batch.ops.push({ text });
-    } else if (Array.isArray(op?.keys)) {
-      const keys = op.keys.filter((k) => typeof k === "string" && k.length > 0 && k.length <= 24);
-      if (!keys.length) continue;
-      if (last && "keys" in last) last.keys.push(...keys);
-      else batch.ops.push({ keys });
-    }
+    if ("text" in op) {
+      if (last && "text" in last && last.text.length + op.text.length <= MAX_INPUT_TEXT) last.text += op.text;
+      else batch.ops.push({ text: op.text });
+    } else if (last && "keys" in last) last.keys.push(...op.keys);
+    else batch.ops.push({ keys: [...op.keys] });
   }
 }
 

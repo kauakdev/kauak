@@ -1,0 +1,153 @@
+{
+  "version": "0.9.3",
+  "protocol": 22,
+  "focused_workspace_id": "w1",
+  "focused_tab_id": "w1:t1",
+  "focused_pane_id": "w1:p1",
+  "workspaces": [
+    {
+      "workspace_id": "w1",
+      "number": 1,
+      "label": "billing-api",
+      "focused": true,
+      "pane_count": 2,
+      "tab_count": 2,
+      "active_tab_id": "w1:t1",
+      "agent_status": "idle",
+      "worktree": {
+        "repo_key": "/home/dev/code/billing-api/.git",
+        "repo_name": "billing-api",
+        "repo_root": "/home/dev/code/billing-api",
+        "checkout_path": "/home/dev/code/billing-api",
+        "is_linked_worktree": false
+      }
+    },
+    {
+      "workspace_id": "w2",
+      "number": 2,
+      "label": "feat/refunds",
+      "focused": false,
+      "pane_count": 1,
+      "tab_count": 1,
+      "active_tab_id": "w2:t1",
+      "agent_status": "working",
+      "worktree": {
+        "repo_key": "/home/dev/code/billing-api/.git",
+        "repo_name": "billing-api",
+        "repo_root": "/home/dev/code/billing-api",
+        "checkout_path": "/home/dev/.herdr/worktrees/billing-api/feat-refunds",
+        "is_linked_worktree": true
+      }
+    },
+    {
+      "workspace_id": "w3",
+      "number": 3,
+      "label": "notes",
+      "focused": false,
+      "pane_count": 1,
+      "tab_count": 1,
+      "active_tab_id": "w3:t1",
+      "agent_status": "blocked",
+      "worktree": null
+    }
+  ],
+  "tabs": [
+    { "tab_id": "w1:t1", "workspace_id": "w1", "number": 1, "label": "1", "focused": true, "pane_count": 1, "agent_status": "idle" },
+    { "tab_id": "w1:t2", "workspace_id": "w1", "number": 2, "label": "2", "focused": false, "pane_count": 1, "agent_status": "unknown" },
+    { "tab_id": "w2:t1", "workspace_id": "w2", "number": 1, "label": "1", "focused": false, "pane_count": 1, "agent_status": "working" },
+    { "tab_id": "w3:t1", "workspace_id": "w3", "number": 1, "label": "1", "focused": false, "pane_count": 1, "agent_status": "blocked" }
+  ],
+  "panes": [
+    {
+      "pane_id": "w1:p1",
+      "terminal_id": "term_6a1f0c2e9d3b44",
+      "workspace_id": "w1",
+      "tab_id": "w1:t1",
+      "focused": true,
+      "cwd": "/home/dev/code/billing-api",
+      "foreground_cwd": "/home/dev/code/billing-api",
+      "agent": "claude",
+      "agent_status": "idle",
+      "agent_session": { "source": "hook", "agent": "claude", "kind": "path", "value": "/home/dev/.claude/projects/-home-dev-code-billing-api/5f0c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f.jsonl" },
+      "terminal_title": "✳ Add refunds to the ledger",
+      "terminal_title_stripped": "Add refunds to the ledger",
+      "scroll": { "offset_from_bottom": 0, "max_offset_from_bottom": 0, "viewport_rows": 40 },
+      "revision": 8
+    },
+    {
+      "pane_id": "w1:p2",
+      "terminal_id": "term_6a1f0c2e9d3b45",
+      "workspace_id": "w1",
+      "tab_id": "w1:t2",
+      "focused": false,
+      "cwd": "/home/dev/code/billing-api",
+      "foreground_cwd": "/home/dev/code/billing-api/db",
+      "agent": null,
+      "agent_status": "unknown",
+      "terminal_title": "dev@laptop: ~/code/billing-api/db",
+      "terminal_title_stripped": "dev@laptop: ~/code/billing-api/db",
+      "scroll": { "offset_from_bottom": 0, "max_offset_from_bottom": 120, "viewport_rows": 40 },
+      "revision": 0
+    },
+    {
+      "pane_id": "w2:p1",
+      "terminal_id": "term_6a1f0c2e9d3b46",
+      "workspace_id": "w2",
+      "tab_id": "w2:t1",
+      "focused": false,
+      "cwd": "/home/dev/.herdr/worktrees/billing-api/feat-refunds",
+      "foreground_cwd": "/home/dev/.herdr/worktrees/billing-api/feat-refunds",
+      "agent": "codex",
+      "agent_status": "working",
+      "agent_session": { "source": "hook", "agent": "codex", "kind": "id", "value": "0199a2b3-c4d5-7e6f-8a9b-0c1d2e3f4a5b" },
+      "terminal_title": "codex",
+      "terminal_title_stripped": "codex",
+      "scroll": { "offset_from_bottom": 0, "max_offset_from_bottom": 0, "viewport_rows": 52 },
+      "revision": 3
+    },
+    {
+      "pane_id": "w3:p1",
+      "terminal_id": "term_6a1f0c2e9d3b47",
+      "workspace_id": "w3",
+      "tab_id": "w3:t1",
+      "focused": false,
+      "cwd": null,
+      "foreground_cwd": null,
+      "agent": "claude",
+      "agent_status": "blocked",
+      "agent_session": { "source": "hook", "agent": "codex", "kind": "id", "value": "0199ffff-0000-7000-8000-000000000000" },
+      "terminal_title": null,
+      "terminal_title_stripped": null,
+      "scroll": null,
+      "revision": 1
+    }
+  ],
+  "layouts": [
+    {
+      "workspace_id": "w1", "tab_id": "w1:t1", "zoomed": false, "focused_pane_id": "w1:p1",
+      "area": { "x": 0, "y": 0, "width": 120, "height": 40 },
+      "panes": [{ "pane_id": "w1:p1", "focused": true, "rect": { "x": 0, "y": 0, "width": 120, "height": 40 } }],
+      "splits": []
+    },
+    {
+      "workspace_id": "w1", "tab_id": "w1:t2", "zoomed": false, "focused_pane_id": "w1:p2",
+      "area": { "x": 0, "y": 0, "width": 120, "height": 40 },
+      "panes": [{ "pane_id": "w1:p2", "focused": false, "rect": { "x": 0, "y": 0, "width": 120, "height": 40 } }],
+      "splits": []
+    },
+    {
+      "workspace_id": "w2", "tab_id": "w2:t1", "zoomed": false, "focused_pane_id": "w2:p1",
+      "area": { "x": 0, "y": 0, "width": 120, "height": 40 },
+      "panes": [{ "pane_id": "w2:p1", "focused": false, "rect": { "x": 0, "y": 0, "width": 120, "height": 40 } }],
+      "splits": []
+    }
+  ],
+  "agents": [
+    {
+      "name": "claude-a1b2", "agent": "claude", "agent_status": "idle", "pane_id": "w1:p1", "tab_id": "w1:t1", "workspace_id": "w1",
+      "terminal_id": "term_6a1f0c2e9d3b44", "focused": true, "cwd": "/home/dev/code/billing-api", "foreground_cwd": "/home/dev/code/billing-api",
+      "interactive_ready": true, "revision": 8, "completion_seq": 12, "state_change_seq": 12,
+      "terminal_title": "✳ Add refunds to the ledger", "terminal_title_stripped": "Add refunds to the ledger"
+    }
+  ]
+}

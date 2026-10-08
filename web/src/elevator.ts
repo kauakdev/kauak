@@ -1,8 +1,8 @@
-// Elevator panel: one button per floor (Herdr machine), top floor first, with
+// Elevator panel: one button per floor (machine), top floor first, with
 // the floor's connection state and how many of its agents need attention.
 // Also owns the "add floor" form. Re-rendered on bridge pushes only.
 
-import { floorProblem, type Floor } from "./floors";
+import { floorProblem, runtimeOf, type Floor } from "./floors";
 import type { AgentStatus } from "./types";
 
 export interface ElevatorHandlers {
@@ -78,7 +78,7 @@ export class Elevator {
         : floorProblem(info);
       const badges = (["blocked", "done"] as const).filter((s) => counts[s])
         .map((s) => `<b class="badge st-${s}" title="${counts[s]} ${s}">${counts[s]}</b>`).join("");
-      const tip = `${f.number}F · ${info.label}${info.version ? ` · herdr ${info.version}` : ""}\n${info.state}${info.message ? `: ${info.message}` : ""}\nkey ${f.number <= 9 ? f.number : "—"}`;
+      const tip = `${f.number}F · ${info.label}${info.runtime.version ? ` · ${runtimeOf(info)}` : ""}\n${info.state}${info.message ? `: ${info.message}` : ""}\nkey ${f.number <= 9 ? f.number : "—"}`;
       return `<div class="floor conn-${info.state} ${info.id === current ? "current" : ""}" role="listitem">` +
         `<button class="go" data-floor="${esc(info.id)}" title="${esc(tip)}" ${info.id === current ? 'aria-current="true"' : ""}>` +
         `<span class="fn">${f.number}F</span><span class="txt"><span class="name">${esc(info.label)}</span><span class="sub">${esc(sub)}</span></span>` +

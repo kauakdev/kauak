@@ -4,7 +4,7 @@
 // floor; the connection chip and the empty state describe the floor on screen.
 
 import { contextLevel, contextPercent, contextText } from "./context";
-import { floorOf, floorProblem, type Floor } from "./floors";
+import { floorOf, floorProblem, runtimeOf, type Floor } from "./floors";
 import type { AgentStatus, PaneInfo, Snapshot } from "./types";
 
 const ORDER: AgentStatus[] = ["working", "idle", "blocked", "done", "unknown"];
@@ -85,7 +85,7 @@ export class Hud {
       if (!s) continue;
       const fresh = !this.seen.has(f.info.id);
       this.seen.add(f.info.id);
-      const roomOf = new Map(s.workspaces.map((w) => [w.workspace_id, w.label || w.worktree?.repo_name || w.workspace_id]));
+      const roomOf = new Map(s.workspaces.map((w) => [w.workspace_id, w.label || w.repo?.name || w.workspace_id]));
       for (const p of s.panes) {
         live.add(p.pane_id);
         const room = roomOf.get(p.workspace_id) ?? "?";
@@ -159,7 +159,7 @@ export class Hud {
       this.showEmpty(`Taking the elevator to ${f.info.label}…`, f.info.message || "Waiting for Herdr.");
     } else {
       ok = f.info.state === "live";
-      text = `${f.number}F · herdr ${f.snapshot.version}`;
+      text = `${f.number}F · ${runtimeOf(f.info)}`;
       if (f.snapshot.panes.length === 0) this.showEmpty(`Floor ${f.number} is empty`, `Open a workspace or pane in Herdr${f.info.ssh ? ` on ${f.info.label}` : ""} and it will appear here.`);
       else this.empty.hidden = true;
     }
@@ -204,14 +204,14 @@ export class Hud {
     const groups = new Map<string, { name: string; rows: string[] }>();
     for (const ws of [...s.workspaces].sort((a, b) => a.number - b.number)) {
       const panes = byWs.get(ws.workspace_id) ?? [];
-      const key = ws.worktree?.repo_key ?? `dir:${panes[0]?.cwd ?? ws.label}`;
-      const name = ws.worktree?.repo_name ?? (panes[0]?.cwd.split("/").pop() || "loose");
+      const key = ws.repo?.key ?? `dir:${panes[0]?.cwd ?? ws.label}`;
+      const name = ws.repo?.name ?? (panes[0]?.cwd?.split("/").pop() || "loose");
       const g = groups.get(key) ?? { name, rows: [] };
       g.rows.push(`<div class="room"><span>${esc(ws.label || ws.workspace_id)}</span>${ws.focused ? '<em title="focused in Herdr">●</em>' : ""}</div>`);
       for (const p of panes) {
         this.order.push(p.pane_id);
         const t = this.tracked.get(p.pane_id);
-        const title = p.terminal_title_stripped || p.terminal_title || (p.foreground_cwd || p.cwd).split("/").pop() || p.pane_id;
+        const title = p.title || p.cwd?.split("/").pop() || p.pane_id;
         g.rows.push(
           `<button class="pane st-${p.agent_status} ${p.pane_id === this.selected ? "selected" : ""}" data-pane="${esc(p.pane_id)}">` +
           `<i class="dot"></i><span class="kind">${esc(p.agent ?? "shell")}</span><span class="title">${esc(title)}</span>${contextMeter(p)}` +

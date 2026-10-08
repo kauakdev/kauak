@@ -400,7 +400,7 @@ export class DemoBridge implements BridgeApi {
       room.panes = s.panes.map(([agent, status], j) => newPane(`w${n}:p${j + 1}`, agent, status ?? "idle", room, host, now));
       return room;
     });
-    return { info: { id, label, ssh, state: "live", message: "", version: "demo" }, host, rooms, focused: rooms[0]?.panes[0]?.id ?? null };
+    return { info: { id, label, ssh, state: "live", message: "", runtime: { name: "Herdr", version: "demo" } }, host, rooms, focused: rooms[0]?.panes[0]?.id ?? null };
   }
 
   // ------------------------------------------------------------ life
@@ -664,7 +664,7 @@ function runShell(p: DemoPane, room: DemoRoom, floor: DemoFloor) {
 
 // ---------------------------------------------------------------- views
 
-/** The pane's viewport as `pane.read` returns it: ROWS rows joined by CRLF. */
+/** The pane's screen as the bridge sends it: ROWS rows joined by CRLF. */
 function screen(p: DemoPane, floor: DemoFloor, room: DemoRoom): string {
   const rows = p.agent ? agentScreen(p, Date.now()) : [...p.log, shellPrompt(room, floor.host) + p.input];
   const view = rows.slice(-ROWS);
@@ -705,36 +705,22 @@ function snapshotKey(p: DemoPane): string {
   return `${p.agent}|${p.status}|${p.task}|${p.context}`;
 }
 
+/** The floor as the bridge would send it: a Kauak snapshot, made without any runtime behind it. */
 function snapshotOf(f: DemoFloor): Snapshot {
-  const rank: AgentStatus[] = ["blocked", "working", "done", "idle"];
-  const worst = (ps: DemoPane[]) => rank.find((s) => ps.some((p) => p.agent && p.status === s)) ?? "unknown";
   const focusedRoom = f.rooms.find((r) => r.panes.some((p) => p.id === f.focused)) ?? null;
-  const panes: PaneInfo[] = f.rooms.flatMap((r) => r.panes.map((p) => {
-    const title = p.agent ? p.task || p.agent : `dev@${f.host}: ${r.dir.replace(/^\/home\/dev/, "~")}`;
-    return {
-      pane_id: p.id, terminal_id: `term-${p.id}`, workspace_id: r.id, tab_id: `${r.id}:t1`, focused: p.id === f.focused,
-      cwd: r.dir, foreground_cwd: r.dir, agent: p.agent, agent_status: p.agent ? p.status : "unknown",
-      terminal_title: p.agent && p.status === "working" ? `✳ ${title}` : title, terminal_title_stripped: title,
-      scroll: { offset_from_bottom: 0, max_offset_from_bottom: 0, viewport_rows: ROWS }, revision: 0,
-      context: p.agent && WINDOW[p.agent] ? { used: p.context, max: WINDOW[p.agent]! } : null,
-    };
-  }));
+  const panes: PaneInfo[] = f.rooms.flatMap((r) => r.panes.map((p) => ({
+    pane_id: p.id, workspace_id: r.id, focused: p.id === f.focused, cwd: r.dir,
+    title: p.agent ? p.task || p.agent : `dev@${f.host}: ${r.dir.replace(/^\/home\/dev/, "~")}`,
+    agent: p.agent, agent_status: p.agent ? p.status : "unknown",
+    screen: { rows: ROWS, cols: COLS, exact: true }, scrollback: false,
+    context: p.agent && WINDOW[p.agent] ? { used: p.context, max: WINDOW[p.agent]! } : null,
+  })));
   return {
-    version: "demo", protocol: 22,
-    focused_workspace_id: focusedRoom?.id ?? null, focused_tab_id: focusedRoom ? `${focusedRoom.id}:t1` : null, focused_pane_id: f.focused,
     workspaces: f.rooms.map((r) => ({
-      workspace_id: r.id, number: r.number, label: r.label ?? (r.branch || r.repo), focused: r === focusedRoom, pane_count: r.panes.length, tab_count: 1,
-      active_tab_id: `${r.id}:t1`, agent_status: worst(r.panes), git_root: r.plain ? null : r.dir,
-      worktree: r.plain ? null : { repo_key: `${f.info.id}:${r.repo}`, repo_name: r.repo, repo_root: repoRoot(r), checkout_path: r.dir, is_linked_worktree: r.dir !== repoRoot(r) },
-    })),
-    tabs: f.rooms.map((r) => ({
-      tab_id: `${r.id}:t1`, workspace_id: r.id, number: 1, label: "1", focused: r === focusedRoom, pane_count: r.panes.length, agent_status: worst(r.panes),
+      workspace_id: r.id, number: r.number, label: r.label ?? (r.branch || r.repo), focused: r === focusedRoom, git_root: r.plain ? null : r.dir,
+      repo: r.plain ? null : { key: `${f.info.id}:${r.repo}`, name: r.repo, root: repoRoot(r), checkout: r.dir, linked: r.dir !== repoRoot(r) },
     })),
     panes,
-    layouts: f.rooms.map((r) => ({
-      workspace_id: r.id, tab_id: `${r.id}:t1`, focused_pane_id: r === focusedRoom ? f.focused : null,
-      panes: r.panes.map((p, i) => ({ pane_id: p.id, focused: p.id === f.focused, rect: { x: i * COLS, y: 0, width: COLS, height: ROWS } })),
-    })),
   };
 }
 

@@ -34,7 +34,7 @@ export interface BridgeApi {
   listCommands(pane: string): void;
   addMachine(ssh: string, label: string): boolean;
   removeMachine(machine: string): void;
-  /** A new desk (a new Herdr tab) in a room (`workspace` is a floor key), with an optional agent kind. */
+  /** A new desk in a room (`workspace` is a floor key), with an optional agent kind. */
   createDesk(workspace: string, agent: string | null, id: number): boolean;
   createRoom(machine: string, room: RoomSpec, agent: string | null, id: number): boolean;
   /** Everything not committed in a printer's checkout (`printer` as in prints.ts); answered with onUncommitted. */
@@ -43,7 +43,7 @@ export interface BridgeApi {
 
 // The bridge only listens on 127.0.0.1 by default; "localhost" may resolve to ::1 first.
 const HOST = ["localhost", "::1", "[::1]"].includes(location.hostname) ? "127.0.0.1" : location.hostname;
-// A built page is served by the bridge itself (`npx kauak`), so it connects
+// A built page is served by the bridge itself (`npx kauak serve`), so it connects
 // back to the port it came from; the Vite dev server has a port of its own.
 const PORT = import.meta.env.VITE_BRIDGE_PORT ?? (import.meta.env.DEV ? 7788 : location.port);
 const URL = `ws://${HOST}:${PORT}`;
@@ -111,7 +111,7 @@ export class Bridge implements BridgeApi {
   /** The last `lines` rows: the pane's screen and the history above it. `seq` is echoed back on the reply. */
   readPane(pane: string, seq: number, lines: number) {
     const { machine, id } = splitKey(pane);
-    this.send({ type: "read", machine, pane_id: id, source: "recent", lines, seq });
+    this.send({ type: "read", machine, pane_id: id, lines, seq });
   }
 
   /** Send keystrokes to a pane; `id` comes back on the ack. Returns false if the bridge is offline (input is dropped, not queued). */

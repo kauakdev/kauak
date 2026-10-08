@@ -1,6 +1,6 @@
-// Turns a Herdr snapshot into an office floor plan in tile coordinates.
+// Turns a floor's snapshot into an office floor plan in tile coordinates.
 //
-//   repository  → wing  (a row of rooms sharing a repo_key)
+//   repository  → wing  (a row of rooms sharing a repo key)
 //   workspace   → room  (one per checkout / worktree)
 //   pane        → desk  (a pane is a desk whether or not an agent sits there)
 //   agent       → person at the desk
@@ -53,7 +53,7 @@ export interface Office {
 /** The smallest room: one desk cell. Also the size of a new-room slot. */
 const ROOM_MIN = CELL + WALL * 2;
 
-function roomFor(ws: WorkspaceInfo, panes: PaneInfo[], focusedPane: string | null, build: boolean): Room {
+function roomFor(ws: WorkspaceInfo, panes: PaneInfo[], build: boolean): Room {
   const n = Math.max(1, panes.length + (build ? 1 : 0));
   const cols = Math.ceil(Math.sqrt(n));
   const rows = Math.ceil(n / cols);
@@ -64,7 +64,7 @@ function roomFor(ws: WorkspaceInfo, panes: PaneInfo[], focusedPane: string | nul
     w: cols * CELL + WALL * 2,
     h: rows * CELL + WALL * 2,
     desks: panes.map((pane, i) => ({ pane, ...cell(i) })),
-    focused: ws.focused || panes.some((p) => p.pane_id === focusedPane),
+    focused: ws.focused || panes.some((p) => p.focused),
     slot: build ? cell(panes.length) : null,
   };
 }
@@ -80,12 +80,12 @@ export function buildOffice(snap: Snapshot, build = false): Office {
   // Group by repository. Workspaces without a repo share a "loose" wing.
   const groups = new Map<string, { name: string; ws: WorkspaceInfo[] }>();
   for (const ws of [...snap.workspaces].sort((a, b) => a.number - b.number)) {
-    // Herdr only attaches worktree metadata for workspaces it recognizes as a
-    // git checkout. Fall back to the first pane's cwd so the room still lands
-    // in a sensibly named wing.
+    // The runtime may not know a workspace's repository (Herdr only does for
+    // the ones it recognizes as a git checkout). Fall back to the first
+    // pane's folder so the room still lands in a sensibly named wing.
     const fallbackDir = panesByWs.get(ws.workspace_id)?.[0]?.cwd ?? ws.label ?? "loose";
-    const key = ws.worktree?.repo_key ?? `dir:${fallbackDir}`;
-    const name = ws.worktree?.repo_name ?? (fallbackDir.split("/").pop() || "loose");
+    const key = ws.repo?.key ?? `dir:${fallbackDir}`;
+    const name = ws.repo?.name ?? (fallbackDir.split("/").pop() || "loose");
     const g = groups.get(key) ?? { name, ws: [] };
     g.ws.push(ws);
     groups.set(key, g);
@@ -95,7 +95,7 @@ export function buildOffice(snap: Snapshot, build = false): Office {
   let cursorY = 0;
   let maxW = 0;
   for (const [key, g] of groups) {
-    const rooms = g.ws.map((ws) => roomFor(ws, panesByWs.get(ws.workspace_id) ?? [], snap.focused_pane_id, build));
+    const rooms = g.ws.map((ws) => roomFor(ws, panesByWs.get(ws.workspace_id) ?? [], build));
     let cursorX = 0;
     let wingH = 0;
     for (const r of rooms) {

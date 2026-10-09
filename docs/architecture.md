@@ -18,7 +18,7 @@ Herdr adapter    packages/bridge/src/runtimes/herdr/ (machine.ts + herdr.ts), on
 Bridge core      packages/bridge/src/core/, with enrichers/ through the Enricher port
    │  the Kauak protocol (packages/protocol), over a WebSocket (packages/bridge/src/transport/ws.ts)
    ▼
-Page             packages/web/src/ws.ts → the office      (packages/web/src/demo.ts speaks it too, with no bridge)
+Page             packages/web/src/bridge/ws.ts → the office      (packages/web/src/bridge/demo.ts speaks it too, with no bridge)
 ```
 
 The message formats are in [protocol.md](protocol.md). This page is about the
@@ -140,28 +140,31 @@ enrichers, as a second runtime would be.
 
 ## The page
 
-The page imports the protocol's types from `@kauak/protocol`, so it knows
-floors only through them. `packages/web/src/ws.ts` is the connection to the
-bridge and `packages/web/src/demo.ts` a simulated bridge with the same
+The page imports the protocol's types from `@kauak/protocol`, so it knows floors
+only through them. `packages/web/src/bridge/ws.ts` is the connection to the
+bridge and `packages/web/src/bridge/demo.ts` a simulated bridge with the same
 interface, producing Kauak snapshots of made-up agents.
 
 Pane and workspace ids are only unique within one machine, so the client
-prefixes them with their machine (`devbox/w1:p1`, `packages/web/src/floors.ts`)
-and the rest of the UI works with those keys. `packages/web/src/elevator.ts` is
-the floor switcher. `packages/web/src/layout.ts` turns a snapshot into a floor
-plan in tile units. `packages/web/src/scene.ts` renders it with PixiJS in layers
+prefixes them with their machine (`devbox/w1:p1`,
+`packages/web/src/floors/floors.ts`) and the rest of the UI works with those
+keys. `packages/web/src/floors/elevator.ts` is the floor switcher.
+`packages/web/src/office/layout.ts` turns a snapshot into a floor plan in tile
+units. `packages/web/src/office/scene.ts` renders it with PixiJS in layers
 (ground, platforms, floor and walls, depth-sorted objects, selection overlay,
-labels, dust). Furniture lives in `packages/web/src/props.ts` and desks/people
-in `packages/web/src/character.ts`; every visual is drawn procedurally today so
-sprites can replace the helpers one at a time. `packages/web/src/roam.ts`
-decides where idle agents go and walks them there round the furniture (A* on a
-quarter-tile grid per room), in room-local positions so a walk carries on when a
-snapshot rebuilds the office. `packages/web/src/hud.ts` owns the HTML roster,
-stats and activity feed, and only updates when the bridge pushes something new.
-`packages/web/src/prints.ts` holds every printer's sheets and queues new ones
-for the scene to print one at a time; `packages/web/src/printout.ts` is the page
-you read them on, which flies up from the tray with one CSS transform list (the
-office's 2:1 view of a flat sheet is `rotateX(60deg) rotateZ(45deg)`).
+labels, dust). Furniture lives in `packages/web/src/office/props.ts` and
+desks/people in `packages/web/src/office/character.ts`; every visual is drawn
+procedurally today so sprites can replace the helpers one at a time.
+`packages/web/src/office/roam.ts` decides where idle agents go and walks them
+there round the furniture (A* on a quarter-tile grid per room), in room-local
+positions so a walk carries on when a snapshot rebuilds the office.
+`packages/web/src/hud/hud.ts` owns the HTML roster, stats and activity feed, and
+only updates when the bridge pushes something new.
+`packages/web/src/printers/prints.ts` holds every printer's sheets and queues
+new ones for the scene to print one at a time;
+`packages/web/src/printers/printout.ts` is the page you read them on, which
+flies up from the tray with one CSS transform list (the office's 2:1 view of a
+flat sheet is `rotateX(60deg) rotateZ(45deg)`).
 
 Appearance packages (`packages/appearance/packages/`, validated by
 `packages/appearance/src/`) change how the office and its people look, never

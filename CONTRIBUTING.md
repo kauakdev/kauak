@@ -53,9 +53,8 @@ A pnpm workspace of five packages, each with its own `package.json` and README:
   `kauak` command. A new command is one module in `cli/commands/` and one entry
   in `COMMANDS` in `cli/main.js`, whose opening comment says what the module
   exports. The page is built into its `dist/`.
-- `packages/web/` (`@kauak/web`): the page, TypeScript with PixiJS and
-  xterm.js, built with Vite. `src/demo.ts` stands in for the bridge in the
-  demo.
+- `packages/web/` (`@kauak/web`): the page, TypeScript with PixiJS and xterm.js,
+  built with Vite. `src/bridge/demo.ts` stands in for the bridge in the demo.
 - `packages/appearance/` (`@kauak/appearance`): appearance packages (in
   `packages/`) and their validation (in `src/`). See the
   [plugin and banner guide](docs/plugins/README.md).
@@ -75,8 +74,8 @@ a variant and a parser in `packages/protocol` (a message from the page does
 not compile until `parseClientMessage` has a parser for it), then a handler in
 `packages/bridge/src/core/handlers.ts` (nor until `HANDLERS` has one for it;
 what the bridge sends back is a `BridgeMessage`, checked as it compiles), then
-the page and `packages/web/src/demo.ts`, so the demo keeps working, and the
-reference. Herdr's own fields and methods stay in the adapter.
+the page and `packages/web/src/bridge/demo.ts`, so the demo keeps working, and
+the reference. Herdr's own fields and methods stay in the adapter.
 
 ## Before you open a pull request
 

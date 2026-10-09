@@ -65,7 +65,7 @@ button {
   background: var(--unknown);
   flex: none;
 }
-/* Context meter: how full an agent's context window is (web/src/context.ts). */
+/* Context meter: how full an agent's context window is (web/src/app/context.ts). */
 .ctx {
   display: inline-block;
   position: relative;

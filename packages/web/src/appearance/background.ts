@@ -1,6 +1,6 @@
-import alpine from "../backgrounds/alpine.svg?url";
-import summit from "../backgrounds/summit.svg?url";
-import contours from "../backgrounds/contours.svg?url";
+import alpine from "./backgrounds/alpine.svg?url";
+import summit from "./backgrounds/summit.svg?url";
+import contours from "./backgrounds/contours.svg?url";
 import "./background.css";
 
 export const BACKGROUNDS = [

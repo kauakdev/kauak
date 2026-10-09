@@ -20,7 +20,7 @@ import { Terminal } from "@xterm/xterm";
 // Before xterm's stylesheet, as when these rules were inline in index.html.
 import "./panel.css";
 import "@xterm/xterm/css/xterm.css";
-import { contextLevel, contextPercent, contextText } from "./context";
+import { contextLevel, contextPercent, contextText } from "../app/context";
 import { promptShadow, type Shadow } from "./shadow";
 import { SlashMenu } from "./slash";
 import type { InputOp, PaneInfo, SlashCommand, Snapshot } from "@kauak/protocol";

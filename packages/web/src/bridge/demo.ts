@@ -12,8 +12,8 @@
 // while their room's agents work, over a few sheets already on the tray, and
 // their uncommitted view is those edits plus a few from before the page came.
 
-import { kindColor } from "./character";
-import { keyOf, splitKey } from "./floors";
+import { kindColor } from "../office/character";
+import { keyOf, splitKey } from "../floors/floors";
 import type { AgentStatus, DiffSheet, FileDiff, InputOp, MachineInfo, PaneInfo, RoomSpec, SlashCommand, Snapshot } from "@kauak/protocol";
 import type { BridgeApi, BridgeHandlers } from "./ws";
 import "./demo.css";

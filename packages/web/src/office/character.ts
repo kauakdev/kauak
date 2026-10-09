@@ -6,11 +6,11 @@
 // person takes clicks for its desk while away from it.
 
 import { Container, Graphics, Rectangle, Text, TextStyle, type PointData } from "pixi.js";
-import { CONTEXT_COLOR, contextLevel, contextShare } from "./context";
+import { CONTEXT_COLOR, contextLevel, contextShare } from "../app/context";
 import { depth, hashStr, mix, shade, toScreen } from "./iso";
 import type { Characters } from "@kauak/appearance/contracts";
 import { hex } from "@kauak/appearance/registry";
-import { defaultCharacters } from "./plugins/catalog";
+import { defaultCharacters } from "../appearance/catalog";
 import type { Desk, Spot } from "./layout";
 import { PALETTE, box, quadAlongX, shadow, type MaterialPalette } from "./props";
 import {

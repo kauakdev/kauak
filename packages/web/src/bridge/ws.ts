@@ -1,4 +1,4 @@
-import { keyOf, splitKey } from "./floors";
+import { keyOf, splitKey } from "../floors/floors";
 import type { BridgeMessage, DiffSheet, InputOp, MachineInfo, RoomSpec, SlashCommand, Snapshot, Uncommitted } from "@kauak/protocol";
 
 /** Pane arguments and callbacks use floor keys ("machine/pane_id", see floors.ts). */

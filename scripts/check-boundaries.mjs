@@ -87,7 +87,7 @@ const RULES = [
     rule: "Herdr's method and event names stay in the Herdr adapter",
     files: ["**"],
     // The demo's made-up terminals show code that calls Herdr.
-    except: [...HERDR_ADAPTER, ...TESTS, "packages/web/src/demo.ts"],
+    except: [...HERDR_ADAPTER, ...TESTS, "packages/web/src/bridge/demo.ts"],
     strings: /^(session|events|workspace|worktree|tab|pane|agent|layout)\.[a-z][a-z_]*$/,
   },
   {

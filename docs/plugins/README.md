@@ -85,7 +85,7 @@ kept. Replace a package by removing it and importing its new version.
 
 For a package shipped with the repo, add its JSON to
 `packages/appearance/packages/`, then include it in `bundledPackages` in
-`packages/web/src/plugins/catalog.ts`. There is no per-package switch in the
+`packages/web/src/appearance/catalog.ts`. There is no per-package switch in the
 scene. IDs starting with `agent-office.` are reserved for included packages;
 custom IDs can use lowercase letters, numbers, dots and hyphens, for example
 `company.harbor`.

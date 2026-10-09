@@ -6,7 +6,7 @@
 // a time; the ones a page gets on connecting are already on the tray, and
 // only live ones count as new until they are read.
 
-import { floorOf, keyOf } from "./floors";
+import { floorOf, keyOf } from "../floors/floors";
 import type { DiffSheet, WorkspaceInfo } from "@kauak/protocol";
 
 // Same as the bridge keeps per checkout.

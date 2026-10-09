@@ -1,18 +1,18 @@
 // First, so the page-wide rules come before every feature's in the stylesheet and lose ties to them.
 import "./main.css";
-import { BuildMode } from "./build";
-import { Elevator } from "./elevator";
-import { EMPTY_SNAPSHOT, floorOf, keyOf, mergeSnapshots, namespaceSnapshot, type Floor } from "./floors";
-import { Hud } from "./hud";
-import { TerminalPanel } from "./panel";
-import { Prints } from "./prints";
-import { Printout } from "./printout";
-import { Radio } from "./radio";
-import { AppearanceSettings } from "./plugins/settings";
-import { OfficeBackground } from "./plugins/background";
-import { OfficeScene } from "./scene";
+import { BuildMode } from "../office/build";
+import { Elevator } from "../floors/elevator";
+import { EMPTY_SNAPSHOT, floorOf, keyOf, mergeSnapshots, namespaceSnapshot, type Floor } from "../floors/floors";
+import { Hud } from "../hud/hud";
+import { TerminalPanel } from "../terminal/panel";
+import { Prints } from "../printers/prints";
+import { Printout } from "../printers/printout";
+import { Radio } from "../radio/radio";
+import { AppearanceSettings } from "../appearance/settings";
+import { OfficeBackground } from "../appearance/background";
+import { OfficeScene } from "../office/scene";
 import type { MachineInfo, Snapshot } from "@kauak/protocol";
-import { Bridge, type BridgeApi, type BridgeHandlers } from "./ws";
+import { Bridge, type BridgeApi, type BridgeHandlers } from "../bridge/ws";
 
 const FLOOR_KEY = "agent-office.floor";
 
@@ -133,7 +133,7 @@ async function main() {
     onPrint: (machine, sheet) => prints.add(machine, sheet),
     onUncommitted: (key, id, result) => printout.receive(key, id, result),
   };
-  const bridge: BridgeApi = demo ? new (await import("./demo")).DemoBridge(handlers) : new Bridge(handlers);
+  const bridge: BridgeApi = demo ? new (await import("../bridge/demo")).DemoBridge(handlers) : new Bridge(handlers);
 
   // The bridge refreshes the snapshot before it reports a new desk, so it can be selected right away.
   const build = new BuildMode({

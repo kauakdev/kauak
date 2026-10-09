@@ -3,8 +3,8 @@
 // timestamps are refreshed on a slow timer. Stats, roster and feed span every
 // floor; the connection chip and the empty state describe the floor on screen.
 
-import { contextLevel, contextPercent, contextText } from "./context";
-import { floorOf, floorProblem, runtimeOf, type Floor } from "./floors";
+import { contextLevel, contextPercent, contextText } from "../app/context";
+import { floorOf, floorProblem, runtimeOf, type Floor } from "../floors/floors";
 import type { AgentStatus, PaneInfo, Snapshot } from "@kauak/protocol";
 import "./hud.css";
 

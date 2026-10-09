@@ -127,7 +127,7 @@ Page             packages/web/
 - **Page** (`packages/web/`, TypeScript, PixiJS, xterm.js, built with Vite):
   lays each snapshot out as floors and rooms, draws the office, and holds the
   roster, activity feed, terminal panel and build mode. For the demo,
-  `packages/web/src/demo.ts` speaks the protocol with no bridge at all.
+  `packages/web/src/bridge/demo.ts` speaks the protocol with no bridge at all.
 - **CLI** (`packages/kauak/bin/kauak.js`, `packages/kauak/cli/`): the `kauak`
   command, one module per command in `packages/kauak/cli/commands/`.
 - **Appearance packages** (`packages/appearance/`): offices and
@@ -179,9 +179,9 @@ package and the demo.
 Artwork: the logo (`packages/web/public/kauak.png`) and banner
 (`packages/web/public/kauak-banner.png`) were generated for Kauak with OpenAI's
 ChatGPT image generation, and both files carry C2PA metadata saying so. The
-contour-map background (`packages/web/src/backgrounds/contours.svg`) appears to
-be programmatically generated: evenly spaced concentric rings with no geographic
-reference. No map or elevation data is known to have been used.
+contour-map background (`packages/web/src/appearance/backgrounds/contours.svg`)
+appears to be programmatically generated: evenly spaced concentric rings with no
+geographic reference. No map or elevation data is known to have been used.
 
 **Name and logo.** The Apache License 2.0 does not grant permission to use the
 Kauak name, logo or banner as trademarks (section 6). Forks and redistributions

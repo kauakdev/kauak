@@ -16,7 +16,7 @@ packages/bridge/src/runtimes/herdr/ (machine.ts + herdr.ts)    the Herdr adapter
 packages/bridge/src/core/ (with the enrichers in enrichers/)
   │   the Kauak protocol (packages/protocol) over the WebSocket (transport/ws.ts)
   ▼
-packages/web/src/ws.ts → the office    packages/web/src/demo.ts speaks it too, with no bridge at all
+packages/web/src/bridge/ws.ts → the office    packages/web/src/bridge/demo.ts speaks it too, with no bridge at all
 ```
 
 ## Where things live
@@ -39,7 +39,7 @@ comments that explain why the bridge does what it does.
 
 Every message about a floor names it in `machine`. Pane, workspace and root ids
 are only unique on their floor, so the page prefixes them with the machine
-(`gpu-box/w1:p1`, `packages/web/src/floors.ts`).
+(`gpu-box/w1:p1`, `packages/web/src/floors/floors.ts`).
 
 | `type` | Fields | When |
 |---|---|---|

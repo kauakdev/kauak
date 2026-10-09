@@ -14,14 +14,14 @@
 import { Application, Container, Graphics, Matrix, Polygon, Sprite, Text, TextStyle, Texture } from "pixi.js";
 import type { BrandBanner, Characters, Theme } from "@kauak/appearance/contracts";
 import { hex, resolveAnchor } from "@kauak/appearance/registry";
-import { defaultCharacters, defaultTheme } from "./plugins/catalog";
+import { defaultCharacters, defaultTheme } from "../appearance/catalog";
 import { STATUS_COLOR, kindColor, makeCharacter, makeEmptyDesk, type CharState, type DeskNode, type Whereabouts } from "./character";
-import { contextText } from "./context";
+import { contextText } from "../app/context";
 import { TILE_W, depth, hashStr, mix, rng, shade, toScreen, type Pt } from "./iso";
 import { CELL, WALL, buildOffice, type Desk, type Office, type Plot, type Room, type Spot, type Wing } from "./layout";
 import * as P from "./props";
-import { printerOf, type Prints } from "./prints";
-import type { Tray } from "./printout";
+import { printerOf, type Prints } from "../printers/prints";
+import type { Tray } from "../printers/printout";
 import { makeLounge, whereabouts, type Block, type Seat } from "./roam";
 import type { PaneInfo, Snapshot } from "@kauak/protocol";
 import "./scene.css";

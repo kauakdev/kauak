@@ -4,7 +4,7 @@
 import type { Graphics } from "pixi.js";
 import { mix, shade, toScreen } from "./iso";
 import { hex } from "@kauak/appearance/registry";
-import { defaultTheme } from "./plugins/catalog";
+import { defaultTheme } from "../appearance/catalog";
 
 export interface MaterialPalette {
   wood: number;

@@ -25,6 +25,7 @@ import "./panel.css";
 import "@xterm/xterm/css/xterm.css";
 import { contextLevel, contextPercent, contextText } from "../app/context";
 import type { AppState } from "../app/state";
+import { load, save } from "../app/storage";
 import { mergeSnapshots } from "../floors/floors";
 import { promptShadow, type Shadow } from "./shadow";
 import { SlashMenu } from "./slash";
@@ -56,7 +57,7 @@ const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
 // Dragging the panel's left edge: no narrower than its header needs, and
 // the roster (280px wide, 12px in) stays clear of it.
-const WIDTH_KEY = "agent-office.panel-width";
+const WIDTH_KEY = "kauak.panel-width";
 const WIDTH_MIN = 420;
 const OFFICE_MIN = 300;
 
@@ -139,7 +140,8 @@ export class TerminalPanel {
     addEventListener("resize", () => this.autosize()); // the panel's width follows the window's
     // A pane wider than the panel gets small text: dragging the edge makes room.
     const grip = document.getElementById("panel-resize")!;
-    this.setWidth(Number(load(WIDTH_KEY)) || null);
+    // Only a width this reads (a number, not 0) is copied from the old key.
+    this.setWidth(Number(load(WIDTH_KEY, (v) => Boolean(Number(v)))) || null);
     grip.addEventListener("pointerdown", (e) => this.dragWidth(e, grip));
     grip.addEventListener("dblclick", () => {
       this.setWidth(null);
@@ -632,20 +634,6 @@ export class TerminalPanel {
 
 function finePointer(): boolean {
   return matchMedia("(hover: hover) and (pointer: fine)").matches;
-}
-
-// localStorage can be missing or throw (private windows, blocked site data).
-function load(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-function save(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {}
 }
 
 const ESC_RE = /\x1b(?:\[[0-9;:?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][A-Za-z0-9]|.)/g;

@@ -5,6 +5,7 @@
 // stream straight from the station's server. stations.ts lists the stations
 // and how they're chosen.
 
+import { load, save } from "../app/storage";
 import { STATIONS, type Station } from "./stations";
 import "./radio.css";
 
@@ -16,7 +17,7 @@ const REACH = 0.8;
 const STATIC = 0.2;
 /** Knob rotation per MHz; the whole band is a few turns, like a real tuner. */
 const TURN_PER_MHZ = 70;
-const KEY = "agent-office.radio";
+const KEY = "kauak.radio";
 
 interface Graph {
   ctx: AudioContext;
@@ -415,18 +416,19 @@ export class Radio {
 
   private persist() {
     const saved = { freq: Math.round(this.freq * 10) / 10, volume: Number(this.volume.value), on: this.lit };
-    try {
-      localStorage.setItem(KEY, JSON.stringify(saved));
-    } catch {}
+    save(KEY, JSON.stringify(saved));
   }
 }
 
-// localStorage can be missing or throw (private windows, blocked site data).
+// Only settings this reads are copied from the old key: not broken JSON, nor JSON of something other than an object.
 function restore(): Saved {
+  return parse(load(KEY, (raw) => parse(raw) !== null) ?? "{}") ?? {};
+}
+function parse(raw: string): Saved | null {
   try {
-    const v: unknown = JSON.parse(localStorage.getItem(KEY) ?? "{}");
-    return v && typeof v === "object" ? v : {};
+    const v: unknown = JSON.parse(raw);
+    return v && typeof v === "object" ? v : null;
   } catch {
-    return {};
+    return null;
   }
 }

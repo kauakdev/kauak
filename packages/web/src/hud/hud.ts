@@ -6,13 +6,14 @@
 
 import { contextLevel, contextPercent, contextText } from "../app/context";
 import type { AppState } from "../app/state";
+import { load, save } from "../app/storage";
 import { floorOf, floorProblem, runtimeOf, type Floor } from "../floors/floors";
 import type { AgentStatus, PaneInfo, Snapshot } from "@kauak/protocol";
 import "./hud.css";
 
 const ORDER: AgentStatus[] = ["working", "idle", "blocked", "done", "unknown"];
 const MAX_FEED = 40;
-const FEED_KEY = "agent-office.feed-hidden";
+const FEED_KEY = "kauak.feed-hidden";
 
 interface Tracked {
   status: AgentStatus;
@@ -332,20 +333,6 @@ function ago(ts: number): string {
   if (m < 60) return `${m}m`;
   const h = Math.round(m / 60);
   return h < 48 ? `${h}h` : `${Math.round(h / 24)}d`;
-}
-
-// localStorage can be missing or throw (private windows, blocked site data).
-function load(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-function save(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {}
 }
 
 function esc(s: string): string {

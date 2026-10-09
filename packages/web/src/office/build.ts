@@ -4,6 +4,7 @@
 // worktree on a new branch, or a workspace in a folder), with an optional
 // agent. Once the pane exists the office opens it like any other desk.
 
+import { load, save } from "../app/storage";
 import type { BuildTarget } from "./scene";
 import type { RoomSpec } from "@kauak/protocol";
 import "./build.css";
@@ -30,7 +31,7 @@ const MORE_AGENTS = [
   "qodercli",
   "qwen",
 ];
-const AGENT_KEY = "agent-office.build.agent";
+const AGENT_KEY = "kauak.build.agent";
 // Creating a worktree runs git checkout, which can take a while on a big repo.
 const REPLY_TIMEOUT_MS = 60_000;
 const TOAST_MS = 8000;
@@ -54,6 +55,8 @@ export class BuildMode {
   private submit = this.form.querySelector<HTMLButtonElement>("button[type=submit]")!;
   private field = (name: string) => this.form.elements.namedItem(name) as HTMLInputElement;
   private agent = this.form.elements.namedItem("agent") as HTMLSelectElement;
+  /** A saved agent the select has no option for falls back to None, so the old key's is not copied. */
+  private offers = (agent: string) => [...this.agent.options].some((o) => o.value === agent);
   private toast = document.getElementById("toast")!;
   private on = false;
   private target: BuildTarget | null = null;
@@ -71,7 +74,7 @@ export class BuildMode {
       `<option value="">None (just a shell)</option>` +
       COMMON_AGENTS.map((k) => `<option>${k}</option>`).join("") +
       `<optgroup label="More agents">${MORE_AGENTS.map((k) => `<option>${k}</option>`).join("")}</optgroup>`;
-    this.agent.value = load(AGENT_KEY) ?? "";
+    this.agent.value = load(AGENT_KEY, this.offers) ?? "";
     if (this.agent.selectedIndex < 0) this.agent.value = "";
     this.btn.addEventListener("click", () => this.toggle(!this.on));
     for (const b of this.form.querySelectorAll("[data-cancel]")) b.addEventListener("click", () => this.close());
@@ -131,7 +134,7 @@ export class BuildMode {
     this.target = target;
     this.floor = floor;
     this.form.reset();
-    this.agent.value = load(AGENT_KEY) ?? "";
+    this.agent.value = load(AGENT_KEY, this.offers) ?? "";
     if (this.agent.selectedIndex < 0) this.agent.value = "";
     if (target.kind === "desk") {
       this.title.textContent = `New desk · ${target.room.workspace.label || target.room.workspace.workspace_id}`;
@@ -261,18 +264,4 @@ export class BuildMode {
       this.toast.hidden = true;
     }, TOAST_MS);
   }
-}
-
-// localStorage can be missing or throw (private windows, blocked site data).
-function load(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-function save(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {}
 }

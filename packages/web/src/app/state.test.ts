@@ -4,8 +4,12 @@ import type { MachineInfo, Snapshot } from "@kauak/protocol";
 
 // The store saves the floor on screen; a Map stands in for the browser's localStorage.
 const stored = new Map<string, string>();
+const reads: string[] = [];
 vi.stubGlobal("localStorage", {
-  getItem: (k: string) => stored.get(k) ?? null,
+  getItem: (k: string) => {
+    reads.push(k);
+    return stored.get(k) ?? null;
+  },
   setItem: (k: string, v: string) => stored.set(k, String(v)),
 });
 
@@ -30,15 +34,40 @@ function make(search = "") {
   return { state, changes };
 }
 
-beforeEach(() => stored.clear());
+beforeEach(() => {
+  stored.clear();
+  reads.length = 0;
+});
 
 test("starts on ?floor=, else the saved floor, else this machine's; a ?pane= deep link names its own", () => {
   expect(make().state.current).toBe("local");
-  stored.set("agent-office.floor", "devbox");
+  stored.set("kauak.floor", "devbox");
   expect(make().state.current).toBe("devbox");
   expect(make("?floor=nas").state.current).toBe("nas");
   expect(make("?floor=nas&pane=w1:p1").state.current).toBe("local");
   expect(make("?pane=nas/w1:p1").state.current).toBe("nas");
+});
+
+test("a floor saved before the rename is copied to kauak.floor once and left as it was; ?floor= reads neither", () => {
+  stored.set("agent-office.floor", "devbox");
+  expect(make("?floor=nas").state.current).toBe("nas");
+  expect(reads).toStrictEqual([]);
+  expect(stored.has("kauak.floor")).toBe(false);
+
+  const { state } = make();
+  expect(state.current).toBe("devbox");
+  expect(reads).toStrictEqual(["kauak.floor", "agent-office.floor"]);
+  expect(stored.get("kauak.floor")).toBe("devbox");
+  state.setMachines([machine("local"), machine("devbox"), machine("nas")]);
+  state.goToFloor("nas");
+  expect(stored.get("kauak.floor")).toBe("nas");
+  expect(stored.get("agent-office.floor")).toBe("devbox");
+
+  reads.length = 0;
+  expect(make().state.current).toBe("nas");
+  expect(reads).toStrictEqual(["kauak.floor"]);
+  stored.set("kauak.floor", "");
+  expect(make().state.current).toBe("");
 });
 
 test("a floor that is gone takes its snapshot along and the page to the first floor, saved", () => {
@@ -53,7 +82,7 @@ test("a floor that is gone takes its snapshot along and the page to the first fl
   state.setMachines([machine("local")]);
   expect(changes).toStrictEqual([{ type: "floor", dir: 0 }]);
   expect(state.current).toBe("local");
-  expect(stored.get("agent-office.floor")).toBe("local");
+  expect(stored.get("kauak.floor")).toBe("local");
   expect(state.snapshot("devbox")).toBe(undefined);
 });
 
@@ -70,7 +99,7 @@ test("going to a floor says which way the elevator went; an unknown floor change
     { type: "floor", dir: -1 },
     { type: "floor", dir: 0 },
   ]);
-  expect(stored.get("agent-office.floor")).toBe("devbox");
+  expect(stored.get("kauak.floor")).toBe("devbox");
 });
 
 test("selecting a pane on another floor goes there first; selecting again tells again; a missing pane is ignored", () => {

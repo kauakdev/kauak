@@ -8,9 +8,10 @@
 // the page's CSS.
 
 import { floorOf, keyOf, namespaceSnapshot, type Floor } from "../floors/floors";
+import { load, save } from "./storage";
 import type { MachineInfo, PaneInfo, Snapshot } from "@kauak/protocol";
 
-const FLOOR_KEY = "agent-office.floor";
+const FLOOR_KEY = "kauak.floor";
 
 export type Change =
   /** Machines or a snapshot changed; `current` when the floor on screen may have too. */
@@ -119,18 +120,4 @@ export class AppState {
     // (the panel deselecting a pane that is gone) runs nested, then the rest of this round.
     for (const listener of [...this.listeners]) listener(change);
   }
-}
-
-// localStorage can be missing or throw (private windows, blocked site data).
-function load(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-function save(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {}
 }

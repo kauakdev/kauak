@@ -25,6 +25,11 @@ turns Unreleased into the new version's section, as
   them selected. The old key is left as it was and is not read after that. An
   imported package may no longer use an id that starts with `kauak.`, as one
   starting with `agent-office.` already could not.
+- The page's other preferences saved in the browser before the rename, under
+  `agent-office.floor`, `agent-office.feed-hidden`, `agent-office.build.agent`,
+  `agent-office.radio` and `agent-office.panel-width`, are copied to the same
+  names under `kauak.` once, the first time the page reads each without its new
+  key. The old keys are left as they were and are not read after that.
 
 ### Removed
 

@@ -1,8 +1,8 @@
-import classic from "../../../plugins/classic.json";
-import orbital from "../../../plugins/orbital.json";
-import basecamp from "../../../plugins/basecamp.json";
-import herdr from "../../../plugins/herdr.json";
-import { PluginRegistry } from "../../../shared/plugins/registry";
+import classic from "@kauak/appearance/packages/classic.json";
+import orbital from "@kauak/appearance/packages/orbital.json";
+import basecamp from "@kauak/appearance/packages/basecamp.json";
+import herdr from "@kauak/appearance/packages/herdr.json";
+import { PluginRegistry } from "@kauak/appearance/registry";
 
 /** Add bundled data packages here; the scene never imports individual packages. */
 export const bundledPackages = [classic, orbital, basecamp, herdr];

@@ -12,8 +12,8 @@
 // edit there (prints.ts); clicking it opens the sheets (printout.ts).
 
 import { Application, Container, Graphics, Matrix, Polygon, Sprite, Text, TextStyle, Texture } from "pixi.js";
-import type { BrandBanner, Characters, Theme } from "../../shared/plugins/contracts";
-import { hex, resolveAnchor } from "../../shared/plugins/registry";
+import type { BrandBanner, Characters, Theme } from "@kauak/appearance/contracts";
+import { hex, resolveAnchor } from "@kauak/appearance/registry";
 import { defaultCharacters, defaultTheme } from "./plugins/catalog";
 import { STATUS_COLOR, kindColor, makeCharacter, makeEmptyDesk, type CharState, type DeskNode, type Whereabouts } from "./character";
 import { contextText } from "./context";

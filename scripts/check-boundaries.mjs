@@ -20,9 +20,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // The Herdr adapter: the only code that speaks Herdr's API.
-const HERDR_ADAPTER = ["bridge/machine.js", "bridge/herdr.js", "bridge/remote.js"];
+const HERDR_ADAPTER = ["packages/bridge/src/machine.js", "packages/bridge/src/herdr.js", "packages/bridge/src/remote.js"];
 // Tests drive a stand-in Herdr and check that nothing of it leaks, so they name it.
-const TESTS = ["**/*.test.mjs", "bridge/fixtures/**"];
+const TESTS = ["**/*.test.mjs", "packages/bridge/src/fixtures/**"];
+// Workspace packages are imported by relative path or by name, and a name is checked as written.
+const BRIDGE = ["packages/bridge/**", "@kauak/bridge", "@kauak/bridge/**"];
+// The CLI, bin/kauak.js, and the copy of the bridge the npm package carries.
+const KAUAK = ["packages/kauak/**", "kauak", "kauak/**"];
+const WEB = ["packages/web/**", "@kauak/web", "@kauak/web/**"];
 
 // Each rule applies to `files` (minus `except`) and checks any of:
 //   forbid   imports that may not be made (repository paths or package names), `unless` one of these
@@ -35,47 +40,52 @@ const RULES = [
     rule: "only the Herdr adapter (machine.js, herdr.js, remote.js) imports herdr.js",
     files: ["**"],
     except: [...HERDR_ADAPTER, ...TESTS],
-    forbid: ["bridge/herdr.js"],
+    forbid: ["packages/bridge/src/herdr.js", "packages/kauak/bridge/herdr.js", "@kauak/bridge/herdr.js"],
   },
   {
     rule: "the trackers and the protocol reach a floor through the Machine they are given, not the Herdr adapter",
-    files: ["bridge/context.js", "bridge/diffs.js", "bridge/commands.js", "bridge/protocol.js"],
-    forbid: ["bridge/machine.js", "bridge/herdr.js"],
+    files: [
+      "packages/bridge/src/context.js",
+      "packages/bridge/src/diffs.js",
+      "packages/bridge/src/commands.js",
+      "packages/bridge/src/protocol.js",
+    ],
+    forbid: ["packages/bridge/src/machine.js", "packages/bridge/src/herdr.js", "@kauak/bridge/machine.js", "@kauak/bridge/herdr.js"],
   },
   {
     rule: "Herdr's method and event names stay in the Herdr adapter",
     files: ["**"],
     // The demo's made-up terminals show code that calls Herdr.
-    except: [...HERDR_ADAPTER, ...TESTS, "web/src/demo.ts"],
+    except: [...HERDR_ADAPTER, ...TESTS, "packages/web/src/demo.ts"],
     strings: /^(session|events|workspace|worktree|tab|pane|agent|layout)\.[a-z][a-z_]*$/,
   },
   {
     rule: "the appearance registry imports nothing but its contracts: no DOM, Pixi, xterm, bridge or page",
-    files: ["shared/plugins/registry.ts"],
-    only: ["shared/plugins/contracts.ts"],
+    files: ["packages/appearance/src/registry.ts"],
+    only: ["packages/appearance/src/contracts.ts"],
     globals: /^(window|document|navigator|location|localStorage|sessionStorage|(HTML|SVG)\w*Element)$/,
   },
   {
     rule: "appearance contracts and validation import nothing from the bridge, the CLI or the page",
-    files: ["shared/**"],
-    forbid: ["bridge/**", "cli/**", "bin/**", "web/**"],
+    files: ["packages/appearance/**"],
+    forbid: [...BRIDGE, ...KAUAK, ...WEB],
   },
   {
     rule: "the page knows the bridge only through the protocol's types (import type), and nothing of the CLI",
-    files: ["web/**"],
-    forbid: ["bridge/**", "cli/**", "bin/**"],
-    unless: ["bridge/protocol.d.ts"],
+    files: ["packages/web/**"],
+    forbid: [...BRIDGE, ...KAUAK],
+    unless: ["packages/bridge/src/protocol.d.ts"],
     typeOnly: true,
   },
   {
     rule: "the bridge and the CLI import nothing from the page",
-    files: ["bridge/**", "cli/**", "bin/**"],
-    forbid: ["web/**"],
+    files: ["packages/bridge/**", "packages/kauak/**"],
+    forbid: WEB,
   },
   {
     rule: "the bridge imports nothing from the CLI, which starts it",
-    files: ["bridge/**"],
-    forbid: ["cli/**", "bin/**"],
+    files: ["packages/bridge/**"],
+    forbid: KAUAK,
   },
 ];
 

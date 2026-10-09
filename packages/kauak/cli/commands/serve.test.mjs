@@ -8,6 +8,7 @@ import { once } from "node:events";
 import { spawn, spawnSync } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { assemble } from "../../scripts/assemble.js";
 
 // The server runs from a directory outside the checkout, with a Herdr socket
 // that does not exist and an empty floor list, so it never touches a real
@@ -120,10 +121,12 @@ test("`kauak --demo` points at the demo and skips the Herdr hint", { skip: notBu
   assert.equal(await s.stop(), 0);
 });
 test("exits 1 with a clear message when the office page is not built", { timeout: 20_000 }, async (t) => {
-  // An install without dist/: the package's files except the page, plus its dependencies.
+  // An install without dist/: the package's files except the page, plus its dependencies. The
+  // bridge is copied in as packing does.
   const pkg = path.join(temp, "no-page");
   const { files } = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
-  for (const entry of files.filter((f) => !/^(dist\b|!)/.test(f)))
+  assemble(pkg);
+  for (const entry of files.filter((f) => !/^(dist\b|bridge\b|!)/.test(f)))
     fs.cpSync(path.join(ROOT, entry), path.join(pkg, entry), { recursive: true });
   fs.copyFileSync(path.join(ROOT, "package.json"), path.join(pkg, "package.json"));
   fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(pkg, "node_modules"), "junction");

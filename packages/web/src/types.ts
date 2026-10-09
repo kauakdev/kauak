@@ -2,4 +2,4 @@
 // (bridge/protocol.d.ts; docs/protocol.md). The page knows floors only through
 // these, never the runtime behind them.
 
-export type * from "../../bridge/protocol";
+export type * from "../../bridge/src/protocol";

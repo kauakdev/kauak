@@ -7,26 +7,51 @@ settings:
 importers:
 
   .:
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.5.15
+        version: 2.5.15
+      concurrently:
+        specifier: ^9.1.0
+        version: 9.2.4
+      ws:
+        specifier: ^8.18.0
+        version: 8.22.0
+
+  packages/appearance:
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/bridge:
     dependencies:
       ws:
         specifier: ^8.18.0
         version: 8.22.0
     devDependencies:
-      '@biomejs/biome':
-        specifier: 2.5.15
-        version: 2.5.15
       '@types/ws':
         specifier: ^8.5.12
         version: 8.18.1
+
+  packages/kauak:
+    dependencies:
+      ws:
+        specifier: ^8.18.0
+        version: 8.22.0
+
+  packages/web:
+    dependencies:
+      '@kauak/appearance':
+        specifier: workspace:*
+        version: link:../appearance
       '@xterm/xterm':
         specifier: ^6.0.0
         version: 6.0.0
-      concurrently:
-        specifier: ^9.1.0
-        version: 9.2.4
       pixi.js:
         specifier: ^8.6.0
         version: 8.21.0
+    devDependencies:
       typescript:
         specifier: ^5.6.0
         version: 5.9.3

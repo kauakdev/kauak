@@ -7,8 +7,8 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "types": ["vite/client"],
+    "types": [],
     "noEmit": true
   },
-  "include": ["web/src"]
+  "include": ["src"]
 }

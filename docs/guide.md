@@ -48,14 +48,14 @@ in the roster row and the terminal panel's header; hover a desk for the token
 counts ("184k of 1M tokens"). Neither Herdr nor the agents report this over
 an API, so the bridge reads it from the transcripts the agents write to disk
 (`~/.claude/projects`, `~/.codex/sessions`). On a remote floor it does that
-over SSH with a small Python script (`bridge/context_remote.py`, run with the
-machine's `python3`; nothing is installed there). To match a pane with its
-transcript, the bridge uses the session that Herdr's agent integrations report
-(`herdr integration install claude`, or `codex`). Without them, nothing needs
-installing: a Claude Code pane is matched through the Claude process running in
-it, and a Codex pane gets the newest terminal Codex session in the pane's folder
-since Codex started there (two Codex panes in one folder get no meter, rather
-than a guess). Claude's window is 1M
+over SSH with a small Python script (`packages/bridge/src/context_remote.py`,
+run with the machine's `python3`; nothing is installed there). To match a pane
+with its transcript, the bridge uses the session that Herdr's agent integrations
+report (`herdr integration install claude`, or `codex`). Without them, nothing
+needs installing: a Claude Code pane is matched through the Claude process
+running in it, and a Codex pane gets the newest terminal Codex session in the
+pane's folder since Codex started there (two Codex panes in one folder get no
+meter, rather than a guess). Claude's window is 1M
 tokens, or 200k on Haiku and models up to 4.5 unless Claude Code runs them with
 1M (`[1m]`).
 
@@ -81,8 +81,8 @@ lock), and compares each changed file with the last version it saw, the first
 time the one in `HEAD`. Changes already there when the bridge starts print no
 sheets, rooms in one checkout share its sheets, and the last 50 are kept. On a
 remote floor the bridge runs git and reads the files over SSH with a small
-Python script (`bridge/diffs_remote.py`, run with the machine's `python3`, like
-the context meters; nothing is installed there).
+Python script (`packages/bridge/src/diffs_remote.py`, run with the machine's
+`python3`, like the context meters; nothing is installed there).
 
 ## Around the canvas
 
@@ -177,11 +177,11 @@ anything), wheel to zoom.
 ## Demo
 
 `?demo` in the URL (or `kauak serve --demo`) swaps the bridge for a
-simulated one (`web/src/demo.ts`): two floors of made-up agents that work, get
-blocked and finish on their own. The terminal panel works there too: Enter or
-Esc answers a blocked agent, a typed task puts an idle one to work, a finished
-Claude suggests a next message, `/` lists a few made-up commands, and shell
-panes run a few commands (`help`, `git status`, `claude`…). "+ Add floor"
+simulated one (`packages/web/src/demo.ts`): two floors of made-up agents that
+work, get blocked and finish on their own. The terminal panel works there too:
+Enter or Esc answers a blocked agent, a typed task puts an idle one to work, a
+finished Claude suggests a next message, `/` lists a few made-up commands, and
+shell panes run a few commands (`help`, `git status`, `claude`…). "+ Add floor"
 adds a made-up machine. `pnpm build:demo` builds it as a static site in
 `dist-demo/`, and `.github/workflows/demo.yml` publishes that to GitHub Pages
 on every push to `main`. The Claude and Codex agents fill their context meters

@@ -1,0 +1,26 @@
+{
+  "name": "kauak",
+  "version": "0.1.0",
+  "description": "A Sims-style isometric office that shows what your Herdr coding agents are doing, live",
+  "keywords": ["herdr", "coding-agents", "claude-code", "codex", "terminal", "multiplexer", "dashboard", "isometric", "pixijs"],
+  "homepage": "https://github.com/agustinrbeltran/kauak#readme",
+  "bugs": "https://github.com/agustinrbeltran/kauak/issues",
+  "repository": { "type": "git", "url": "git+https://github.com/agustinrbeltran/kauak.git" },
+  "license": "Apache-2.0",
+  "author": "Agustin Renteria Beltran",
+  "type": "module",
+  "bin": { "kauak": "bin/kauak.js" },
+  "exports": { "./package.json": "./package.json" },
+  "files": ["bin", "cli", "bridge", "dist", "!**/*.test.*", "!**/fixtures", "!**/*.d.ts", "!dist/kauak-banner.png"],
+  "engines": { "node": ">=22" },
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
+  "scripts": {
+    "start": "node bin/kauak.js serve",
+    "test": "node --test",
+    "prepack": "pnpm --filter @kauak/web typecheck && pnpm --filter @kauak/web build && node scripts/assemble.js",
+    "postpack": "node scripts/assemble.js --clean"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@kauak/web",
+  "private": true,
+  "description": "The Kauak office page: TypeScript, PixiJS and xterm.js, built with Vite",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:demo": "vite build --mode demo",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@kauak/appearance": "workspace:*",
+    "@xterm/xterm": "^6.0.0",
+    "pixi.js": "^8.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
+  }
+}

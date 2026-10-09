@@ -1,5 +1,5 @@
-import { MAX_BANNER_BYTES, validateBanner } from "../../../shared/plugins/registry";
-import type { BrandBanner } from "../../../shared/plugins/contracts";
+import { MAX_BANNER_BYTES, validateBanner } from "@kauak/appearance/registry";
+import type { BrandBanner } from "@kauak/appearance/contracts";
 
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 /** Rasterize to a bounded local PNG. Never persist URLs, SVG or executable resources. */

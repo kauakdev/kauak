@@ -1,6 +1,6 @@
 # Kauak
 
-![Kauak](web/public/kauak-banner.png)
+![Kauak](packages/web/public/kauak-banner.png)
 
 Kauak is a Sims-style isometric office that shows what your coding agents are
 doing, live. It connects to [Herdr](https://herdr.dev), a terminal multiplexer
@@ -101,34 +101,34 @@ Herdr, and it would not exist without it.
 Herdr (a unix socket on each machine; through an SSH tunnel for a remote one)
    │  Herdr's API
    ▼
-Herdr adapter    bridge/machine.js, bridge/herdr.js
+Herdr adapter    packages/bridge/src/machine.js, packages/bridge/src/herdr.js
    │  Kauak terms
    ▼
-Bridge server    bridge/server.js
+Bridge server    packages/bridge/src/server.js
    │  the Kauak protocol, over a WebSocket
    ▼
-Page             web/
+Page             packages/web/
 ```
 
-- **Herdr adapter** (`bridge/machine.js`, `bridge/herdr.js`): one per floor.
-  It talks to Herdr's socket, here or through an SSH tunnel, and translates
-  Herdr's snapshots and errors into Kauak's own. Herdr-specific code lives only
-  here.
-- **Kauak protocol** (`bridge/protocol.d.ts`, `bridge/protocol.js`): the JSON
-  messages between the page and the bridge, described in
-  [docs/protocol.md](docs/protocol.md). The bridge checks every message from a
-  page against it.
-- **Bridge server** (`bridge/server.js`, Node, plain JavaScript): serves the
-  page and the WebSocket on 127.0.0.1:7788, and adds what Herdr does not
-  report: context usage, read from the agents' transcripts, and file diffs,
+- **Herdr adapter** (`packages/bridge/src/machine.js`,
+  `packages/bridge/src/herdr.js`): one per floor. It talks to Herdr's socket,
+  here or through an SSH tunnel, and translates Herdr's snapshots and errors
+  into Kauak's own. Herdr-specific code lives only here.
+- **Kauak protocol** (`packages/bridge/src/protocol.d.ts`,
+  `packages/bridge/src/protocol.js`): the JSON messages between the page and the
+  bridge, described in [docs/protocol.md](docs/protocol.md). The bridge checks
+  every message from a page against it.
+- **Bridge server** (`packages/bridge/src/server.js`, Node, plain JavaScript):
+  serves the page and the WebSocket on 127.0.0.1:7788, and adds what Herdr does
+  not report: context usage, read from the agents' transcripts, and file diffs,
   from git.
-- **Page** (`web/`, TypeScript, PixiJS, xterm.js, built with Vite): lays each
-  snapshot out as floors and rooms, draws the office, and holds the roster,
-  activity feed, terminal panel and build mode. For the demo,
-  `web/src/demo.ts` speaks the protocol with no bridge at all.
-- **CLI** (`bin/kauak.js`, `cli/`): the `kauak` command, one module per command
-  in `cli/commands/`.
-- **Appearance packages** (`plugins/`, `shared/plugins/`): offices and
+- **Page** (`packages/web/`, TypeScript, PixiJS, xterm.js, built with Vite):
+  lays each snapshot out as floors and rooms, draws the office, and holds the
+  roster, activity feed, terminal panel and build mode. For the demo,
+  `packages/web/src/demo.ts` speaks the protocol with no bridge at all.
+- **CLI** (`packages/kauak/bin/kauak.js`, `packages/kauak/cli/`): the `kauak`
+  command, one module per command in `packages/kauak/cli/commands/`.
+- **Appearance packages** (`packages/appearance/`): offices and
   characters as declarative JSON, validated before use. See the
   [plugin and banner guide](docs/plugins/README.md).
 
@@ -174,12 +174,12 @@ Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
 into the page to `dist/THIRD_PARTY_LICENSES.txt`, which ships with the npm
 package and the demo.
 
-Artwork: the logo (`web/public/kauak.png`) and banner
-(`web/public/kauak-banner.png`) were generated for Kauak with OpenAI's ChatGPT
-image generation, and both files carry C2PA metadata saying so. The contour-map
-background (`web/src/backgrounds/contours.svg`) appears to be programmatically
-generated: evenly spaced concentric rings with no geographic reference. No map
-or elevation data is known to have been used.
+Artwork: the logo (`packages/web/public/kauak.png`) and banner
+(`packages/web/public/kauak-banner.png`) were generated for Kauak with OpenAI's
+ChatGPT image generation, and both files carry C2PA metadata saying so. The
+contour-map background (`packages/web/src/backgrounds/contours.svg`) appears to
+be programmatically generated: evenly spaced concentric rings with no geographic
+reference. No map or elevation data is known to have been used.
 
 **Name and logo.** The Apache License 2.0 does not grant permission to use the
 Kauak name, logo or banner as trademarks (section 6). Forks and redistributions

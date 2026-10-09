@@ -2,10 +2,19 @@
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    // JavaScript, TypeScript, JSON and CSS only. Markdown, the Python helpers and web/index.html
+    // JavaScript, TypeScript, JSON and CSS only. Markdown, the Python helpers and packages/web/index.html
     // (whose inline CSS moves out later) keep their hand formatting; the Herdr snapshot in
-    // bridge/fixtures/ is a scrubbed real one, kept as Herdr wrote it.
-    "includes": ["**/*.js", "**/*.mjs", "**/*.ts", "**/*.json", "**/*.css", "!**/dist", "!**/dist-demo", "!bridge/fixtures/**/*.json"]
+    // packages/bridge/src/fixtures/ is a scrubbed real one, kept as Herdr wrote it.
+    "includes": [
+      "**/*.js",
+      "**/*.mjs",
+      "**/*.ts",
+      "**/*.json",
+      "**/*.css",
+      "!**/dist",
+      "!**/dist-demo",
+      "!packages/bridge/src/fixtures/**/*.json"
+    ]
   },
   "formatter": {
     "indentStyle": "space",
@@ -47,7 +56,7 @@
   "overrides": [
     {
       // Appearance packages are written out one value per line, as JSON.stringify(value, null, 2) does.
-      "includes": ["plugins/*.json", "docs/plugins/*.json"],
+      "includes": ["packages/appearance/packages/*.json", "docs/plugins/*.json"],
       "json": { "formatter": { "expand": "always" } }
     }
   ]

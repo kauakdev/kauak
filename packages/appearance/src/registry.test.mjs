@@ -8,10 +8,21 @@ import { spawnSync } from "node:child_process";
 
 // Compile the public contracts in isolation; no browser, scene or bridge dependency.
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "agent-office-plugin-tests-"));
-const compiler = path.resolve("node_modules/typescript/bin/tsc");
+const compiler = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 const build = spawnSync(
   process.execPath,
-  [compiler, "shared/plugins/registry.ts", "--outDir", temp, "--module", "commonjs", "--target", "ES2022", "--strict", "--skipLibCheck"],
+  [
+    compiler,
+    path.join(import.meta.dirname, "registry.ts"),
+    "--outDir",
+    temp,
+    "--module",
+    "commonjs",
+    "--target",
+    "ES2022",
+    "--strict",
+    "--skipLibCheck",
+  ],
   { encoding: "utf8" },
 );
 if (build.status !== 0) {
@@ -29,9 +40,9 @@ const {
   SETTINGS_KEY,
   validateBanner,
 } = createRequire(import.meta.url)(path.join(temp, "registry.js"));
-const read = (name) => JSON.parse(fs.readFileSync(path.resolve(name), "utf8"));
-const builtins = ["classic", "orbital", "basecamp", "herdr"].map((n) => read(`plugins/${n}.json`));
-const custom = () => read("docs/plugins/harbor.json");
+const read = (name) => JSON.parse(fs.readFileSync(new URL(name, import.meta.url), "utf8"));
+const builtins = ["classic", "orbital", "basecamp", "herdr"].map((n) => read(`../packages/${n}.json`));
+const custom = () => read("../../../docs/plugins/harbor.json");
 test.after(() => fs.rmSync(temp, { recursive: true }));
 
 test("included capabilities share one registry while keeping browser and bridge selections independent", () => {

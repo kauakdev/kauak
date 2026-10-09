@@ -2,8 +2,12 @@ node_modules
 dist
 dist-demo
 *.tgz
+# Copies packing makes in the npm package (packages/kauak/scripts/assemble.js).
+packages/kauak/bridge/
+packages/kauak/README.md
+packages/kauak/LICENSE
 .vite
-# Local overrides only: nothing needs a .env, but Vite would read one in web/.
+# Local overrides only: nothing needs a .env, but Vite would read one in packages/web/.
 .env
 .env.*
 *.log

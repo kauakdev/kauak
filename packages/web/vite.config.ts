@@ -1,11 +1,11 @@
 import { defineConfig } from "vite";
-import { thirdPartyLicenses } from "./scripts/third-party-licenses.js";
+import { thirdPartyLicenses } from "../../scripts/third-party-licenses.js";
 
 export default defineConfig(({ mode }) => ({
-  root: "web",
   // The demo build (`--mode demo`) is a static site that may live under a subpath (GitHub Pages).
   base: mode === "demo" ? "./" : "/",
   server: { port: 5178, open: false },
-  build: { outDir: mode === "demo" ? "../dist-demo" : "../dist", emptyOutDir: true },
+  // The page goes into the npm package (packages/kauak), the demo to the repository root for GitHub Pages.
+  build: { outDir: mode === "demo" ? "../../dist-demo" : "../kauak/dist", emptyOutDir: true },
   plugins: [thirdPartyLicenses()],
 }));

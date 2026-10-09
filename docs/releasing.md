@@ -5,22 +5,26 @@ Kauak is published to npm as `kauak`, a command-line package: people run
 
 ## What the package contains
 
-`files` in package.json decides it:
+The package is `packages/kauak`, and `files` in its package.json decides what
+goes in:
 
 - `bin/kauak.js`, the `kauak` executable (package.json `bin`), and `cli/`, the
   commands it runs
 - `bridge/`, the bridge `kauak serve` starts, run as is (plain JavaScript, no
-  build), with the two Python helpers it runs on remote floors over SSH
+  build), with the two Python helpers it runs on remote floors over SSH. Its
+  source is `packages/bridge/src`; `prepack` copies it in
+  (`packages/kauak/scripts/assemble.js`) and `postpack` removes the copy
 - `dist/`, the built office page the bridge serves, with
   `THIRD_PARTY_LICENSES.txt` for the packages bundled into it (written by
   `scripts/third-party-licenses.js` on every build)
-- `package.json`, `README.md` and `LICENSE`, which npm always adds
+- `package.json`, `README.md` and `LICENSE`, which npm always adds. README and
+  LICENSE are the repository's, copied in by `prepack` like the bridge
 
 Tests, test fixtures and type declarations are left out, and so is
 `dist/kauak-banner.png`, which only the demo site uses (as its social preview).
 The page's own packages (pixi.js, xterm.js) are devDependencies, since they are
 bundled into `dist/`; the only runtime dependency is `ws`. A new directory
-that the bridge or the CLI loads at runtime has to be added to `files`.
+that the CLI loads at runtime has to be added to `files`.
 
 The package exposes no module: `exports` only lets tools read its
 package.json, because importing the bridge would start a server.
@@ -44,12 +48,15 @@ supports) and Node 24 (the current LTS).
 ## Publishing a version
 
 1. On an up-to-date `main` with green CI, run `pnpm install --frozen-lockfile`,
-   `pnpm test` and `pnpm verify:pack`.
+   `pnpm test` and `pnpm verify:pack`. Steps 3 to 5 run in `packages/kauak`.
 2. Write the release notes: in `CHANGELOG.md`, the Unreleased section becomes
    the version's (`## [X.Y.Z] - YYYY-MM-DD`), under a new, empty Unreleased.
    Commit that.
-3. Set the version: `npm version <patch|minor|major>` (commits and tags
-   `vX.Y.Z`).
+3. Set the version: `npm version <patch|minor|major> --no-git-tag-version`.
+   npm also re-expands package.json's compact layout, so run `pnpm format`
+   from the repository's root before committing, or `pnpm lint` fails. Below
+   the root, npm only changes package.json and neither commits nor tags, so do
+   both yourself: `git commit -am X.Y.Z` and `git tag -a vX.Y.Z -m X.Y.Z`.
 4. Look at what will be uploaded: `npm publish --dry-run`.
 5. Publish with `npm publish` (`publishConfig` sends it to the public npm
    registry), from an npm account with two-factor authentication on.

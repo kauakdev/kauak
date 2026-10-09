@@ -18,15 +18,16 @@ Vulnerabilities in Herdr itself belong to the [Herdr project](https://github.com
 
 ## What the bridge can do
 
-Kauak's bridge (`bridge/`) acts on your machine with your user's rights. On
-every Herdr server it is connected to, it can:
+Kauak's bridge (`packages/bridge/`) acts on your machine with your user's
+rights. On every Herdr server it is connected to, it can:
 
 - read what is on screen in any pane, and type text and keys into it
 - create tabs, workspaces and git worktrees, and start agents in them
 - open SSH connections to the machines saved as floors (with `BatchMode=yes`,
   so it never prompts), and run two small Python scripts there with `python3`
-  (`bridge/context_remote.py`, `bridge/diffs_remote.py`) that read agent
-  transcripts, git status and file contents
+  (`packages/bridge/src/context_remote.py`,
+  `packages/bridge/src/diffs_remote.py`) that read agent transcripts, git status
+  and file contents
 
 On this machine it also reads agent transcripts (`~/.claude/projects`,
 `~/.codex/sessions`), agent command, skill and plugin files, and git status
@@ -42,10 +43,10 @@ Whoever controls the bridge can therefore run commands in your terminals.
   `localhost`, `127.0.0.1` or `[::1]` (on any port), plus the hostnames you
   list in `KAUAK_ORIGINS`.
 - Every message from a page goes through `parseClientMessage`
-  (`bridge/protocol.js`), which checks its shape and sizes before the bridge
-  acts on it. Messages it does not know are dropped, keys outside a short
-  list of names (`enter`, `ctrl+c`…) are dropped, and text sent to a pane is
-  cut at 64 KB per piece. The format is in
+  (`packages/bridge/src/protocol.js`), which checks its shape and sizes before
+  the bridge acts on it. Messages it does not know are dropped, keys outside a
+  short list of names (`enter`, `ctrl+c`…) are dropped, and text sent to a pane
+  is cut at 64 KB per piece. The format is in
   [docs/protocol.md](docs/protocol.md).
 - An SSH target typed in the page must look like `host`, `user@host` or an
   `~/.ssh/config` alias, and a branch name typed in build mode must look like

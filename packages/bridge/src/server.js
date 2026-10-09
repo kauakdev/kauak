@@ -123,7 +123,10 @@ function snapshotMessage(m) {
 
 // ---------------------------------------------------------------- page
 
-const DIST_DIR = fileURLToPath(new URL("../dist/", import.meta.url));
+// In the npm package the page is beside the bridge's copy (dist/); in a checkout the bridge runs
+// from packages/bridge/src and the page is built into packages/kauak/dist.
+const DIST_DIRS = [new URL("../dist/", import.meta.url), new URL("../../kauak/dist/", import.meta.url)].map((u) => fileURLToPath(u));
+const DIST_DIR = DIST_DIRS.find((d) => fs.existsSync(path.join(d, "index.html"))) ?? DIST_DIRS[0];
 const HAS_PAGE = fs.existsSync(path.join(DIST_DIR, "index.html"));
 const CONTENT_TYPES = {
   ".html": "text/html; charset=utf-8",

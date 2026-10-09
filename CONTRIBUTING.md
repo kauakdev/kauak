@@ -17,9 +17,9 @@ pnpm dev
 ```
 
 `pnpm dev` starts the bridge on port 7788 and Vite on
-http://localhost:5178, which reloads the page as you edit `web/`. The bridge
-does not reload: restart `pnpm dev` after changing `bridge/`. Open
-http://localhost:5178/?demo for simulated agents.
+http://localhost:5178, which reloads the page as you edit `packages/web/`. The
+bridge does not reload: restart `pnpm dev` after changing `packages/bridge/`.
+Open http://localhost:5178/?demo for simulated agents.
 
 The bridge drives your real Herdr: it can type into your panes and create
 tabs and worktrees. While you work on it, consider pointing it at a separate
@@ -29,28 +29,37 @@ everyday Kauak, say), run a second bridge with
 
 ## Layout
 
-- `bridge/`: the Node bridge, plain ESM JavaScript with no build step. Its only
-  runtime dependency is `ws`. `machine.js` and `herdr.js` are the Herdr
-  adapter, the only files that speak Herdr's API.
-- `bin/kauak.js` and `cli/`: the `kauak` command. A new command is one module
-  in `cli/commands/` and one entry in `COMMANDS` in `cli/main.js`, whose
-  opening comment says what the module exports.
-- `web/`: the page, TypeScript with PixiJS and xterm.js, built with Vite.
-  `web/src/demo.ts` stands in for the bridge in the demo.
-- `shared/` and `plugins/`: appearance packages and their validation. See the
+A pnpm workspace of four packages, each with its own `package.json` and README:
+
+- `packages/bridge/` (`@kauak/bridge`): the Node bridge, in `src/`, plain ESM
+  JavaScript with no build step. Its only runtime dependency is `ws`.
+  `machine.js` and `herdr.js` are the Herdr adapter, the only files that speak
+  Herdr's API.
+- `packages/kauak/` (`kauak`, the npm package): `bin/kauak.js` and `cli/`, the
+  `kauak` command. A new command is one module in `cli/commands/` and one entry
+  in `COMMANDS` in `cli/main.js`, whose opening comment says what the module
+  exports. The page is built into its `dist/`.
+- `packages/web/` (`@kauak/web`): the page, TypeScript with PixiJS and
+  xterm.js, built with Vite. `src/demo.ts` stands in for the bridge in the
+  demo.
+- `packages/appearance/` (`@kauak/appearance`): appearance packages (in
+  `packages/`) and their validation (in `src/`). See the
   [plugin and banner guide](docs/plugins/README.md).
+
+`scripts/` holds the repository's tooling: the boundary check, the package
+check and the page's license list.
 
 [docs/architecture.md](docs/architecture.md) explains how the pieces fit.
 
 ## Changing what the page and the bridge say
 
 The page and the bridge talk only in the Kauak protocol: its types are in
-`bridge/protocol.d.ts` (the page imports them through `web/src/types.ts`), its
-checks in `bridge/protocol.js`, and its reference in
-[docs/protocol.md](docs/protocol.md). The bridge drops any message from a page
-that the checks do not know, so a new or changed message means updating all
-three, and `web/src/demo.ts` too, so the demo keeps working. Herdr's own fields
-and methods stay in the adapter.
+`packages/bridge/src/protocol.d.ts` (the page imports them through
+`packages/web/src/types.ts`), its checks in `packages/bridge/src/protocol.js`,
+and its reference in [docs/protocol.md](docs/protocol.md). The bridge drops any
+message from a page that the checks do not know, so a new or changed message
+means updating all three, and `packages/web/src/demo.ts` too, so the demo keeps
+working. Herdr's own fields and methods stay in the adapter.
 
 ## Before you open a pull request
 
@@ -74,23 +83,29 @@ without changing anything; `pnpm format` rewrites files to its style, and
 formatted by hand.
 
 `pnpm check:boundaries` (`scripts/check-boundaries.mjs`) keeps the pieces
-apart: only the Herdr adapter (`bridge/machine.js`, `bridge/herdr.js`,
-`bridge/remote.js`) imports `herdr.js` or names Herdr's methods, the trackers
-and the protocol do not import the adapter, `shared/plugins/registry.ts`
-imports nothing but its contracts and uses no DOM, the page imports only the
-protocol's types from the bridge, and the bridge and the CLI import nothing
-from the page. When a file moves, update the rules at the top of the script.
+apart: only the Herdr adapter (`packages/bridge/src/machine.js`,
+`packages/bridge/src/herdr.js`, `packages/bridge/src/remote.js`) imports
+`herdr.js` or names Herdr's methods, the trackers and the protocol do not import
+the adapter, `packages/appearance/src/registry.ts` imports nothing but its
+contracts and uses no DOM, the page imports only the protocol's types from the
+bridge, and the bridge and the CLI import nothing from the page. When a file
+moves, update the rules at the top of the script.
 
-`pnpm test` runs `node --test`, which finds every `*.test.mjs`. Tests use
-Node's built-in runner (`node:test` with `node:assert/strict`) and sit next to
-the code they test. The bridge's tests run against a stand-in Herdr
-(`bridge/fixtures/fake-herdr.mjs`), so they need no Herdr installed.
+`pnpm test` runs `node --test` in each package and in `scripts/`, which finds
+every `*.test.mjs`. Tests use Node's built-in runner (`node:test` with
+`node:assert/strict`) and sit next to the code they test. The bridge's tests
+run against a stand-in Herdr
+(`packages/bridge/src/fixtures/fake-herdr.mjs`), so they need no Herdr
+installed.
 
 `pnpm verify:pack` builds the npm package, installs it with `npm install`,
 `npm install -g` and `npx` in a temporary folder, and runs `kauak serve` from
 each. It needs the npm registry, and matters most when you change what the
-package ships: a new folder that the bridge or the CLI loads at runtime has to
-be added to `files` in package.json.
+package ships: a new folder that the CLI loads at runtime has to be added to
+`files` in `packages/kauak/package.json` (the bridge's `src/` is copied in whole
+when packing). Packing copies the bridge, README and LICENSE into
+`packages/kauak/` and removes them afterwards; a `packages/kauak/bridge/` left
+behind by an interrupted pack is safe to delete.
 
 CI (`.github/workflows/ci.yml`) runs all of them on Node 22 and 24, for every
 pull request and push to `main`.

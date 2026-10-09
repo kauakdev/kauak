@@ -1,4 +1,4 @@
-import type { BrandBanner, Characters, PluginManifest, Preferences, Theme } from "../../../shared/plugins/contracts";
+import type { BrandBanner, Characters, PluginManifest, Preferences, Theme } from "@kauak/appearance/contracts";
 import {
   loadPreferences,
   MAX_PACKAGES,
@@ -7,7 +7,7 @@ import {
   PluginRegistry,
   resolveAnchor,
   savePreferences,
-} from "../../../shared/plugins/registry";
+} from "@kauak/appearance/registry";
 import { bundledPackages } from "./catalog";
 import { decodeImage, prepareBanner } from "./banner-image";
 import { BACKGROUNDS, type BackgroundId, type OfficeBackground } from "./background";

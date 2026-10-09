@@ -6,6 +6,10 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { UsageError } from "../errors.js";
 
+// The npm package carries a copy of the bridge beside the CLI (scripts/assemble.js makes it when
+// packing); a checkout has none and runs the bridge's own source in packages/bridge.
+const PACKED = fs.existsSync(new URL("../../bridge/server.js", import.meta.url));
+
 export const name = "serve";
 export const summary = "start the office and open it in the browser";
 export const usage = `Usage: kauak serve [options]
@@ -36,8 +40,8 @@ export async function run(values) {
   }
 
   // The bridge starts listening when it is loaded, and reads the environment then.
-  const { ready } = await import("../../bridge/server.js");
-  const { LOCAL_SOCKET } = await import("../../bridge/machine.js");
+  const { ready } = await import(PACKED ? "../../bridge/server.js" : "../../../bridge/src/server.js");
+  const { LOCAL_SOCKET } = await import(PACKED ? "../../bridge/machine.js" : "../../../bridge/src/machine.js");
   const url = await ready;
   if (!url) {
     console.error("kauak: the office page is missing from this install (run `pnpm build` in a checkout)");

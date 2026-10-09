@@ -12,10 +12,21 @@ const ALLOWED = [{ name: "CLIAMP Lofi", url: "https://radio.cliamp.stream/lofi/s
 
 // Compile the station list on its own; no browser or audio needed.
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "kauak-radio-tests-"));
-const compiler = path.resolve("node_modules/typescript/bin/tsc");
+const compiler = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 const build = spawnSync(
   process.execPath,
-  [compiler, "web/src/stations.ts", "--outDir", temp, "--module", "commonjs", "--target", "ES2022", "--strict", "--skipLibCheck"],
+  [
+    compiler,
+    path.join(import.meta.dirname, "stations.ts"),
+    "--outDir",
+    temp,
+    "--module",
+    "commonjs",
+    "--target",
+    "ES2022",
+    "--strict",
+    "--skipLibCheck",
+  ],
   { encoding: "utf8" },
 );
 if (build.status !== 0) {
@@ -46,5 +57,5 @@ test("each station streams over https from its credited site's domain, at its ow
   assert.equal(new Set(STATIONS.map((s) => s.freq)).size, STATIONS.length);
 });
 test("the radio plays only what stations.ts lists", () => {
-  assert.doesNotMatch(fs.readFileSync(path.resolve("web/src/radio.ts"), "utf8"), /https?:\/\//);
+  assert.doesNotMatch(fs.readFileSync(path.join(import.meta.dirname, "radio.ts"), "utf8"), /https?:\/\//);
 });

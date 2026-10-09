@@ -8,8 +8,8 @@
 import { Container, Graphics, Rectangle, Text, TextStyle, type PointData } from "pixi.js";
 import { CONTEXT_COLOR, contextLevel, contextShare } from "./context";
 import { depth, hashStr, mix, shade, toScreen } from "./iso";
-import type { Characters } from "../../shared/plugins/contracts";
-import { hex } from "../../shared/plugins/registry";
+import type { Characters } from "@kauak/appearance/contracts";
+import { hex } from "@kauak/appearance/registry";
 import { defaultCharacters } from "./plugins/catalog";
 import type { Desk, Spot } from "./layout";
 import { PALETTE, box, quadAlongX, shadow, type MaterialPalette } from "./props";

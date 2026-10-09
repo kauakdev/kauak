@@ -1,0 +1,17 @@
+{
+  "name": "@kauak/bridge",
+  "private": true,
+  "description": "The Kauak bridge: Herdr floors in, the Kauak protocol out over a WebSocket, and the built page",
+  "type": "module",
+  "exports": { "./*": "./src/*" },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12"
+  }
+}

@@ -26,7 +26,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 
-const ROOT = fileURLToPath(new URL("../", import.meta.url));
+// The published package, kauak.
+const ROOT = fileURLToPath(new URL("../packages/kauak/", import.meta.url));
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 
 // Files `kauak serve` needs, among them some that no failing import would
@@ -52,7 +53,7 @@ const FORBIDDEN = [
   [/\.d\.ts$/, "type declarations (the package has no importable API)"],
   [/\.map$/, "a source map"],
   [/\.tgz$/, "a tarball"],
-  [/^(web|shared|plugins|docs|scripts|node_modules|dist-demo|\.github|\.agents|\.claude)\//, "development files"],
+  [/^(packages|web|shared|plugins|docs|scripts|node_modules|dist-demo|\.github|\.agents|\.claude)\//, "development files"],
   [
     /^(package-lock\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|skills-lock\.json|tsconfig\.json|vite\.config\.ts|\.gitignore|\.npmrc)$|(^|\/)\.env/,
     "repository configuration",

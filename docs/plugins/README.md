@@ -83,15 +83,17 @@ reload and can be removed from settings. An import does not automatically
 change the current selection. Up to eight custom packages of 64 KB each are
 kept. Replace a package by removing it and importing its new version.
 
-For a package shipped with the repo, add its JSON to `plugins/`, then include
-it in `bundledPackages` in `web/src/plugins/catalog.ts`. There is no per-package
-switch in the scene. IDs starting with `agent-office.` are reserved for
-included packages; custom IDs can use lowercase letters, numbers, dots and
-hyphens, for example `company.harbor`.
+For a package shipped with the repo, add its JSON to
+`packages/appearance/packages/`, then include it in `bundledPackages` in
+`packages/web/src/plugins/catalog.ts`. There is no per-package switch in the
+scene. IDs starting with `agent-office.` are reserved for included packages;
+custom IDs can use lowercase letters, numbers, dots and hyphens, for example
+`company.harbor`.
 
-The public API is [contracts.ts](../../shared/plugins/contracts.ts). The
-runtime boundary is [registry.ts](../../shared/plugins/registry.ts), which has
-no Pixi, DOM, bridge, layout or session imports. A manifest has:
+The public API is [contracts.ts](../../packages/appearance/src/contracts.ts).
+The runtime boundary is
+[registry.ts](../../packages/appearance/src/registry.ts), which has no Pixi,
+DOM, bridge, layout or session imports. A manifest has:
 
 ```json
 {

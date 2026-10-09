@@ -345,10 +345,12 @@ function free(l: Lounge, p: Spot): boolean {
   return !l.blocked[cellAt(l, p)];
 }
 
-/** Free floor all round `p`, `r` tiles out. */
+/** Free floor all round `p`, `r` tiles out on every side. */
 function roomy(l: Lounge, p: Spot, r: number): boolean {
-  for (let y = p.y - r; y <= p.y + r + 1e-6; y += RES)
-    for (let x = p.x - r; x <= p.x + r + 1e-6; x += RES) if (!free(l, { x, y })) return false;
+  // Samples from -r to +r, both ends and the centre included, so a spot is as clear in front and to the right
+  // as behind and to the left; and no further apart than a cell, so none is stepped over.
+  const n = Math.max(1, Math.ceil(r / RES));
+  for (let j = -n; j <= n; j++) for (let i = -n; i <= n; i++) if (!free(l, { x: p.x + (i * r) / n, y: p.y + (j * r) / n })) return false;
   return true;
 }
 

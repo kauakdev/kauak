@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { CELL, ROOM_GAP, WALL, WING_GAP, buildOffice, type Office, type Plot } from "./layout";
+import { CELL, ROOM_GAP, WALL, WING_GAP, buildOffice, wingOf, type Office, type Plot } from "./layout";
 import type { PaneInfo, RepoInfo, Snapshot, WorkspaceInfo } from "@kauak/protocol";
 
 const repo = (name: string): RepoInfo => ({
@@ -184,6 +184,19 @@ describe("buildOffice", () => {
       ["dir:", "loose"],
       ["dir:/", "loose"],
     ]);
+  });
+
+  test("wingOf: a workspace's repository, else its first pane's folder, else its label; loose for / or nothing", () => {
+    const loose = workspace("w1", 1, { repo: null, label: "scratch" });
+    expect(wingOf(workspace("w1", 1), [pane("w1:p1", "w1", { cwd: "/home/me/notes" })])).toStrictEqual({
+      key: "github.com/me/api",
+      name: "api",
+    });
+    expect(wingOf(loose, [pane("w1:p1", "w1", { cwd: "/home/me/notes" })])).toStrictEqual({ key: "dir:/home/me/notes", name: "notes" });
+    expect(wingOf(loose, [pane("w1:p1", "w1", { cwd: "/" })])).toStrictEqual({ key: "dir:/", name: "loose" });
+    expect(wingOf(loose, [])).toStrictEqual({ key: "dir:scratch", name: "scratch" });
+    expect(wingOf(loose, [pane("w1:p1", "w1")])).toStrictEqual({ key: "dir:scratch", name: "scratch" });
+    expect(wingOf({ ...loose, label: "" }, [])).toStrictEqual({ key: "dir:", name: "loose" });
   });
 
   test("a pane whose workspace is not in the snapshot gets no desk", () => {

@@ -32,4 +32,13 @@ turns Unreleased into the new version's section, as
   `terminal.provider` is refused like any other unknown capability, and a saved
   selection of it is dropped.
 
+### Fixed
+
+- Idle agents who stand around a room on a break keep the same space from the
+  furniture and the room's edges on every side. Toward the front of the room they
+  used to stand closer.
+- The roster names each group of rooms as the office names its wing. A room with
+  no repository and no folder to go by, only a label, was listed under "loose"
+  while the office put it in a wing named after its label.
+
 [Unreleased]: https://github.com/agustinrbeltran/kauak/commits/main

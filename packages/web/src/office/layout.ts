@@ -77,6 +77,15 @@ function roomFor(ws: WorkspaceInfo, panes: PaneInfo[], build: boolean): Room {
   };
 }
 
+/** The wing a workspace's room goes in, by key and name. The roster names its sections with it too. */
+export function wingOf(ws: WorkspaceInfo, panes: PaneInfo[]): { key: string; name: string } {
+  // The runtime may not know a workspace's repository (Herdr only does for
+  // the ones it recognizes as a git checkout). Fall back to the first
+  // pane's folder so the room still lands in a sensibly named wing.
+  const fallbackDir = panes[0]?.cwd ?? ws.label ?? "loose";
+  return { key: ws.repo?.key ?? `dir:${fallbackDir}`, name: ws.repo?.name ?? (fallbackDir.split("/").pop() || "loose") };
+}
+
 export function buildOffice(snap: Snapshot, build = false): Office {
   const panesByWs = new Map<string, PaneInfo[]>();
   for (const p of snap.panes) {
@@ -85,16 +94,11 @@ export function buildOffice(snap: Snapshot, build = false): Office {
     panesByWs.set(p.workspace_id, list);
   }
 
-  // Group by repository, or by folder (below). A wing in "/" and one with no folder are both named "loose",
+  // Group by repository, or by folder (wingOf). A wing in "/" and one with no folder are both named "loose",
   // but stay apart: they are different folders, and a new room opens in its wing's folder (build.ts).
   const groups = new Map<string, { name: string; ws: WorkspaceInfo[] }>();
   for (const ws of [...snap.workspaces].sort((a, b) => a.number - b.number)) {
-    // The runtime may not know a workspace's repository (Herdr only does for
-    // the ones it recognizes as a git checkout). Fall back to the first
-    // pane's folder so the room still lands in a sensibly named wing.
-    const fallbackDir = panesByWs.get(ws.workspace_id)?.[0]?.cwd ?? ws.label ?? "loose";
-    const key = ws.repo?.key ?? `dir:${fallbackDir}`;
-    const name = ws.repo?.name ?? (fallbackDir.split("/").pop() || "loose");
+    const { key, name } = wingOf(ws, panesByWs.get(ws.workspace_id) ?? []);
     const g = groups.get(key) ?? { name, ws: [] };
     g.ws.push(ws);
     groups.set(key, g);

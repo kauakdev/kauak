@@ -107,17 +107,37 @@ describe("makeLounge", () => {
       expect(((s.y - 0.25) * 2) % 1).toBe(0);
       for (const [dx, dy] of [
         [-0.3, -0.3],
-        [0.2, 0.2],
-        [-0.3, 0.2],
-        [0.2, -0.3],
+        [0.3, 0.3],
+        [-0.3, 0.3],
+        [0.3, -0.3],
       ])
         expect(blockedAt(l, s.x + dx!, s.y + dy!)).toBe(false);
       expect(inBlock(s, DESK)).toBe(false);
       for (const busy of [l.machine!, ...SEATS.map((seat) => seat.stand)])
         expect(Math.hypot(busy.x - s.x, busy.y - s.y)).toBeGreaterThanOrEqual(0.6);
     }
-    expect(makeLounge("w1", 4, 4, [], null, [], []).spots).toHaveLength(36);
+    // x from 1 to 3 and y from 0.75 to 3.25: at x 0.5 and 3.5 the walls' margins are under 0.3 tiles away.
+    expect(makeLounge("w1", 4, 4, [], null, [], []).spots).toHaveLength(30);
     expect(makeLounge("w1", 4, 4, [], null, [], []).spots[0]).toStrictEqual({ x: 1, y: 0.75 });
+  });
+
+  test("a spot keeps the same floor clear on every side: furniture under 0.3 tiles away in front or to the right rules it out, as behind or to the left", () => {
+    const at: Spot = { x: 2, y: 1.75 };
+    const has = (l: Lounge) => l.spots.some((s) => s.x === at.x && s.y === at.y);
+    expect(has(makeLounge("w1", 4, 4, [], null, [], []))).toBe(true);
+    // Each bar's margin stops 0.3 tiles from the spot, on one side: the floor 0.25 to 0.5 tiles out is blocked, the floor nearer is open.
+    const bars: { bar: Block; dx: number; dy: number }[] = [
+      { bar: { x: 2.45, y: 0, w: 0.5, d: 4 }, dx: 1, dy: 0 }, // to the right
+      { bar: { x: 0, y: 2.2, w: 4, d: 0.5 }, dx: 0, dy: 1 }, // in front
+      { bar: { x: 1.05, y: 0, w: 0.5, d: 4 }, dx: -1, dy: 0 }, // to the left
+      { bar: { x: 0, y: 0.8, w: 4, d: 0.5 }, dx: 0, dy: -1 }, // behind
+    ];
+    for (const { bar, dx, dy } of bars) {
+      const l = makeLounge("w1", 4, 4, [bar], null, [], []);
+      expect(blockedAt(l, at.x + dx * 0.2, at.y + dy * 0.2)).toBe(false);
+      expect(blockedAt(l, at.x + dx * 0.3, at.y + dy * 0.3)).toBe(true);
+      expect(has(l)).toBe(false);
+    }
   });
 });
 

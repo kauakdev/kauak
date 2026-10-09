@@ -9,6 +9,7 @@ import { escapeHtml } from "../app/html";
 import type { AppState } from "../app/state";
 import { load, save } from "../app/storage";
 import { floorOf, floorProblem, runtimeOf, type Floor } from "../floors/floors";
+import { wingOf } from "../office/layout";
 import type { AgentStatus, PaneInfo, Snapshot } from "@kauak/protocol";
 import "./hud.css";
 
@@ -266,8 +267,8 @@ export class Hud {
     const groups = new Map<string, { name: string; rows: string[] }>();
     for (const ws of [...s.workspaces].sort((a, b) => a.number - b.number)) {
       const panes = byWs.get(ws.workspace_id) ?? [];
-      const key = ws.repo?.key ?? `dir:${panes[0]?.cwd ?? ws.label}`;
-      const name = ws.repo?.name ?? (panes[0]?.cwd?.split("/").pop() || "loose");
+      // A section per wing of the office, named as the office names it.
+      const { key, name } = wingOf(ws, panes);
       const g = groups.get(key) ?? { name, rows: [] };
       g.rows.push(
         `<div class="room"><span>${escapeHtml(ws.label || ws.workspace_id)}</span>${ws.focused ? `<em title="focused in ${escapeHtml(runtime)}">●</em>` : ""}</div>`,

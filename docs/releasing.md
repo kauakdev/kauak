@@ -1,7 +1,8 @@
 # Releasing
 
-Kauak is published to npm as `kauak`, a command-line package: people run
-`npx kauak serve`, or `npm install -g kauak` and then `kauak serve`.
+Kauak is published to npm as `@kauakdev/kauak`, a command-line package: people
+run `npx @kauakdev/kauak serve`, or `npm install -g @kauakdev/kauak` and then
+`kauak serve`. The scope is the npm account `kauakdev`, which publishes it.
 
 ## What the package contains
 
@@ -73,15 +74,18 @@ current LTS) and on Node 22.0.0, the oldest version the package supports.
 6. Push the commits and the tag: `git push --follow-tags`, then make a GitHub
    release for the tag with the version's section of `CHANGELOG.md` as its
    notes.
-7. Check the published package: `npx kauak@latest --version` and
-   `npx kauak@latest serve --demo`.
+7. Check the published package: `npx @kauakdev/kauak@latest --version` and
+   `npx @kauakdev/kauak@latest serve --demo`.
 
-The first release differs: the version stays at 0.1.0, so skip `npm version`
-and tag `v0.1.0` by hand after publishing. Before `npm publish --dry-run`,
-remove the README's note under "Quick start" that Kauak is not on npm yet and
-the "Publishing to npm" item under "Where it's going", and commit that, since
-npm shows the README from the published package. The GitHub repository must be
-public first, or the package page's repository, issue and image links will not
-work. Publishing from GitHub Actions instead, with provenance, needs npm's
-trusted publishing, which is set up on the package's npm settings once it
-exists.
+0.1.0 was published as `kauak`, without a scope. From 0.1.1 the package is
+`@kauakdev/kauak`, and `kauak` is deprecated with a message that points to it
+(`npm deprecate kauak "..."`). It stays on npm rather than being unpublished,
+so that nobody else can take the name `npx kauak` runs.
+
+npm can take a few minutes to make a newly published version available. Until
+it does, `npm view` does not list it, and a package's first publish shows a
+placeholder version, `0.0.0-stage`, as `latest`. Wait for the version to appear
+before step 7.
+
+Publishing from GitHub Actions instead, with provenance, needs npm's trusted
+publishing, which is set up on the package's npm settings once it exists.

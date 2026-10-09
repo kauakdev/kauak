@@ -23,7 +23,7 @@ const ROWS = 30;
 const TICK_MS = 1000;
 const MAX_LOG = 200;
 const MAX_BLOCKED = 3;
-const INSTALL = "npx kauak serve";
+const INSTALL = "npx @kauakdev/kauak serve";
 // Same rule as the bridge: `host`, `user@host` or an ~/.ssh/config alias.
 const SSH_TARGET = /^[A-Za-z0-9_][A-Za-z0-9._@-]{0,127}$/;
 // Same rule as the bridge for a new branch.
@@ -266,7 +266,7 @@ const SNIPPETS: Record<string, string[]> = {
   md: [
     "## Remote floors",
     "Floors are saved in `~/.config/kauak/machines.json`.",
-    "Run `npx kauak serve` to start the office.",
+    "Run `npx @kauakdev/kauak serve` to start the office.",
     "",
     "- **working**: typing at the desk",
     "- **blocked**: hand raised, waiting for you",
@@ -908,7 +908,7 @@ function runShell(p: DemoPane, room: DemoRoom, floor: DemoFloor) {
       return out("dev is not in the sudoers file. This incident will be reported.");
     case "npx":
       return out(
-        args[0] === "kauak"
+        args[0] === "@kauakdev/kauak" || args[0] === "kauak"
           ? "You are already in the office. Run it on your own machine to see your real agents."
           : `npx: ${args[0] ?? ""}: not in this demo`,
       );

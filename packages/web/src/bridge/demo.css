@@ -91,8 +91,29 @@ body.panel-open #demo {
   #demo .cmd i {
     display: none;
   }
+  /* Where the strip runs out, the command gives way, cut short with "…" (a click still copies all of it). */
+  #demo .cmd {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #demo .tag,
+  #demo a,
+  #demo .x {
+    flex-shrink: 0;
+  }
   body.demo-card #floors,
   body.demo-card #radio {
     top: calc(102px + var(--sat));
+  }
+}
+
+@media (max-width: 480px) {
+  /* The npm command is long for a phone: closer items and no "$" leave it room. */
+  #demo {
+    gap: 6px;
+  }
+  #demo .cmd span {
+    display: none;
   }
 }

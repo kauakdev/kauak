@@ -27,7 +27,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 
-// The published package, kauak.
+// The published package, @kauakdev/kauak.
 const ROOT = fileURLToPath(new URL("../packages/kauak/", import.meta.url));
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 
@@ -105,15 +105,16 @@ try {
     global = path.join(temp, "global");
   npm(["install", "--prefix", local, tarball]);
   checkInstall(path.join(local, "node_modules"));
-  ok(`npm install: ${path.relative(temp, local)}/node_modules/kauak, with only its dependencies`);
+  ok(`npm install: ${path.relative(temp, local)}/node_modules/${PKG.name}, with only its dependencies`);
   npm(["install", "--global", "--prefix", global, tarball]);
   checkInstall(path.join(global, "lib", "node_modules"));
-  ok(`npm install -g: ${path.relative(temp, global)}/lib/node_modules/kauak`);
+  ok(`npm install -g: ${path.relative(temp, global)}/lib/node_modules/${PKG.name}`);
 
   for (const [way, kauak] of [
     ["npm install", [path.join(local, "node_modules", ".bin", "kauak")]],
     ["npm install -g", [path.join(global, "bin", "kauak")]],
-    ["npx", ["npm", "exec", "--yes", `--package=${tarball}`, "--", "kauak"]],
+    // As people run it, `npx @kauakdev/kauak`: naming only the package, whose one bin npm runs.
+    ["npx", ["npm", "exec", "--yes", "--", `file:${tarball}`]],
   ]) {
     checkCommands(kauak);
     ok(`${way}: kauak --version, --help`);

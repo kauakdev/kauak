@@ -11,6 +11,12 @@ turns Unreleased into the new version's section, as
 
 ## [Unreleased]
 
+### Changed
+
+- The npm package is `@kauakdev/kauak`: run `npx @kauakdev/kauak serve`, or
+  `npm install -g @kauakdev/kauak` and then `kauak serve` as before. The
+  `kauak` package is deprecated and stays at 0.1.0.
+
 ## [0.1.0] - 2026-10-09
 
 ### Added

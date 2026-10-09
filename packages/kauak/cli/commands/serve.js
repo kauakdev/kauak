@@ -79,7 +79,7 @@ export async function run(values) {
   console.log(`\n  kauak is running at ${page}\n`);
   if (!values.demo && !fs.existsSync(config.herdrSocket)) {
     console.log(`  Herdr is not running on this machine (no socket at ${config.herdrSocket}).`);
-    console.log(`  Start Herdr and the office picks it up on its own, or try the demo: npx kauak serve --demo\n`);
+    console.log(`  Start Herdr and the office picks it up on its own, or try the demo: npx @kauakdev/kauak serve --demo\n`);
   }
   console.log("  Press Ctrl+C to stop.\n");
   if (!values["no-open"]) openBrowser(page);

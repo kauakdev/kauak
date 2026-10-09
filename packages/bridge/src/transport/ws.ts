@@ -1,5 +1,5 @@
 // How pages reach the bridge: one HTTP server that serves the built office
-// page (config.pageDir, `pnpm build`), so `npx kauak serve` is one process and
+// page (config.pageDir, `pnpm build`), so `npx @kauakdev/kauak serve` is one process and
 // one URL, and the WebSocket the pages connect to, on the same port. `pnpm
 // dev` serves the page from Vite instead. Beside the page it serves the
 // appearance packages installed on this machine, as /appearances.json

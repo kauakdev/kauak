@@ -18,7 +18,7 @@
 //   panes share a folder there is no telling which is which, and neither gets
 //   a meter.
 // The pane's processes come from Herdr (`paneProcesses`). The floor's Machine
-// (machine.js) asks Herdr for both; this file only sees its Kauak snapshot.
+// (machine.ts) asks Herdr for both; this file only sees its Kauak snapshot.
 //
 // Transcripts only grow, so each one is read incrementally from where the
 // last read stopped.
@@ -28,11 +28,12 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { RemoteScript } from "./remote.js";
+import type { ContextUsage, MachineInfo, PaneInfo, Snapshot } from "@kauak/protocol";
+import { RemoteScript } from "./remote.ts";
 
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
 const CODEX_DIR = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
-const KINDS = new Set(["claude", "codex"]);
+const KINDS: ReadonlySet<string | null> = new Set(["claude", "codex"]);
 const POLL_MS = 2000;
 // A snapshot often means the agent just wrote to its transcript (a status change).
 const KICK_MS = 300;
@@ -49,20 +50,51 @@ const CLAUDE_SMALL_MODEL = /^claude-(?:3|haiku)|^claude-(?:opus|sonnet)-4(?:-[01
 const SESSION_ID = /^[A-Za-z0-9-]{1,64}$/;
 
 /**
+ * What the tracker uses of its floor's Machine, which it is handed: it reads
+ * the Kauak snapshot and asks for a pane's agent session and processes, and
+ * never imports the Herdr adapter.
+ */
+interface Floor {
+  readonly label: string;
+  readonly ssh: string | null;
+  readonly state: MachineInfo["state"];
+  readonly snapshot: Snapshot | null;
+  on(event: "snapshot", listener: () => void): unknown;
+  paneSession(paneId: string): AgentSession | null;
+  paneProcesses(paneId: string): Promise<number[]>;
+}
+
+/** The agent session Herdr's integration reported for a pane: a transcript path or a session id. */
+interface AgentSession {
+  kind: "id" | "path";
+  value: string;
+}
+
+/**
  * Emits "change" when any pane's context use changes. The tracker decides
  * which panes to read and how to find their sessions (through Herdr); a
  * reader turns that into token counts, here or over SSH.
  */
 export class ContextTracker extends EventEmitter {
-  constructor(machine) {
+  m: Floor;
+  reader: LocalReader | RemoteReader;
+  /** pane_id → { used, max } */
+  usage: Map<string, ContextUsage>;
+  /** pane_id → pid of its agent's process (Claude Code's, or Codex's) */
+  pids: Map<string, number>;
+  /** pane_id → when to ask Herdr for its processes again */
+  misses: Map<string, number>;
+  running: boolean;
+  again: boolean;
+  kickTimer: NodeJS.Timeout | null;
+  timer: NodeJS.Timeout;
+
+  constructor(machine: Floor) {
     super();
     this.m = machine;
     this.reader = machine.ssh ? new RemoteReader(machine) : new LocalReader();
-    /** pane_id → { used, max } */
     this.usage = new Map();
-    /** pane_id → pid of its agent's process (Claude Code's, or Codex's) */
     this.pids = new Map();
-    /** pane_id → when to ask Herdr for its processes again */
     this.misses = new Map();
     this.running = false;
     this.again = false;
@@ -74,16 +106,16 @@ export class ContextTracker extends EventEmitter {
 
   stop() {
     clearInterval(this.timer);
-    clearTimeout(this.kickTimer);
+    clearTimeout(this.kickTimer as NodeJS.Timeout);
     this.reader.stop();
   }
 
   /** The Kauak snapshot with `context` on every pane whose use is known. */
-  annotate(snapshot) {
+  annotate(snapshot: Snapshot | null): Snapshot | null {
     if (!snapshot || this.usage.size === 0) return snapshot;
     return {
       ...snapshot,
-      panes: snapshot.panes.map((p) => (this.usage.has(p.pane_id) ? { ...p, context: this.usage.get(p.pane_id) } : p)),
+      panes: snapshot.panes.map((p) => (this.usage.has(p.pane_id) ? { ...p, context: this.usage.get(p.pane_id)! } : p)),
     };
   }
 
@@ -107,7 +139,7 @@ export class ContextTracker extends EventEmitter {
         await this.update();
       } while (this.again);
     } catch (err) {
-      console.error(`[bridge] ${this.m.label}: context meters:`, err.message);
+      console.error(`[bridge] ${this.m.label}: context meters:`, (err as Error).message);
     } finally {
       this.running = false;
     }
@@ -116,19 +148,19 @@ export class ContextTracker extends EventEmitter {
   async update() {
     const snap = this.m.snapshot;
     if (!snap || this.m.state !== "live") return;
-    const panes = [];
-    const asked = new Set(); // panes whose processes came from Herdr just now, not from the cache
-    const sessionOf = (pane) => this.m.paneSession(pane.pane_id);
-    const folderOf = (pane) => pane.cwd;
+    const panes: PaneToRead[] = [];
+    const asked = new Set<string>(); // panes whose processes came from Herdr just now, not from the cache
+    const sessionOf = (pane: PaneInfo) => this.m.paneSession(pane.pane_id);
+    const folderOf = (pane: PaneInfo) => pane.cwd;
     // Codex panes without a session are matched by folder, so one folder must not have two.
-    const codexFolders = new Map();
+    const codexFolders = new Map<string | null, number>();
     for (const pane of snap.panes) {
       if (pane.agent === "codex" && !sessionOf(pane)) codexFolders.set(folderOf(pane), (codexFolders.get(folderOf(pane)) ?? 0) + 1);
     }
     for (const pane of snap.panes) {
       if (!KINDS.has(pane.agent)) continue;
       const session = sessionOf(pane);
-      let pids = [];
+      let pids: number[] = [];
       if (!session && (pane.agent === "claude" || codexFolders.get(folderOf(pane)) === 1)) {
         const known = this.pids.get(pane.pane_id);
         if (known) pids = [known];
@@ -141,7 +173,7 @@ export class ContextTracker extends EventEmitter {
     }
     const results = panes.length ? await this.reader.read(panes) : new Map();
     if (!results) return; // the remote reader is down; keep what we had
-    const next = new Map();
+    const next = new Map<string, ContextUsage>();
     for (const p of panes) {
       const r = results.get(p.pane_id);
       if (r?.usage) next.set(p.pane_id, r.usage);
@@ -161,12 +193,12 @@ export class ContextTracker extends EventEmitter {
     this.emit("change");
   }
 
-  processesOf(paneId) {
+  processesOf(paneId: string) {
     return this.m.paneProcesses(paneId).catch(() => []);
   }
 }
 
-function sameUsage(a, b) {
+function sameUsage(a: Map<string, ContextUsage>, b: Map<string, ContextUsage>) {
   if (a.size !== b.size) return false;
   for (const [id, u] of a) {
     const v = b.get(id);
@@ -182,27 +214,52 @@ function sameUsage(a, b) {
 // `pid` is the one of `pids` that is the agent (Claude Code's, or the first
 // Codex process); or null if it could not read.
 
+interface PaneToRead {
+  pane_id: string;
+  agent: string | null;
+  session: AgentSession | null;
+  pids: number[];
+  cwd: string | null;
+}
+
+interface ReadResult {
+  usage: ContextUsage | null;
+  pid: number | null;
+}
+
+/** A Codex rollout's `session_meta`, as rolloutMeta reads it. */
+interface RolloutMeta {
+  cwd?: string | null;
+  originator?: string | null;
+  source?: unknown;
+}
+
 /** Reads this machine's transcripts. context_remote.py does the same on a remote one. */
 class LocalReader {
+  /** transcript path → Transcript */
+  transcripts: Map<string, Transcript>;
+  /** kind:session id → transcript path */
+  found: Map<string, string>;
+  /** kind:session id → when to look again */
+  misses: Map<string, number>;
+  /** rollout path → its session_meta: { cwd, originator, source } */
+  rollouts: Map<string, RolloutMeta>;
+
   constructor() {
-    /** transcript path → Transcript */
     this.transcripts = new Map();
-    /** kind:session id → transcript path */
     this.found = new Map();
-    /** kind:session id → when to look again */
     this.misses = new Map();
-    /** rollout path → its session_meta: { cwd, originator, source } */
     this.rollouts = new Map();
   }
 
   stop() {}
 
-  async read(panes) {
-    const results = new Map();
-    const read = new Set();
+  async read(panes: PaneToRead[]): Promise<Map<string, ReadResult>> {
+    const results = new Map<string, ReadResult>();
+    const read = new Set<string>();
     for (const pane of panes) {
       const { file, pid } = await this.transcriptOf(pane).catch(() => ({ file: null, pid: null }));
-      let usage = null;
+      let usage: ContextUsage | null = null;
       if (file) {
         read.add(file);
         let t = this.transcripts.get(file);
@@ -215,7 +272,7 @@ class LocalReader {
     return results;
   }
 
-  async transcriptOf({ agent, session, pids, cwd }) {
+  async transcriptOf({ agent, session, pids, cwd }: PaneToRead): Promise<{ file: string | null; pid: number | null }> {
     // Herdr 0.9.1 shows the id even when the hook reported the path too.
     if (session?.kind === "path") return { file: session.value.endsWith(".jsonl") ? session.value : null, pid: null };
     if (session?.kind === "id") return { file: await this.find(agent, session.value, cwd), pid: null };
@@ -232,8 +289,8 @@ class LocalReader {
   }
 
   /** The newest terminal Codex rollout for `cwd` written since `since` (when Codex started), from the day it started on. */
-  async codexByFolder(cwd, since) {
-    let best = null,
+  async codexByFolder(cwd: string | null, since: number) {
+    let best: string | null = null,
       bestTime = 0;
     for (const dir of codexDayDirs(since)) {
       for (const name of await fs.promises.readdir(dir).catch(() => [])) {
@@ -241,7 +298,7 @@ class LocalReader {
         const file = path.join(dir, name);
         const st = await fs.promises.stat(file).catch(() => null);
         if (!st || st.mtimeMs < since || st.mtimeMs <= bestTime) continue;
-        let meta = this.rollouts.get(file);
+        let meta: RolloutMeta | null | undefined = this.rollouts.get(file);
         if (!meta) {
           meta = await rolloutMeta(file).catch(() => null);
           if (meta) this.rollouts.set(file, meta);
@@ -257,7 +314,7 @@ class LocalReader {
   }
 
   /** A session id's transcript. Remembered once found; a miss is retried after a while (the file shows up with the first message). */
-  async find(kind, id, cwd = null) {
+  async find(kind: string | null, id: string, cwd: string | null = null) {
     if (typeof id !== "string" || !SESSION_ID.test(id)) return null;
     const key = `${kind}:${id}`;
     const known = this.found.get(key);
@@ -279,7 +336,9 @@ class LocalReader {
  */
 /** Runs context_remote.py on the floor's machine (with its python3; Herdr's own agent hooks need it too). */
 class RemoteReader {
-  constructor(machine) {
+  script: RemoteScript;
+
+  constructor(machine: Floor) {
     this.script = new RemoteScript(machine, "./context_remote.py", "context meters");
   }
 
@@ -287,22 +346,22 @@ class RemoteReader {
     this.script.stop();
   }
 
-  async read(panes) {
-    const result = await this.script.call({ panes });
+  async read(panes: PaneToRead[]) {
+    const result = await this.script.call<Record<string, ReadResult>>({ panes });
     return result ? new Map(Object.entries(result)) : null;
   }
 }
 
 /** The earliest-started of `pids` and when it started (ms), from `ps`. */
-function processStart(pids) {
+function processStart(pids: number[]) {
   if (!pids.length) return Promise.resolve(null);
-  return new Promise((resolve) => {
+  return new Promise<{ pid: number; at: number } | null>((resolve) => {
     execFile("ps", ["-o", "pid=,lstart=", "-p", pids.join(",")], { env: { ...process.env, LC_ALL: "C" } }, (_err, out) => {
-      let best = null;
+      let best: { pid: number; at: number } | null = null;
       for (const line of String(out ?? "").split("\n")) {
         const m = line.trim().match(/^(\d+)\s+(.+)$/);
-        const at = m ? Date.parse(m[2]) : NaN;
-        if (!Number.isNaN(at) && (!best || at < best.at)) best = { pid: Number(m[1]), at };
+        const at = m ? Date.parse(m[2]!) : NaN;
+        if (!Number.isNaN(at) && (!best || at < best.at)) best = { pid: Number(m![1]), at };
       }
       resolve(best);
     });
@@ -310,12 +369,12 @@ function processStart(pids) {
 }
 
 /** ~/.codex/sessions/YYYY/MM/DD for each day from the one before `since` (time zones) to today. */
-function codexDayDirs(since) {
-  const dirs = [];
+function codexDayDirs(since: number) {
+  const dirs: string[] = [];
   const day = new Date(since - 86_400_000);
   day.setHours(12, 0, 0, 0);
   for (let i = 0; i < 31 && day.getTime() <= Date.now() + 86_400_000; i++, day.setDate(day.getDate() + 1)) {
-    const pad = (n) => String(n).padStart(2, "0");
+    const pad = (n: number) => String(n).padStart(2, "0");
     dirs.push(path.join(CODEX_DIR, "sessions", String(day.getFullYear()), pad(day.getMonth() + 1), pad(day.getDate())));
   }
   return dirs;
@@ -325,7 +384,7 @@ function codexDayDirs(since) {
  * A rollout's first line, `session_meta`: { cwd, originator, source }; {} if
  * the line is something else, null while it is still being written.
  */
-async function rolloutMeta(file) {
+async function rolloutMeta(file: string): Promise<RolloutMeta | null> {
   const fh = await fs.promises.open(file, "r").catch(() => null);
   if (!fh) return null;
   try {
@@ -334,7 +393,7 @@ async function rolloutMeta(file) {
     const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
     const nl = buf.subarray(0, bytesRead).indexOf(10);
     if (nl === -1) return null;
-    let e;
+    let e: { type?: string; payload?: RolloutMeta } | null;
     try {
       e = JSON.parse(buf.subarray(0, nl).toString("utf8"));
     } catch {
@@ -347,7 +406,14 @@ async function rolloutMeta(file) {
   }
 }
 
-async function readSessionFile(pid) {
+/** Claude Code's ~/.claude/sessions/<pid>.json, the fields read here. */
+interface ClaudeSessionFile {
+  pid: number;
+  sessionId: string;
+  cwd?: string;
+}
+
+async function readSessionFile(pid: number): Promise<ClaudeSessionFile | null> {
   if (!Number.isInteger(pid) || !alive(pid)) return null;
   try {
     const meta = JSON.parse(await fs.promises.readFile(path.join(CLAUDE_DIR, "sessions", `${pid}.json`), "utf8"));
@@ -357,17 +423,17 @@ async function readSessionFile(pid) {
   }
 }
 
-function alive(pid) {
+function alive(pid: number) {
   try {
     process.kill(pid, 0);
     return true;
   } catch (err) {
-    return err.code === "EPERM";
+    return (err as NodeJS.ErrnoException).code === "EPERM";
   }
 }
 
 /** ~/.claude/projects/<folder, non-alphanumerics as "-">/<id>.jsonl; any project folder if that is not it. */
-async function findClaudeTranscript(id, cwd) {
+async function findClaudeTranscript(id: string, cwd: string | null) {
   const projects = path.join(CLAUDE_DIR, "projects");
   if (cwd) {
     const guess = path.join(projects, cwd.replace(/[^A-Za-z0-9]/g, "-"), `${id}.jsonl`);
@@ -381,8 +447,8 @@ async function findClaudeTranscript(id, cwd) {
 }
 
 /** ~/.codex/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl, newest days first. */
-async function findCodexRollout(id) {
-  const ls = async (dir) => (await fs.promises.readdir(dir).catch(() => [])).sort().reverse();
+async function findCodexRollout(id: string) {
+  const ls = async (dir: string) => (await fs.promises.readdir(dir).catch(() => [])).sort().reverse();
   const root = path.join(CODEX_DIR, "sessions");
   for (const y of await ls(root))
     for (const m of await ls(path.join(root, y)))
@@ -398,7 +464,13 @@ async function findCodexRollout(id) {
 
 /** One transcript, read incrementally; `usage()` is the context use as of its last complete line. Keep in step with context_remote.py. */
 class Transcript {
-  constructor(file, kind) {
+  file: string;
+  parser: ClaudeLog | CodexLog;
+  offset: number;
+  rest: Buffer;
+  skipFirst: boolean;
+
+  constructor(file: string, kind: string | null) {
     this.file = file;
     this.parser = kind === "claude" ? new ClaudeLog() : new CodexLog();
     this.offset = 0;
@@ -418,7 +490,7 @@ class Transcript {
     return this.parser.usage();
   }
 
-  async readTo(size) {
+  async readTo(size: number) {
     let start = this.offset;
     if (start === 0 && size > FIRST_READ_MAX) {
       start = size - FIRST_READ_MAX;
@@ -427,7 +499,7 @@ class Transcript {
     const stream = fs.createReadStream(this.file, { start, end: size - 1, highWaterMark: 1 << 20 });
     for await (const buf of stream) {
       let from = 0,
-        nl;
+        nl: number;
       while ((nl = buf.indexOf(10, from)) !== -1) {
         const line = this.rest.length ? Buffer.concat([this.rest, buf.subarray(from, nl)]) : buf.subarray(from, nl);
         this.rest = Buffer.alloc(0);
@@ -448,27 +520,40 @@ class Transcript {
   }
 }
 
+/** The Claude Code transcript lines ClaudeLog reads, and the fields it reads of them; other lines are skipped. */
+type ClaudeEntry = { isSidechain?: boolean } & (
+  | {
+      type: "assistant";
+      message: {
+        model?: string;
+        usage?: { input_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
+      };
+    }
+  | { type: "system"; subtype?: string; compactMetadata?: { postTokens?: number } }
+  | { type: "attachment"; attachment?: { type?: string; identity?: { modelId?: string } } }
+);
+
 /**
  * Claude Code: every model call's `message.usage`. What the call sent (input,
  * cache writes and cache reads) is what is in the context now, as `/context`
  * and the status line count it. A compaction resets it to `postTokens`.
  */
 class ClaudeLog {
-  used = null;
+  used: number | null = null;
   /** The model of the last call, e.g. "claude-opus-5-5". */
-  model = null;
+  model: string | null = null;
   /** Claude Code's name for it, which ends in "[1m]" when it asked for the 1M window. */
-  modelId = null;
+  modelId: string | null = null;
 
   fresh() {
     return new ClaudeLog();
   }
 
-  wants(line) {
+  wants(line: Buffer) {
     return line.includes('"usage"') || line.includes('"compact_boundary"') || line.includes('"modelId"');
   }
 
-  add(e) {
+  add(e: ClaudeEntry) {
     if (e.isSidechain) return;
     if (e.type === "assistant") {
       const u = e.message?.usage;
@@ -484,7 +569,7 @@ class ClaudeLog {
     }
   }
 
-  usage() {
+  usage(): ContextUsage | null {
     if (this.used === null) return null;
     // A count past 200k can only be in a 1M window, whatever the model lines say.
     const small =
@@ -493,27 +578,33 @@ class ClaudeLog {
   }
 }
 
+/** The Codex rollout lines CodexLog reads, `token_count` events, and the fields it reads of them. */
+interface CodexEntry {
+  type?: string;
+  payload?: { type?: string; info?: { last_token_usage?: { total_tokens?: number }; model_context_window?: number } | null };
+}
+
 /** Codex: `token_count` events carry the last call's tokens and the model's window. */
 class CodexLog {
-  used = null;
-  max = null;
+  used: number | null = null;
+  max: number | null = null;
 
   fresh() {
     return new CodexLog();
   }
 
-  wants(line) {
+  wants(line: Buffer) {
     return line.includes('"token_count"');
   }
 
-  add(e) {
+  add(e: CodexEntry) {
     const info = e.type === "event_msg" && e.payload?.type === "token_count" ? e.payload.info : null;
     if (!info) return;
     if (typeof info.last_token_usage?.total_tokens === "number") this.used = info.last_token_usage.total_tokens;
     if (typeof info.model_context_window === "number") this.max = info.model_context_window;
   }
 
-  usage() {
+  usage(): ContextUsage | null {
     return this.used !== null && this.max ? { used: this.used, max: this.max } : null;
   }
 }

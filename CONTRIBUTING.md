@@ -7,10 +7,10 @@ on the shape before you spend time on it.
 ## Set up
 
 You need Node.js 22.18 or newer and [pnpm](https://pnpm.io) (the repository
-is locked with `pnpm-lock.yaml`). The bridge runs from its source, and the
-protocol it imports is TypeScript, which Node runs by stripping its types from
-22.18 on, so there is no build or watch step to run it or the tests. The npm
-package still runs on any Node 22, because it carries the bridge as plain
+is locked with `pnpm-lock.yaml`). The bridge runs from its source, which, like
+the protocol it imports, is TypeScript that Node runs by stripping its types
+from 22.18 on, so there is no build or watch step to run it or the tests. The
+npm package still runs on any Node 22, because it carries the bridge as plain
 JavaScript. To see real agents you also need [Herdr](https://herdr.dev)
 running; without it, the demo mode simulates everything.
 
@@ -38,10 +38,11 @@ A pnpm workspace of five packages, each with its own `package.json` and README:
   the checks the bridge runs on every message from a page, in one TypeScript
   module, `src/index.ts`. It imports nothing, so the bridge and the page both
   import it by name.
-- `packages/bridge/` (`@kauak/bridge`): the Node bridge, in `src/`, plain ESM
-  JavaScript with no build step. Its runtime dependencies are `ws` and the
-  protocol. `machine.js` and `herdr.js` are the Herdr adapter, the only files
-  that speak Herdr's API. `scripts/bundle.js` bundles it for the npm package.
+- `packages/bridge/` (`@kauak/bridge`): the Node bridge, in `src/`,
+  TypeScript that Node 22.18 or newer runs as it is, with no build step; `tsc`
+  only type-checks it. Its runtime dependencies are `ws` and the protocol.
+  `machine.ts` and `herdr.ts` are the Herdr adapter, the only files that speak
+  Herdr's API. `scripts/bundle.js` bundles it for the npm package.
 - `packages/kauak/` (`kauak`, the npm package): `bin/kauak.js` and `cli/`, the
   `kauak` command. A new command is one module in `cli/commands/` and one entry
   in `COMMANDS` in `cli/main.js`, whose opening comment says what the module
@@ -66,7 +67,7 @@ reference in [docs/protocol.md](docs/protocol.md). The bridge drops any message
 from a page that the checks do not know, so a new or changed message starts in
 `packages/protocol` (a message from the page does not compile until
 `parseClientMessage` has a parser for it), then the bridge
-(`packages/bridge/src/server.js`), then `packages/web/src/demo.ts`, so the demo
+(`packages/bridge/src/server.ts`), then `packages/web/src/demo.ts`, so the demo
 keeps working, and the reference. Herdr's own fields and methods stay in the
 adapter.
 
@@ -92,9 +93,9 @@ without changing anything; `pnpm format` rewrites files to its style, and
 formatted by hand.
 
 `pnpm check:boundaries` (`scripts/check-boundaries.mjs`) keeps the pieces
-apart: only the Herdr adapter (`packages/bridge/src/machine.js`,
-`packages/bridge/src/herdr.js`, `packages/bridge/src/remote.js`) imports
-`herdr.js` or names Herdr's methods, the trackers do not import the adapter,
+apart: only the Herdr adapter (`packages/bridge/src/machine.ts`,
+`packages/bridge/src/herdr.ts`, `packages/bridge/src/remote.ts`) imports
+`herdr.ts` or names Herdr's methods, the trackers do not import the adapter,
 `packages/protocol` imports nothing (no other package, no Node or DOM) and the
 others import it by its name, `packages/appearance/src/registry.ts` imports
 nothing but its contracts and uses no DOM, the page imports the protocol and
@@ -114,7 +115,7 @@ installed.
 each. It needs the npm registry, and matters most when you change what the
 package ships: a new folder that the CLI loads at runtime has to be added to
 `files` in `packages/kauak/package.json`. The bridge goes in as a bundle of
-`src/server.js` and `src/machine.js` with the protocol inlined, plus the Python
+`src/server.ts` and `src/machine.ts` with the protocol inlined, plus the Python
 helpers. Packing writes that bundle and copies README and LICENSE into
 `packages/kauak/`, and removes them afterwards; a `packages/kauak/bridge/` left
 behind by an interrupted pack is safe to delete.

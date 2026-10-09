@@ -4,9 +4,9 @@
 // is installed there), keeps it running, and talks to it in JSON lines:
 // {"id", ...request} in, {"id", "result"} out, answered in order.
 
-import { spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import fs from "node:fs";
-import { SSH, SSH_OPTS, lastLine } from "./machine.js";
+import { SSH, SSH_OPTS, lastLine } from "./machine.ts";
 
 // The first answer waits for the SSH connection.
 const TIMEOUT_MS = 20_000;
@@ -14,9 +14,28 @@ const TIMEOUT_MS = 20_000;
 const RETRY_MS = 30_000;
 const NO_PYTHON_RETRY_MS = 5 * 60_000;
 
+/** The floor a script runs on: the part of its Machine this file uses, which the trackers hand on as they got it. */
+interface Floor {
+  readonly label: string;
+  /** Set here: only a remote floor runs a script. */
+  readonly ssh: string | null;
+}
+
 export class RemoteScript {
+  m: Floor;
+  what: string;
+  command: string;
+  child: ChildProcessWithoutNullStreams | null;
+  buf: string;
+  stderr: string;
+  seq: number;
+  /** request id → resolve */
+  waiting: Map<number, (result: unknown) => void>;
+  retryAt: number;
+  stopped: boolean;
+
   /** `file`: the script, beside this one; `what`: what stops working when it dies, for the log. */
-  constructor(machine, file, what) {
+  constructor(machine: Floor, file: string, what: string) {
     this.m = machine;
     this.what = what;
     const script = fs.readFileSync(new URL(file, import.meta.url)).toString("base64");
@@ -25,7 +44,6 @@ export class RemoteScript {
     this.buf = "";
     this.stderr = "";
     this.seq = 0;
-    /** request id → resolve */
     this.waiting = new Map();
     this.retryAt = 0;
     this.stopped = false;
@@ -37,7 +55,7 @@ export class RemoteScript {
   }
 
   /** The script's answer, or null when it is not running or did not answer within `timeout` ms. */
-  call(request, timeout = TIMEOUT_MS) {
+  call<T>(request: object, timeout = TIMEOUT_MS): Promise<T | null> {
     if (this.stopped) return Promise.resolve(null);
     if (!this.child) {
       if (Date.now() < this.retryAt) return Promise.resolve(null);
@@ -52,15 +70,15 @@ export class RemoteScript {
       }, timeout);
       this.waiting.set(id, (result) => {
         clearTimeout(timer);
-        resolve(result);
+        resolve(result as T | null);
       });
-      this.child.stdin.write(`${JSON.stringify({ ...request, id })}\n`);
+      this.child!.stdin.write(`${JSON.stringify({ ...request, id })}\n`);
     });
   }
 
   start() {
     // ControlPath=none, as for the tunnel: a connection of its own, never handed to a shared master.
-    const child = spawn(SSH, [...SSH_OPTS, "-o", "ControlPath=none", "--", this.m.ssh, this.command], { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(SSH, [...SSH_OPTS, "-o", "ControlPath=none", "--", this.m.ssh!, this.command], { stdio: ["pipe", "pipe", "pipe"] });
     this.child = child;
     this.buf = "";
     this.stderr = "";
@@ -69,11 +87,11 @@ export class RemoteScript {
     child.stdin.on("error", () => {}); // EPIPE once it is gone; "exit" says why
     child.stdout.on("data", (chunk) => {
       this.buf += chunk;
-      let nl;
+      let nl: number;
       while ((nl = this.buf.indexOf("\n")) !== -1) {
         const line = this.buf.slice(0, nl);
         this.buf = this.buf.slice(nl + 1);
-        let msg;
+        let msg: { id: number; result?: unknown };
         try {
           msg = JSON.parse(line);
         } catch {
@@ -87,7 +105,7 @@ export class RemoteScript {
     child.stderr.on("data", (d) => {
       this.stderr = (this.stderr + d).slice(-2000);
     });
-    const gone = (code, signal) => {
+    const gone = (code: number | null, signal: NodeJS.Signals | null) => {
       if (this.child !== child) return;
       this.child = null;
       for (const done of this.waiting.values()) done(null);

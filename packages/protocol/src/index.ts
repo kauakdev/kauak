@@ -8,7 +8,7 @@
 // exported here: the bridge checks them itself and replies with what is wrong.
 //
 // Nothing here belongs to the runtime behind a floor. The bridge's Herdr
-// adapter (machine.js, herdr.js) turns Herdr's API into these shapes, and the
+// adapter (machine.ts, herdr.ts) turns Herdr's API into these shapes, and the
 // page (web/src) and its simulated bridge (web/src/demo.ts) only know them.
 // Both sides load this file, so it imports nothing: no Node, no DOM.
 
@@ -47,7 +47,7 @@ export interface WorkspaceInfo {
   focused: boolean;
   /** The git repository the runtime opened it in, when it knows. */
   repo: RepoInfo | null;
-  /** The git checkout its folder is in, found by the bridge whether or not the runtime knows: its printer's (bridge/diffs.js). */
+  /** The git checkout its folder is in, found by the bridge whether or not the runtime knows: its printer's (bridge/diffs.ts). */
   git_root: string | null;
 }
 
@@ -80,7 +80,7 @@ export interface PaneInfo {
   screen: { rows: number; cols: number | null; exact: boolean } | null;
   /** There is history above the screen to read. */
   scrollback: boolean;
-  /** How full the agent's context window is, when the bridge could read it (bridge/context.js). */
+  /** How full the agent's context window is, when the bridge could read it (bridge/context.ts). */
   context: ContextUsage | null;
 }
 
@@ -92,7 +92,7 @@ export interface ContextUsage {
 
 // ---------------------------------------------------------------- printers
 
-/** What changed in one file of a room's git checkout (bridge/diffs.js). */
+/** What changed in one file of a room's git checkout (bridge/diffs.ts). */
 export interface FileDiff {
   /** Relative to the checkout. */
   path: string;

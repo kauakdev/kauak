@@ -14,14 +14,15 @@
 // untracked files), one page per file.
 //
 // On this machine the bridge runs git and reads the files itself. On a
-// remote floor diffs_remote.py does just that part, over SSH (remote.js), and
+// remote floor diffs_remote.py does just that part, over SSH (remote.ts), and
 // everything else still happens here.
 
 import { execFile } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
-import { RemoteScript } from "./remote.js";
+import type { DiffSheet, FileDiff, Snapshot, Uncommitted } from "@kauak/protocol";
+import { RemoteScript } from "./remote.ts";
 
 const POLL_MS = 2000;
 // A folder outside git is asked again after this long (it may become a repository).
@@ -53,6 +54,17 @@ const UNCOMMITTED_TIMEOUT_MS = 60_000;
 const BINARY = Symbol("binary");
 const LARGE = Symbol("large");
 
+/** A file's contents as text, or BINARY / LARGE; null when there is no file. */
+type Contents = string | typeof BINARY | typeof LARGE | null;
+/** A file as read: its bytes, LARGE past MAX_BYTES, null when there is none. */
+type Bytes = Buffer | typeof LARGE | null;
+/** A sheet as a scan makes it; print() adds the checkout it came from. */
+type Sheet = Omit<DiffSheet, "root"> & { root?: string };
+/** One row of a diff: kept, removed or added. */
+type Op = [" " | "-" | "+", string];
+/** A failed git: its message, and what it wrote to stderr. */
+type GitError = Error & { stderr?: Buffer | string };
+
 let sheetSeq = 0;
 
 /** A remote floor's helper is not running (it says why in the log when it stops). */
@@ -63,21 +75,43 @@ class HostDown extends Error {
 }
 
 /**
+ * What the tracker uses of its floor's Machine, which it is handed: it reads
+ * the Kauak snapshot, and never imports the Herdr adapter.
+ */
+interface Floor {
+  readonly label: string;
+  readonly ssh: string | null;
+  readonly snapshot: Snapshot | null;
+  on(event: "snapshot", listener: () => void): unknown;
+}
+
+/**
  * Emits "print" with each new sheet and "change" when rooms move to another
  * checkout (`annotate` then gives the snapshot each room's `git_root`).
  */
 export class DiffTracker extends EventEmitter {
-  constructor(machine) {
+  m: Floor;
+  host: Host;
+  /** folder → { root, at } */
+  folders: Map<string, { root: string | null; at: number }>;
+  /** git root → Checkout */
+  checkouts: Map<string, Checkout>;
+  /** git root → sheets, oldest first */
+  sheets: Map<string, DiffSheet[]>;
+  /** workspace id → git root */
+  roots: Map<string, string>;
+  updating: boolean;
+  again: boolean;
+  stopped: boolean;
+  timer: NodeJS.Timeout;
+
+  constructor(machine: Floor) {
     super();
     this.m = machine;
     this.host = machine.ssh ? new RemoteHost(machine) : new LocalHost();
-    /** folder → { root, at } */
     this.folders = new Map();
-    /** git root → Checkout */
     this.checkouts = new Map();
-    /** git root → sheets, oldest first */
     this.sheets = new Map();
-    /** workspace id → git root */
     this.roots = new Map();
     this.updating = false;
     this.again = false;
@@ -93,24 +127,28 @@ export class DiffTracker extends EventEmitter {
   }
 
   /** The Kauak snapshot with each room's `git_root`. */
-  annotate(snapshot) {
+  annotate(snapshot: Snapshot | null): Snapshot | null {
     if (!snapshot || this.roots.size === 0) return snapshot;
     return { ...snapshot, workspaces: snapshot.workspaces.map((w) => ({ ...w, git_root: this.roots.get(w.workspace_id) ?? null })) };
   }
 
   /** Every sheet still kept, oldest first. */
-  history() {
+  history(): DiffSheet[] {
     return [...this.sheets.values()].flat().sort((a, b) => a.at - b.at);
   }
 
   /** Everything not committed in a checkout a room is in: { files, incomplete, error? }. */
-  async uncommitted(root) {
+  async uncommitted(root: string): Promise<Uncommitted> {
     const co = this.checkouts.get(root);
     if (!co) return { files: [], incomplete: false, error: "That room is not in a git checkout." };
     try {
       return await co.uncommitted();
     } catch (err) {
-      return { files: [], incomplete: false, error: err instanceof HostDown ? `${this.m.label} is not answering.` : lastLine(err) };
+      return {
+        files: [],
+        incomplete: false,
+        error: err instanceof HostDown ? `${this.m.label} is not answering.` : lastLine(err as GitError),
+      };
     }
   }
 
@@ -134,7 +172,7 @@ export class DiffTracker extends EventEmitter {
   async resolveRooms() {
     const snap = this.m.snapshot;
     if (!snap) return;
-    const next = new Map();
+    const next = new Map<string, string>();
     for (const ws of snap.workspaces) {
       const folder = ws.repo?.checkout ?? snap.panes.find((p) => p.workspace_id === ws.workspace_id)?.cwd;
       const root = folder ? await this.rootOf(folder) : null;
@@ -155,10 +193,10 @@ export class DiffTracker extends EventEmitter {
     }
   }
 
-  async rootOf(folder) {
+  async rootOf(folder: string) {
     const known = this.folders.get(folder);
     if (known && (known.root || Date.now() - known.at < ROOT_TTL_MS)) return known.root;
-    let root = null;
+    let root: string | null = null;
     try {
       root = (await this.host.git(folder, ["rev-parse", "--show-toplevel"])).out.toString().trim() || null;
     } catch (err) {
@@ -179,16 +217,16 @@ export class DiffTracker extends EventEmitter {
         // The checkout may be gone: look its rooms' folders up again on the next snapshot.
         co.failedUntil = Date.now() + FAIL_MS;
         for (const [folder, f] of this.folders) if (f.root === co.root) this.folders.delete(folder);
-        console.warn(`[bridge] ${this.m.label}: cannot read ${co.root}: ${lastLine(err)}`);
+        console.warn(`[bridge] ${this.m.label}: cannot read ${co.root}: ${lastLine(err as GitError)}`);
       }
     }
     if (!this.stopped) this.timer = setTimeout(() => this.poll(), POLL_MS);
   }
 
-  print(root, sheet) {
+  print(root: string, sheet: Sheet) {
     sheet.root = root;
     const list = this.sheets.get(root) ?? [];
-    list.push(sheet);
+    list.push(sheet as DiffSheet);
     if (list.length > MAX_SHEETS) list.splice(0, list.length - MAX_SHEETS);
     this.sheets.set(root, list);
     this.emit("print", sheet);
@@ -197,23 +235,29 @@ export class DiffTracker extends EventEmitter {
 
 /** One git checkout: the last contents seen of each changed file. */
 class Checkout {
-  constructor(root, host) {
+  root: string;
+  host: Host;
+  /** repo-relative path → { sig, content } */
+  files: Map<string, { sig: string; content: Contents }>;
+  ready: boolean;
+  failedUntil: number;
+
+  constructor(root: string, host: Host) {
     this.root = root;
     this.host = host;
-    /** repo-relative path → { sig, content } */
     this.files = new Map();
     this.ready = false;
     this.failedUntil = 0;
   }
 
   /** The sheets for what changed since the last scan (none on the first: that is the baseline). */
-  async scan() {
+  async scan(): Promise<Sheet[]> {
     const status = parseStatus(
       (await this.host.git(this.root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"])).out.toString("utf8"),
     );
     const paths = [...new Set([...status.keys(), ...this.files.keys()])];
     const stats = paths.length ? await this.host.stat(this.root, paths) : new Map();
-    const changed = [];
+    const changed: string[] = [];
     for (const file of paths) {
       const st = stats.get(file) ?? null;
       if (st === "other") continue; // a submodule or symlink
@@ -232,7 +276,7 @@ class Checkout {
     const contents = present.length ? await this.host.read(this.root, present) : new Map();
     const fresh = this.ready ? changed.filter((f) => !this.files.has(f)) : [];
     const heads = fresh.length ? await this.headContents(fresh.map((f) => status.get(f)?.orig ?? f)) : new Map();
-    const sheets = [];
+    const sheets: Sheet[] = [];
     for (const file of changed) {
       const now = decode(contents.get(file) ?? null);
       const known = this.files.get(file);
@@ -248,8 +292,8 @@ class Checkout {
   }
 
   /** What HEAD has at each path (null where it has nothing), in one `git cat-file --batch`. */
-  async headContents(paths) {
-    const result = new Map(paths.map((p) => [p, null]));
+  async headContents(paths: string[]) {
+    const result = new Map<string, Contents>(paths.map((p) => [p, null]));
     const asked = paths.filter((p) => !p.includes("\n"));
     if (!asked.length) return result;
     const { out } = await this.host.git(this.root, ["cat-file", "--batch"], {
@@ -270,7 +314,7 @@ class Checkout {
   }
 
   /** Everything not committed: `git diff` against HEAD and the untracked files, one page per file, by path. */
-  async uncommitted() {
+  async uncommitted(): Promise<Uncommitted> {
     const opts = { timeout: UNCOMMITTED_TIMEOUT_MS };
     // A repository without commits yet is compared with the empty tree.
     const base = await this.host.git(this.root, ["rev-parse", "-q", "--verify", "HEAD"], opts).then(
@@ -306,8 +350,8 @@ class Checkout {
     const read = untracked.slice(0, MAX_UNTRACKED);
     const contents = read.length ? await this.host.read(this.root, read, opts) : new Map();
     for (const file of untracked) {
-      const page = { path: file, change: "added", untracked: true, added: 0, removed: 0, diff: "", truncated: false };
-      const content = contents.has(file) ? decode(contents.get(file)) : undefined;
+      const page: FileDiff = { path: file, change: "added", untracked: true, added: 0, removed: 0, diff: "", truncated: false };
+      const content = contents.has(file) ? decode(contents.get(file)!) : undefined;
       if (content === undefined) pages.push({ ...page, note: "Not printed: too many new files." });
       else if (content === null)
         continue; // gone since git listed it
@@ -340,11 +384,24 @@ class Checkout {
 // paths) with path → "size:mtime" | "other" | null, and read(root, paths) with
 // path → Buffer | LARGE | null.
 
+interface GitOptions {
+  input?: Buffer | null;
+  max?: number;
+  timeout?: number;
+}
+
+interface Host {
+  stop(): void;
+  git(cwd: string, args: string[], options?: GitOptions): Promise<{ out: Buffer; truncated: boolean }>;
+  stat(root: string, paths: string[]): Promise<Map<string, string | null>>;
+  read(root: string, paths: string[], options?: { timeout?: number }): Promise<Map<string, Bytes>>;
+}
+
 class LocalHost {
   stop() {}
 
-  git(cwd, args, { input = null, max = MAX_GIT_OUT } = {}) {
-    return new Promise((resolve, reject) => {
+  git(cwd: string, args: string[], { input = null, max = MAX_GIT_OUT }: GitOptions = {}) {
+    return new Promise<{ out: Buffer; truncated: boolean }>((resolve, reject) => {
       const child = execFile(
         "git",
         ["-c", "core.quotepath=off", ...args],
@@ -362,14 +419,14 @@ class LocalHost {
           else resolve({ out: stdout, truncated: false });
         },
       );
-      child.stdin.on("error", () => {});
-      child.stdin.end(input ?? undefined);
+      child.stdin!.on("error", () => {});
+      child.stdin!.end(input ?? undefined);
     });
   }
 
-  async stat(root, paths) {
+  async stat(root: string, paths: string[]) {
     const stats = await Promise.all(paths.map((p) => fs.promises.lstat(path.join(root, p)).catch(() => null)));
-    return new Map(
+    return new Map<string, string | null>(
       paths.map((p, i) => {
         const st = stats[i];
         return [p, !st ? null : st.isFile() ? `${st.size}:${st.mtimeMs}` : "other"];
@@ -377,9 +434,9 @@ class LocalHost {
     );
   }
 
-  async read(root, paths) {
+  async read(root: string, paths: string[]) {
     const out = await Promise.all(
-      paths.map(async (p) => {
+      paths.map(async (p): Promise<Bytes> => {
         const file = path.join(root, p);
         const st = await fs.promises.stat(file).catch(() => null);
         if (!st) return null;
@@ -387,13 +444,15 @@ class LocalHost {
         return fs.promises.readFile(file).catch(() => null);
       }),
     );
-    return new Map(paths.map((p, i) => [p, out[i]]));
+    return new Map<string, Bytes>(paths.map((p, i) => [p, out[i]!]));
   }
 }
 
 /** The same, on a remote floor, through diffs_remote.py. */
 class RemoteHost {
-  constructor(machine) {
+  script: RemoteScript;
+
+  constructor(machine: Floor) {
     this.script = new RemoteScript(machine, "./diffs_remote.py", "printers");
   }
 
@@ -401,36 +460,41 @@ class RemoteHost {
     this.script.stop();
   }
 
-  async call(request, timeout) {
-    const result = await this.script.call(request, timeout);
+  async call<T>(request: object, timeout?: number): Promise<T> {
+    const result = await this.script.call<T>(request, timeout);
     if (result == null) throw new HostDown();
     return result;
   }
 
-  async git(cwd, args, { input = null, max = MAX_GIT_OUT, timeout } = {}) {
-    const r = await this.call({ op: "git", cwd, args, input: input ? input.toString("base64") : null, max }, timeout);
+  async git(cwd: string, args: string[], { input = null, max = MAX_GIT_OUT, timeout }: GitOptions = {}) {
+    const r = await this.call<{ ok: boolean; out: string; err?: string; truncated: boolean }>(
+      { op: "git", cwd, args, input: input ? input.toString("base64") : null, max },
+      timeout,
+    );
     if (!r.ok) throw Object.assign(new Error(r.err || `git ${args[0]} failed`), { stderr: r.err });
     return { out: Buffer.from(r.out, "base64"), truncated: r.truncated };
   }
 
-  async stat(root, paths) {
-    return new Map(Object.entries(await this.call({ op: "stat", root, paths })));
+  async stat(root: string, paths: string[]) {
+    return new Map(Object.entries(await this.call<Record<string, string | null>>({ op: "stat", root, paths })));
   }
 
-  async read(root, paths, { timeout } = {}) {
-    const r = await this.call({ op: "read", root, paths, max: MAX_BYTES }, timeout);
-    return new Map(Object.entries(r).map(([p, v]) => [p, v === "large" ? LARGE : v === null ? null : Buffer.from(v, "base64")]));
+  async read(root: string, paths: string[], { timeout }: { timeout?: number } = {}) {
+    const r = await this.call<Record<string, string | null>>({ op: "read", root, paths, max: MAX_BYTES }, timeout);
+    return new Map<string, Bytes>(
+      Object.entries(r).map(([p, v]) => [p, v === "large" ? LARGE : v === null ? null : Buffer.from(v, "base64")]),
+    );
   }
 }
 
 // ---------------------------------------------------------------- git output
 
 /** `git status --porcelain=v1 -z`: path → { code, orig } (orig: where a rename came from). */
-function parseStatus(out) {
-  const entries = new Map();
+function parseStatus(out: string) {
+  const entries = new Map<string, { code: string; orig: string | null }>();
   const parts = out.split("\0");
   for (let i = 0; i < parts.length && entries.size < MAX_FILES; i++) {
-    const e = parts[i];
+    const e = parts[i]!;
     if (e.length < 4) continue;
     const code = e.slice(0, 2);
     const orig = code[0] === "R" || code[0] === "C" ? (parts[++i] ?? null) : null;
@@ -440,10 +504,10 @@ function parseStatus(out) {
 }
 
 /** `git diff` output as one page per file: path, change, counts and its hunks. */
-export function parseGitDiff(text) {
-  const pages = [];
-  let page = null,
-    rows = [],
+export function parseGitDiff(text: string) {
+  const pages: FileDiff[] = [];
+  let page: FileDiff | null = null,
+    rows: string[] = [],
     inHunk = false,
     mode = false;
   const done = () => {
@@ -493,7 +557,7 @@ export function parseGitDiff(text) {
 }
 
 /** The path in "a/<p> b/<p>" (only needed when no ---/+++ lines follow: binary or mode-only changes). */
-function gitLinePath(s) {
+function gitLinePath(s: string) {
   const n = (s.length - 5) / 2;
   if (Number.isInteger(n) && s.startsWith("a/") && s.slice(2 + n) === ` b/${s.slice(2, 2 + n)}`) return s.slice(2, 2 + n);
   const b = s.lastIndexOf(" b/");
@@ -501,26 +565,26 @@ function gitLinePath(s) {
 }
 
 /** "a/path" or "b/path" in a ---/+++ line; git ends it with a tab when the path has a space. */
-function headerPath(s, prefix) {
+function headerPath(s: string, prefix: string) {
   const p = unquote(s.replace(/\t$/, ""));
   return p.startsWith(prefix) ? p.slice(prefix.length) : p;
 }
 
 /** A path git quoted C-style ("tab\there"): with core.quotepath off only control characters, quotes and backslashes are escaped. */
-function unquote(s) {
+function unquote(s: string) {
   if (s.length < 2 || !s.startsWith('"') || !s.endsWith('"')) return s;
-  const bytes = [];
+  const bytes: number[] = [];
   const body = s.slice(1, -1);
   for (let i = 0; i < body.length; i++) {
     if (body[i] !== "\\") {
-      bytes.push(...Buffer.from(body[i]));
+      bytes.push(...Buffer.from(body[i]!));
       continue;
     }
     const c = body[++i] ?? "";
     if (/[0-7]/.test(c)) {
       bytes.push(parseInt(body.slice(i, i + 3), 8));
       i += 2;
-    } else bytes.push({ n: 10, t: 9, r: 13, a: 7, b: 8, f: 12, v: 11 }[c] ?? c.charCodeAt(0));
+    } else bytes.push(({ n: 10, t: 9, r: 13, a: 7, b: 8, f: 12, v: 11 } as Record<string, number>)[c] ?? c.charCodeAt(0));
   }
   return Buffer.from(bytes).toString("utf8");
 }
@@ -528,16 +592,16 @@ function unquote(s) {
 // ---------------------------------------------------------------- diffs
 
 /** File bytes as text, or BINARY / LARGE; null stays null (no file). */
-function decode(buf) {
+function decode(buf: Bytes): Contents {
   if (buf === null || typeof buf === "symbol") return buf;
   if (buf.length > MAX_BYTES) return LARGE;
   return buf.subarray(0, 8000).includes(0) ? BINARY : buf.toString("utf8");
 }
 
 /** A sheet for one file going from `before` to `after` (null: the file does not exist), or null if nothing changed. */
-function makeSheet(file, before, after) {
+function makeSheet(file: string, before: Contents, after: Contents): Sheet | null {
   if (before === after && typeof before !== "symbol") return null;
-  const sheet = {
+  const sheet: Pick<Sheet, "id" | "path" | "change" | "at"> = {
     id: `${Date.now().toString(36)}-${(++sheetSeq).toString(36)}`,
     path: file,
     change: before === null ? "added" : after === null ? "deleted" : "modified",
@@ -551,56 +615,56 @@ function makeSheet(file, before, after) {
   return d.added || d.removed ? { ...sheet, ...d } : null;
 }
 
-function lines(text) {
+function lines(text: string) {
   const rows = text.split("\n");
   if (rows[rows.length - 1] === "") rows.pop();
   return rows.map((r) => (r.endsWith("\r") ? r.slice(0, -1) : r));
 }
 
 /** Unified hunks from `a` to `b`, with counts. */
-export function lineDiff(a, b) {
+export function lineDiff(a: string[], b: string[]) {
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
   let suf = 0;
   while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
-  const ops = a.slice(0, pre).map((t) => [" ", t]);
+  const ops = a.slice(0, pre).map((t): Op => [" ", t]);
   ops.push(...middle(a.slice(pre, a.length - suf), b.slice(pre, b.length - suf)));
-  for (let i = a.length - suf; i < a.length; i++) ops.push([" ", a[i]]);
+  for (let i = a.length - suf; i < a.length; i++) ops.push([" ", a[i]!]);
   return hunks(ops);
 }
 
 /** Line ops for the changed middle: a longest common subsequence, or all replaced when it is too big for that. */
-function middle(A, B) {
+function middle(A: string[], B: string[]): Op[] {
   const n = A.length,
     m = B.length;
-  if (n * m > LCS_CELLS) return [...A.map((t) => ["-", t]), ...B.map((t) => ["+", t])];
+  if (n * m > LCS_CELLS) return [...A.map((t): Op => ["-", t]), ...B.map((t): Op => ["+", t])];
   const w = m + 1;
   const L = new Uint16Array((n + 1) * w); // n × m ≤ LCS_CELLS keeps every length under 65536
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
-      L[i * w + j] = A[i] === B[j] ? L[(i + 1) * w + j + 1] + 1 : Math.max(L[(i + 1) * w + j], L[i * w + j + 1]);
+      L[i * w + j] = A[i] === B[j] ? L[(i + 1) * w + j + 1]! + 1 : Math.max(L[(i + 1) * w + j]!, L[i * w + j + 1]!);
     }
   }
-  const out = [];
+  const out: Op[] = [];
   let i = 0,
     j = 0;
   while (i < n && j < m) {
     if (A[i] === B[j]) {
-      out.push([" ", A[i]]);
+      out.push([" ", A[i]!]);
       i++;
       j++;
-    } else if (L[(i + 1) * w + j] >= L[i * w + j + 1]) out.push(["-", A[i++]]);
-    else out.push(["+", B[j++]]);
+    } else if (L[(i + 1) * w + j]! >= L[i * w + j + 1]!) out.push(["-", A[i++]!]);
+    else out.push(["+", B[j++]!]);
   }
-  while (i < n) out.push(["-", A[i++]]);
-  while (j < m) out.push(["+", B[j++]]);
+  while (i < n) out.push(["-", A[i++]!]);
+  while (j < m) out.push(["+", B[j++]!]);
   return out;
 }
 
-function hunks(ops) {
+function hunks(ops: Op[]) {
   let added = 0,
     removed = 0;
-  const changes = [];
+  const changes: number[] = [];
   // Old and new line numbers at each op.
   const oldAt = new Int32Array(ops.length + 1),
     newAt = new Int32Array(ops.length + 1);
@@ -621,30 +685,30 @@ function hunks(ops) {
       n++;
     }
   }
-  const out = [];
+  const out: string[] = [];
   let truncated = false;
   for (let c = 0; c < changes.length && !truncated; c++) {
-    const start = Math.max(0, changes[c] - CONTEXT);
-    let end = changes[c];
-    while (c + 1 < changes.length && changes[c + 1] - end <= CONTEXT * 2 + 1) end = changes[++c];
+    const start = Math.max(0, changes[c]! - CONTEXT);
+    let end = changes[c]!;
+    while (c + 1 < changes.length && changes[c + 1]! - end <= CONTEXT * 2 + 1) end = changes[++c]!;
     const slice = ops.slice(start, Math.min(ops.length, end + CONTEXT + 1));
     const oldLen = slice.filter(([k]) => k !== "+").length,
       newLen = slice.filter(([k]) => k !== "-").length;
     // As git writes them: an empty side starts at the line before.
-    out.push(`@@ -${oldAt[start] - (oldLen ? 0 : 1)},${oldLen} +${newAt[start] - (newLen ? 0 : 1)},${newLen} @@`);
+    out.push(`@@ -${oldAt[start]! - (oldLen ? 0 : 1)},${oldLen} +${newAt[start]! - (newLen ? 0 : 1)},${newLen} @@`);
     for (const [k, t] of slice) out.push(k + (t.length > MAX_LINE ? `${t.slice(0, MAX_LINE)}…` : t));
     if (out.length > MAX_DIFF_LINES) truncated = true;
   }
   return { added, removed, diff: out.slice(0, MAX_DIFF_LINES).join("\n"), truncated };
 }
 
-function sameMap(a, b) {
+function sameMap(a: Map<string, string>, b: Map<string, string>) {
   if (a.size !== b.size) return false;
   for (const [k, v] of a) if (b.get(k) !== v) return false;
   return true;
 }
 
-function lastLine(err) {
+function lastLine(err: GitError) {
   const text = err.stderr?.toString() || err.message;
   return text.trim().split("\n").pop();
 }

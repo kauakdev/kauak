@@ -103,24 +103,24 @@ Herdr, and it would not exist without it.
 Herdr (a unix socket on each machine; through an SSH tunnel for a remote one)
    │  Herdr's API
    ▼
-Herdr adapter    packages/bridge/src/machine.js, packages/bridge/src/herdr.js
+Herdr adapter    packages/bridge/src/machine.ts, packages/bridge/src/herdr.ts
    │  Kauak terms
    ▼
-Bridge server    packages/bridge/src/server.js
+Bridge server    packages/bridge/src/server.ts
    │  the Kauak protocol, over a WebSocket
    ▼
 Page             packages/web/
 ```
 
-- **Herdr adapter** (`packages/bridge/src/machine.js`,
-  `packages/bridge/src/herdr.js`): one per floor. It talks to Herdr's socket,
+- **Herdr adapter** (`packages/bridge/src/machine.ts`,
+  `packages/bridge/src/herdr.ts`): one per floor. It talks to Herdr's socket,
   here or through an SSH tunnel, and translates Herdr's snapshots and errors
   into Kauak's own. Herdr-specific code lives only here.
 - **Kauak protocol** (`packages/protocol/src/index.ts`, TypeScript): the JSON
   messages between the page and the bridge, described in
   [docs/protocol.md](docs/protocol.md). The bridge checks every message from a
   page against it.
-- **Bridge server** (`packages/bridge/src/server.js`, Node, plain JavaScript):
+- **Bridge server** (`packages/bridge/src/server.ts`, Node, TypeScript):
   serves the page and the WebSocket on 127.0.0.1:7788, and adds what Herdr does
   not report: context usage, read from the agents' transcripts, and file diffs,
   from git.

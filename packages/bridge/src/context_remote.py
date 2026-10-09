@@ -1,4 +1,4 @@
-# Context meters for a remote floor: the part of bridge/context.js that has
+# Context meters for a remote floor: the part of bridge/context.ts that has
 # to run where the agents' transcripts are. The bridge starts it over SSH
 # (`python3 -c ...`, so nothing is installed on the remote machine) and keeps
 # it running; it keeps its own caches between requests.
@@ -10,7 +10,7 @@
 # processes (pane.process_info), for a pane without a session. `pid` in the
 # answer is the agent's: Claude Code's, or the first Codex process.
 #
-# Keep the reading rules in step with context.js.
+# Keep the reading rules in step with context.ts.
 
 import datetime
 import json

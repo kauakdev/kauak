@@ -1,4 +1,4 @@
-// The bridge as a page sees it: the real server.js, run against a fake Herdr
+// The bridge as a page sees it: the real server.ts, run against a fake Herdr
 // (fixtures/fake-herdr.mjs), with a WebSocket client in the page's place.
 // What crosses the WebSocket must be the Kauak protocol and nothing of Herdr's.
 
@@ -12,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { FIXTURE, fakeHerdr, herdrError } from "./fixtures/fake-herdr.mjs";
-import { toSnapshot } from "./herdr.js";
+import { toSnapshot } from "./herdr.ts";
 
 // Every message type the bridge may send (BridgeMessage in @kauak/protocol).
 const BRIDGE_TYPES = new Set([
@@ -65,7 +65,7 @@ function freePort() {
 async function startBridge(t, herdr) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "kauak-bridge-test-"));
   const port = await freePort();
-  const child = spawn(process.execPath, [fileURLToPath(new URL("./server.js", import.meta.url))], {
+  const child = spawn(process.execPath, [fileURLToPath(new URL("./server.ts", import.meta.url))], {
     env: {
       PATH: process.env.PATH,
       HOME: home,

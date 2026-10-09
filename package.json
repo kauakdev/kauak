@@ -6,8 +6,8 @@
   "type": "module",
   "engines": { "node": ">=22.18" },
   "scripts": {
-    "dev": "concurrently -k -n bridge,web -c blue,magenta \"node packages/bridge/src/server.js\" \"pnpm --filter @kauak/web dev\"",
-    "bridge": "node packages/bridge/src/server.js",
+    "dev": "concurrently -k -n bridge,web -c blue,magenta \"node packages/bridge/src/server.ts\" \"pnpm --filter @kauak/web dev\"",
+    "bridge": "node packages/bridge/src/server.ts",
     "test": "pnpm -r test && node --test \"scripts/*.test.mjs\"",
     "test:plugins": "pnpm --filter @kauak/appearance test",
     "web": "pnpm --filter @kauak/web dev",

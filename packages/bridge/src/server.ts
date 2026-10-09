@@ -1,15 +1,15 @@
 // Bridge between Herdr servers and browser WebSocket clients.
 //
 // Each Herdr server is a floor of the office: this machine is always floor 1,
-// and remote machines (reached over SSH, see machine.js) are saved in
+// and remote machines (reached over SSH, see machine.ts) are saved in
 // ~/.config/kauak/machines.json. The bridge keeps things simple and
 // robust: on every Herdr event it re-fetches that machine's full snapshot (a
 // few KB) and broadcasts it to all clients, with each agent's context use
-// added (see context.js) and each room's git checkout, whose edits its
-// printer prints as they happen (see diffs.js).
+// added (see context.ts) and each room's git checkout, whose edits its
+// printer prints as they happen (see diffs.ts).
 //
 // Pages speak the Kauak protocol (@kauak/protocol, docs/protocol.md), and so
-// does this file: it knows a floor only through its Machine (machine.js, the
+// does this file: it knows a floor only through its Machine (machine.ts, the
 // Herdr adapter), never Herdr's methods, fields or errors.
 //
 // The same port also serves the built office page (dist/, `pnpm build`), so
@@ -21,12 +21,21 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { AGENT_KIND, GIT_REF, MAX_INPUT_TEXT, SSH_TARGET, parseClientMessage } from "@kauak/protocol";
-import { WebSocketServer } from "ws";
-import { slashCommands } from "./commands.js";
-import { ContextTracker } from "./context.js";
-import { DiffTracker } from "./diffs.js";
-import { LOCAL_SOCKET, Machine } from "./machine.js";
+import {
+  AGENT_KIND,
+  type ClientMessage,
+  GIT_REF,
+  type InputOp,
+  MAX_INPUT_TEXT,
+  type RoomSpec,
+  SSH_TARGET,
+  parseClientMessage,
+} from "@kauak/protocol";
+import { type WebSocket, WebSocketServer } from "ws";
+import { slashCommands } from "./commands.ts";
+import { ContextTracker } from "./context.ts";
+import { DiffTracker } from "./diffs.ts";
+import { LOCAL_SOCKET, Machine, type MachineConfig } from "./machine.ts";
 
 const WS_PORT = Number(process.env.KAUAK_PORT ?? process.env.AGENT_OFFICE_PORT ?? 7788);
 // The bridge can type into terminals, create panes and worktrees, and open SSH
@@ -53,18 +62,19 @@ const CONFIG_PATH =
 // ---------------------------------------------------------------- machines
 
 /** id → Machine, in floor order. */
-const machines = new Map();
+const machines = new Map<string, Machine>();
 /** id → ContextTracker */
-const contexts = new Map();
+const contexts = new Map<string, ContextTracker>();
 /** id → DiffTracker */
-const diffs = new Map();
+const diffs = new Map<string, DiffTracker>();
 
-function loadConfig() {
+/** The saved floors, as saveConfig writes them; each is checked before it is used. */
+function loadConfig(): MachineConfig[] {
   try {
     const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
     return Array.isArray(cfg.machines) ? cfg.machines : [];
   } catch (err) {
-    if (err.code !== "ENOENT") console.error(`[bridge] ignoring ${CONFIG_PATH}: ${err.message}`);
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") console.error(`[bridge] ignoring ${CONFIG_PATH}: ${(err as Error).message}`);
     return [];
   }
 }
@@ -75,7 +85,7 @@ function saveConfig() {
   fs.writeFileSync(CONFIG_PATH, `${JSON.stringify({ machines: list }, null, 2)}\n`);
 }
 
-function addMachine(cfg) {
+function addMachine(cfg: MachineConfig) {
   const m = new Machine(cfg);
   machines.set(m.id, m);
   const c = new ContextTracker(m);
@@ -91,7 +101,7 @@ function addMachine(cfg) {
   return m;
 }
 
-function uniqueId(base) {
+function uniqueId(base: string) {
   const slug =
     base
       .toLowerCase()
@@ -116,7 +126,7 @@ function machineInfos() {
   return [...machines.values()].map((m) => m.info);
 }
 
-function snapshotMessage(m) {
+function snapshotMessage(m: Machine) {
   const snapshot = contexts.get(m.id)?.annotate(m.snapshot) ?? m.snapshot;
   return { type: "snapshot", machine: m.id, snapshot: diffs.get(m.id)?.annotate(snapshot) ?? snapshot };
 }
@@ -126,9 +136,9 @@ function snapshotMessage(m) {
 // In the npm package the page is beside the bridge's copy (dist/); in a checkout the bridge runs
 // from packages/bridge/src and the page is built into packages/kauak/dist.
 const DIST_DIRS = [new URL("../dist/", import.meta.url), new URL("../../kauak/dist/", import.meta.url)].map((u) => fileURLToPath(u));
-const DIST_DIR = DIST_DIRS.find((d) => fs.existsSync(path.join(d, "index.html"))) ?? DIST_DIRS[0];
+const DIST_DIR = DIST_DIRS.find((d) => fs.existsSync(path.join(d, "index.html"))) ?? DIST_DIRS[0]!;
 const HAS_PAGE = fs.existsSync(path.join(DIST_DIR, "index.html"));
-const CONTENT_TYPES = {
+const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -140,9 +150,9 @@ const CONTENT_TYPES = {
 };
 
 /** Static files from dist/. Nothing here is secret; the WebSocket is what needs guarding. */
-function servePage(req, res) {
+function servePage(req: http.IncomingMessage, res: http.ServerResponse) {
   if (req.method !== "GET" && req.method !== "HEAD") return res.writeHead(405).end();
-  let rel;
+  let rel: string;
   try {
     rel = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
   } catch {
@@ -175,7 +185,7 @@ const server = http.createServer(servePage);
 const wss = new WebSocketServer({
   server,
   // Browsers let any web page open a WebSocket to 127.0.0.1; only accept our own page.
-  verifyClient: ({ origin }) => {
+  verifyClient: ({ origin }: { origin: string }) => {
     if (!origin) return true; // not a browser
     try {
       return ALLOWED_ORIGIN_HOSTS.has(new URL(origin).hostname);
@@ -185,7 +195,7 @@ const wss = new WebSocketServer({
   },
 });
 
-function broadcast(msg) {
+function broadcast(msg: object) {
   const data = JSON.stringify(msg);
   for (const client of wss.clients) if (client.readyState === 1) client.send(data);
 }
@@ -203,7 +213,7 @@ wss.on("connection", (ws) => {
   }
 
   ws.on("message", async (raw) => {
-    let msg;
+    let msg: ClientMessage | null;
     try {
       msg = parseClientMessage(JSON.parse(raw.toString()));
     } catch {
@@ -221,7 +231,7 @@ wss.on("connection", (ws) => {
         ws.send(JSON.stringify({ type: "machine_error", message: `${ssh} already has a floor.` }));
         return;
       }
-      const label = msg.label || ssh.split("@").pop();
+      const label = msg.label || ssh.split("@").pop()!;
       const m = addMachine({ id: uniqueId(label), label: label.slice(0, 40), ssh });
       saveConfig();
       broadcastMachines();
@@ -248,7 +258,7 @@ wss.on("connection", (ws) => {
       try {
         await m.focusPane(msg.pane_id);
       } catch (err) {
-        ws.send(JSON.stringify({ type: "error", machine: m.id, message: err.message }));
+        ws.send(JSON.stringify({ type: "error", machine: m.id, message: (err as Error).message }));
       }
     } else if (msg.type === "read") {
       // Terminal view: the pane's screen, or with `lines` the last `lines`
@@ -259,7 +269,7 @@ wss.on("connection", (ws) => {
         const text = await m.readPane(msg.pane_id, msg.lines);
         ws.send(JSON.stringify({ type: "pane_output", machine: m.id, pane_id: msg.pane_id, text, seq: msg.seq }));
       } catch (err) {
-        ws.send(JSON.stringify({ type: "error", machine: m.id, pane_id: msg.pane_id, message: err.message }));
+        ws.send(JSON.stringify({ type: "error", machine: m.id, pane_id: msg.pane_id, message: (err as Error).message }));
       }
     } else if (msg.type === "input") {
       // Keystrokes from the browser terminal. `ops` is an ordered list of
@@ -274,9 +284,9 @@ wss.on("connection", (ws) => {
       const commands = await slashCommands(pane.agent, pane.cwd, !m.ssh);
       ws.send(JSON.stringify({ type: "commands", machine: m.id, pane_id: msg.pane_id, agent: pane.agent, commands }));
     } else if (msg.type === "uncommitted") {
-      // A printer's uncommitted view. Only checkouts a room is in are read (diffs.js).
-      const reply = (o) => ws.send(JSON.stringify({ type: "uncommitted", machine: m.id, root: msg.root, id: msg.id, ...o }));
-      reply(await diffs.get(m.id).uncommitted(msg.root));
+      // A printer's uncommitted view. Only checkouts a room is in are read (diffs.ts).
+      const reply = (o: object) => ws.send(JSON.stringify({ type: "uncommitted", machine: m.id, root: msg.root, id: msg.id, ...o }));
+      reply(await diffs.get(m.id)!.uncommitted(msg.root));
     } else if (msg.type === "refresh") {
       m.scheduleRefresh();
     } else if (msg.type === "create_desk" || msg.type === "create_room") {
@@ -294,16 +304,16 @@ wss.on("connection", (ws) => {
 // (Herdr waits until it is ready, which can take seconds), and a failure
 // there is a `create_error` that carries the pane id.
 
-async function build(ws, m, msg) {
-  const reply = (o) => ws.send(JSON.stringify({ machine: m.id, id: msg.id, ...o }));
+async function build(ws: WebSocket, m: Machine, msg: Extract<ClientMessage, { type: "create_desk" | "create_room" }>) {
+  const reply = (o: object) => ws.send(JSON.stringify({ machine: m.id, id: msg.id, ...o }));
   const agent = msg.agent;
-  let paneId;
+  let paneId: string;
   try {
     if (agent && !AGENT_KIND.test(agent)) throw new Error(`Unknown agent kind "${agent}".`);
     paneId = msg.type === "create_desk" ? await m.createDesk(msg.workspace_id) : await m.createRoom(roomSpec(m, msg.room));
     await m.refresh();
   } catch (err) {
-    reply({ type: "create_error", message: err.message });
+    reply({ type: "create_error", message: (err as Error).message });
     return;
   }
   reply({ type: "created", pane_id: paneId });
@@ -311,12 +321,12 @@ async function build(ws, m, msg) {
   try {
     await m.startAgent(agent, paneId);
   } catch (err) {
-    reply({ type: "create_error", pane_id: paneId, message: `The desk is ready, but ${agent} did not start: ${err.message}` });
+    reply({ type: "create_error", pane_id: paneId, message: `The desk is ready, but ${agent} did not start: ${(err as Error).message}` });
   }
 }
 
 /** A room from the build form, checked: its folder (see roomPath), branch, base and label. */
-function roomSpec(m, room) {
+function roomSpec(m: Machine, room: RoomSpec): RoomSpec {
   const cwd = roomPath(m, room.cwd);
   const label = room.label?.trim() ? room.label.trim().slice(0, 60) : undefined;
   if (room.kind === "folder") return { kind: "folder", cwd, label };
@@ -332,7 +342,7 @@ function roomSpec(m, room) {
  * missing folder (it opens the home directory instead), so this machine's
  * paths are expanded and checked here; a remote one needs an absolute path.
  */
-function roomPath(m, raw) {
+function roomPath(m: Machine, raw: string) {
   let p = raw.trim();
   if (!p || p.length > 1024) throw new Error("Enter a folder.");
   if (!m.ssh && (p === "~" || p.startsWith("~/"))) p = path.join(os.homedir(), p.slice(1));
@@ -346,10 +356,17 @@ function roomPath(m, raw) {
 // while a batch is in flight are merged into the next one ("hello" typed fast
 // becomes one send_text). `input_ack` carries the id of the last message sent.
 // The ops come checked and trimmed from parseClientMessage.
-const inputQueues = new Map(); // "machine/pane" → promise chain
-const openBatches = new Map(); // "machine/pane" → batch still waiting for its turn
+const inputQueues = new Map<string, Promise<void>>(); // "machine/pane" → promise chain
+const openBatches = new Map<string, InputBatch>(); // "machine/pane" → batch still waiting for its turn
 
-function enqueueInput(key, job) {
+/** Ops for one pane from one connection, merged while they wait; `id` is the last message's. */
+interface InputBatch {
+  ws: WebSocket;
+  ops: InputOp[];
+  id: number | undefined;
+}
+
+function enqueueInput(key: string, job: () => Promise<void>) {
   const prev = inputQueues.get(key) ?? Promise.resolve();
   const next = prev.then(job, job).finally(() => {
     if (inputQueues.get(key) === next) inputQueues.delete(key);
@@ -357,7 +374,7 @@ function enqueueInput(key, job) {
   inputQueues.set(key, next);
 }
 
-function queueInput(ws, machine, paneId, ops, id) {
+function queueInput(ws: WebSocket, machine: Machine, paneId: string, ops: InputOp[], id: number | undefined) {
   const key = `${machine.id}/${paneId}`;
   let batch = openBatches.get(key);
   if (!batch || batch.ws !== ws) {
@@ -373,7 +390,7 @@ function queueInput(ws, machine, paneId, ops, id) {
         }
         b.ws.send(JSON.stringify({ type: "input_ack", machine: machine.id, pane_id: paneId, id: b.id }));
       } catch (err) {
-        b.ws.send(JSON.stringify({ type: "error", machine: machine.id, pane_id: paneId, id: b.id, message: err.message }));
+        b.ws.send(JSON.stringify({ type: "error", machine: machine.id, pane_id: paneId, id: b.id, message: (err as Error).message }));
       }
     });
   }
@@ -407,9 +424,9 @@ process.on("exit", stopAll);
 // ---------------------------------------------------------------- listen
 
 /** Resolves with the office's URL once the port is open (null when dist/ is not built). */
-export const ready = new Promise((resolve) => {
+export const ready = new Promise<string | null>((resolve) => {
   // ws re-emits the HTTP server's errors (EADDRINUSE…) on the WebSocket server.
-  wss.once("error", (err) => {
+  wss.once("error", (err: NodeJS.ErrnoException) => {
     console.error(
       err.code === "EADDRINUSE"
         ? `[bridge] port ${WS_PORT} is already in use. Is the office already running? Pick another port with --port or KAUAK_PORT.`

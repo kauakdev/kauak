@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { FIXTURE, fakeHerdr, herdrError } from "./fixtures/fake-herdr.mjs";
-import { errorMessage, paneSession, toSnapshot } from "./herdr.js";
-import { Machine } from "./machine.js";
+import { errorMessage, paneSession, toSnapshot } from "./herdr.ts";
+import { Machine } from "./machine.ts";
 
 // Herdr's names, which must never reach a page.
 const HERDR_FIELDS = [

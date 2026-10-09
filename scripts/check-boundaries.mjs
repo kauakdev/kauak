@@ -20,7 +20,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // The Herdr adapter: the only code that speaks Herdr's API.
-const HERDR_ADAPTER = ["packages/bridge/src/machine.js", "packages/bridge/src/herdr.js", "packages/bridge/src/remote.js"];
+const HERDR_ADAPTER = ["packages/bridge/src/machine.ts", "packages/bridge/src/herdr.ts", "packages/bridge/src/remote.ts"];
 // Tests drive a stand-in Herdr and check that nothing of it leaks, so they name it.
 const TESTS = ["**/*.test.mjs", "packages/bridge/src/fixtures/**"];
 // Workspace packages are imported by relative path or by name, and a name is checked as written.
@@ -36,15 +36,15 @@ const WEB = ["packages/web/**", "@kauak/web", "@kauak/web/**"];
 //   globals  globals (the browser's, Node's) that may not be used
 const RULES = [
   {
-    rule: "only the Herdr adapter (machine.js, herdr.js, remote.js) imports herdr.js",
+    rule: "only the Herdr adapter (machine.ts, herdr.ts, remote.ts) imports herdr.ts",
     files: ["**"],
     except: [...HERDR_ADAPTER, ...TESTS],
-    forbid: ["packages/bridge/src/herdr.js", "packages/kauak/bridge/herdr.js", "@kauak/bridge/herdr.js"],
+    forbid: ["packages/bridge/src/herdr.ts", "packages/kauak/bridge/herdr.js", "@kauak/bridge/herdr.ts"],
   },
   {
     rule: "the trackers reach a floor through the Machine they are given, not the Herdr adapter",
-    files: ["packages/bridge/src/context.js", "packages/bridge/src/diffs.js", "packages/bridge/src/commands.js"],
-    forbid: ["packages/bridge/src/machine.js", "packages/bridge/src/herdr.js", "@kauak/bridge/machine.js", "@kauak/bridge/herdr.js"],
+    files: ["packages/bridge/src/context.ts", "packages/bridge/src/diffs.ts", "packages/bridge/src/commands.ts"],
+    forbid: ["packages/bridge/src/machine.ts", "packages/bridge/src/herdr.ts", "@kauak/bridge/machine.ts", "@kauak/bridge/herdr.ts"],
   },
   {
     rule: "Herdr's method and event names stay in the Herdr adapter",

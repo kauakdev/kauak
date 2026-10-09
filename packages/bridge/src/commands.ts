@@ -5,18 +5,17 @@
 // skill and prompt files it would load for that folder. Files are only read on
 // this machine; a remote floor gets the built-ins.
 
-import { existsSync } from "node:fs";
+import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { SlashCommand } from "@kauak/protocol";
 
-/**
- * @typedef {{ name: string, description: string, hint?: string, aliases?: string[], source: string }} SlashCommand
- * `source` is where it comes from: "built-in", "project", "user", or a plugin's name.
- */
+/** A built-in command: name, description, then its argument hint and aliases if it has them. */
+type Builtin = [name: string, description: string, hint?: string, aliases?: string[]];
 
 /** Claude Code's own commands, as its menu shows them (from 2.1.286; account- and platform-gated ones left out). */
-const CLAUDE_BUILTINS = [
+const CLAUDE_BUILTINS: Builtin[] = [
   ["add-dir", "Add a new working directory", "<path>"],
   ["advisor", "Let Claude consult a stronger model at key moments"],
   ["autocompact", "Set how full the context gets before auto-summarizing", "[auto|<tokens>]"],
@@ -90,7 +89,7 @@ const CLAUDE_BUILTINS = [
 ];
 
 /** Codex's own commands (from codex-cli 0.159). */
-const CODEX_BUILTINS = [
+const CODEX_BUILTINS: Builtin[] = [
   ["apps", "manage apps"],
   ["cd", "change the current working directory"],
   ["clear", "clear the terminal and start a new chat"],
@@ -127,7 +126,7 @@ const CODEX_BUILTINS = [
   ["worktree", "start or continue a conversation in a new worktree"],
 ];
 
-const builtins = (rows) =>
+const builtins = (rows: Builtin[]): SlashCommand[] =>
   rows.map(([name, description, hint, aliases]) => ({
     name,
     description,
@@ -143,9 +142,8 @@ const MAX_DESCRIPTION = 200;
 /**
  * The commands `agent` would offer in `cwd`. `local` says whether the pane is
  * on this machine, where its files can be read.
- * @returns {Promise<SlashCommand[]>}
  */
-export async function slashCommands(agent, cwd, local) {
+export async function slashCommands(agent: string | null, cwd: string | null, local: boolean): Promise<SlashCommand[]> {
   if (agent === "claude") return dedupe([...builtins(CLAUDE_BUILTINS), ...(local ? await claudeFiles(cwd) : [])]);
   if (agent === "codex") return dedupe([...builtins(CODEX_BUILTINS), ...(local ? await codexPrompts() : [])]);
   return [];
@@ -153,7 +151,7 @@ export async function slashCommands(agent, cwd, local) {
 
 // ---------------------------------------------------------------- claude
 
-async function claudeFiles(cwd) {
+async function claudeFiles(cwd: string | null) {
   const home = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
   const projects = projectDirs(cwd);
   const out = [];
@@ -172,8 +170,8 @@ async function claudeFiles(cwd) {
  * a project's `.claude/` can sit at any of them. Never the home folder, whose
  * `.claude/` is the user's.
  */
-function projectDirs(cwd) {
-  const dirs = [];
+function projectDirs(cwd: string | null) {
+  const dirs: string[] = [];
   if (!cwd || !path.isAbsolute(cwd)) return dirs;
   const home = os.homedir();
   for (let dir = path.resolve(cwd); dir !== home; dir = path.dirname(dir)) {
@@ -184,7 +182,7 @@ function projectDirs(cwd) {
 }
 
 /** `name.md` files, in subfolders too (a subfolder names a group, not the command). */
-async function commandDir(dir, source, prefix = "") {
+async function commandDir(dir: string, source: string, prefix = "") {
   const out = [];
   for (const file of await walk(dir, 3)) {
     if (!file.endsWith(".md")) continue;
@@ -197,7 +195,7 @@ async function commandDir(dir, source, prefix = "") {
 }
 
 /** `<name>/SKILL.md` folders. A skill with `user-invocable: false` stays out of the menu. */
-async function skillDir(dir, source, prefix = "") {
+async function skillDir(dir: string, source: string, prefix = "") {
   const out = [];
   for (const entry of await list(dir)) {
     const head = await readHead(path.join(dir, entry, "SKILL.md"));
@@ -209,18 +207,28 @@ async function skillDir(dir, source, prefix = "") {
   return out;
 }
 
+/** ~/.claude/plugins/installed_plugins.json: each plugin's installs, for the user or for one project. */
+interface InstalledPlugins {
+  plugins?: Record<string, { scope?: string; projectPath?: string; installPath?: string }[]>;
+}
+
+/** A Claude Code settings file, for the plugins it turns on or off. */
+interface Settings {
+  enabledPlugins?: Record<string, boolean>;
+}
+
 /**
  * Commands and skills of the enabled plugins, as `/plugin:name`. A plugin
  * installed for one project only counts inside that project; `enabledPlugins`
  * in the user's settings, then the project's, say which are on.
  */
-async function pluginCommands(home, cwd, projects) {
-  const installed = await readJson(path.join(home, "plugins", "installed_plugins.json"));
+async function pluginCommands(home: string, cwd: string | null, projects: string[]) {
+  const installed = await readJson<InstalledPlugins>(path.join(home, "plugins", "installed_plugins.json"));
   if (!installed?.plugins || typeof installed.plugins !== "object") return [];
-  const enabled = { ...(await readJson(path.join(home, "settings.json")))?.enabledPlugins };
+  const enabled = { ...(await readJson<Settings>(path.join(home, "settings.json")))?.enabledPlugins };
   for (const dir of [...projects].reverse()) {
     for (const f of ["settings.json", "settings.local.json"])
-      Object.assign(enabled, (await readJson(path.join(dir, ".claude", f)))?.enabledPlugins);
+      Object.assign(enabled, (await readJson<Settings>(path.join(dir, ".claude", f)))?.enabledPlugins);
   }
   const here = cwd ? path.resolve(cwd) : "";
   const out = [];
@@ -228,8 +236,8 @@ async function pluginCommands(home, cwd, projects) {
     if (enabled[key] !== true || !Array.isArray(entries)) continue;
     const entry = entries.find((e) => e?.scope === "user" || (typeof e?.projectPath === "string" && inside(here, e.projectPath)));
     if (typeof entry?.installPath !== "string") continue;
-    const manifest = await readJson(path.join(entry.installPath, ".claude-plugin", "plugin.json"));
-    const name = typeof manifest?.name === "string" ? manifest.name : key.split("@")[0];
+    const manifest = await readJson<{ name?: string }>(path.join(entry.installPath, ".claude-plugin", "plugin.json"));
+    const name = typeof manifest?.name === "string" ? manifest.name : key.split("@")[0]!;
     out.push(...(await commandDir(path.join(entry.installPath, "commands"), name, `${name}:`)));
     out.push(...(await skillDir(path.join(entry.installPath, "skills"), name, `${name}:`)));
   }
@@ -254,13 +262,13 @@ async function codexPrompts() {
 
 // ---------------------------------------------------------------- helpers
 
-function command(name, description, hint, source) {
+function command(name: string, description: string | undefined, hint: string | undefined, source: string): SlashCommand {
   return { name, description: clip(description ?? ""), ...(hint ? { hint: clip(hint) } : {}), source };
 }
 
 /** The first command of a name wins: built-ins, then the project's, the user's, the plugins'. */
-function dedupe(cmds) {
-  const seen = new Set();
+function dedupe(cmds: SlashCommand[]) {
+  const seen = new Set<string>();
   return cmds.filter((c) => /^[\w.:-]+$/.test(c.name) && !seen.has(c.name) && seen.add(c.name));
 }
 
@@ -268,28 +276,28 @@ function dedupe(cmds) {
  * The `key: value` lines of a leading `---` block. Enough YAML for what these
  * files hold: plain or quoted one-line values, and `|` / `>` blocks.
  */
-function frontmatter(text) {
-  const meta = {};
+function frontmatter(text: string) {
+  const meta: Record<string, string> = {};
   const m = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
   if (!m) return { meta, body: text };
-  const lines = m[1].split(/\r?\n/);
+  const lines = m[1]!.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
-    const kv = /^([\w-]+):\s*(.*)$/.exec(lines[i]);
+    const kv = /^([\w-]+):\s*(.*)$/.exec(lines[i]!);
     if (!kv) continue;
-    let value = kv[2].trim();
+    let value = kv[2]!.trim();
     if (/^[|>][+-]?$/.test(value)) {
-      const block = [];
-      while (i + 1 < lines.length && (/^\s/.test(lines[i + 1]) || lines[i + 1] === "")) block.push(lines[++i].trim());
+      const block: string[] = [];
+      while (i + 1 < lines.length && (/^\s/.test(lines[i + 1]!) || lines[i + 1] === "")) block.push(lines[++i]!.trim());
       value = block.filter(Boolean).join(" ");
     } else if (/^(["']).*\1$/.test(value)) {
       value = value.slice(1, -1);
     }
-    meta[kv[1]] = value;
+    meta[kv[1]!] = value;
   }
   return { meta, body: text.slice(m[0].length) };
 }
 
-function firstLine(body) {
+function firstLine(body: string) {
   return (
     body
       .split(/\r?\n/)
@@ -298,17 +306,17 @@ function firstLine(body) {
   );
 }
 
-function clip(s) {
+function clip(s: string) {
   s = s.replace(/\s+/g, " ").trim();
   return s.length > MAX_DESCRIPTION ? `${s.slice(0, MAX_DESCRIPTION - 1)}…` : s;
 }
 
-function inside(dir, root) {
+function inside(dir: string, root: string) {
   const rel = path.relative(path.resolve(root), dir);
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
-async function list(dir) {
+async function list(dir: string) {
   try {
     return (await fs.readdir(dir)).filter((e) => !e.startsWith(".")).sort();
   } catch {
@@ -317,14 +325,14 @@ async function list(dir) {
 }
 
 /** Files under `dir`, `depth` folders deep at most. */
-async function walk(dir, depth) {
-  let entries;
+async function walk(dir: string, depth: number): Promise<string[]> {
+  let entries: Dirent[];
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
   } catch {
     return [];
   }
-  const out = [];
+  const out: string[] = [];
   for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     if (e.name.startsWith(".")) continue;
     const p = path.join(dir, e.name);
@@ -334,8 +342,8 @@ async function walk(dir, depth) {
   return out;
 }
 
-async function readHead(file) {
-  let fh;
+async function readHead(file: string) {
+  let fh: fs.FileHandle | undefined;
   try {
     fh = await fs.open(file, "r");
     const buf = Buffer.alloc(HEAD_BYTES);
@@ -348,7 +356,7 @@ async function readHead(file) {
   }
 }
 
-async function readJson(file) {
+async function readJson<T>(file: string): Promise<T | null> {
   try {
     return JSON.parse(await fs.readFile(file, "utf8"));
   } catch {

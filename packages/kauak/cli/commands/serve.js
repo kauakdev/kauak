@@ -40,8 +40,8 @@ export async function run(values) {
   }
 
   // The bridge starts listening when it is loaded, and reads the environment then.
-  const { ready } = await import(PACKED ? "../../bridge/server.js" : "../../../bridge/src/server.js");
-  const { LOCAL_SOCKET } = await import(PACKED ? "../../bridge/machine.js" : "../../../bridge/src/machine.js");
+  const { ready } = await import(PACKED ? "../../bridge/server.js" : "../../../bridge/src/server.ts");
+  const { LOCAL_SOCKET } = await import(PACKED ? "../../bridge/machine.js" : "../../../bridge/src/machine.ts");
   const url = await ready;
   if (!url) {
     console.error("kauak: the office page is missing from this install (run `pnpm build` in a checkout)");

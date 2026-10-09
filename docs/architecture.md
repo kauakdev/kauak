@@ -12,10 +12,10 @@ and errors stop at the bridge's Herdr adapter.
 Herdr on this machine (unix socket)     Herdr on another machine (through an SSH tunnel)
    │  Herdr's API: session.snapshot, events.subscribe, pane.read…
    ▼
-Herdr adapter    packages/bridge/src/machine.js + packages/bridge/src/herdr.js, one Machine per floor
+Herdr adapter    packages/bridge/src/machine.ts + packages/bridge/src/herdr.ts, one Machine per floor
    │  Kauak terms: info, snapshot, readPane, createRoom…
    ▼
-Bridge server    packages/bridge/src/server.js, with context.js, diffs.js and commands.js
+Bridge server    packages/bridge/src/server.ts, with context.ts, diffs.ts and commands.ts
    │  the Kauak protocol (packages/protocol), over a WebSocket
    ▼
 Page             packages/web/src/ws.ts → the office      (packages/web/src/demo.ts speaks it too, with no bridge)
@@ -30,22 +30,22 @@ code around them.
 to `packages/kauak/cli/main.js`, which finds the command in `COMMANDS`, parses
 its options and runs it; a new command is one module in
 `packages/kauak/cli/commands/` and one entry there. `kauak serve`
-(`packages/kauak/cli/commands/serve.js`) loads `packages/bridge/src/server.js`,
+(`packages/kauak/cli/commands/serve.js`) loads `packages/bridge/src/server.ts`,
 which starts listening as it is loaded and serves the built page
 (`packages/kauak/dist/`) on the same port as the WebSocket, so the office is one
 process and one URL. The npm package ships it as `dist/`, already built, with
 the bridge bundled beside the CLI (`prepack` does both), so an installed
-`kauak serve` needs no build. From a checkout the bridge runs from its source,
-TypeScript protocol included, on Node's type stripping. `pnpm dev` runs the
-bridge on its own and serves the page from Vite instead.
+`kauak serve` needs no build. From a checkout the bridge runs from its
+TypeScript source, protocol included, on Node's type stripping. `pnpm dev`
+runs the bridge on its own and serves the page from Vite instead.
 
 ## The Herdr adapter
 
-`packages/bridge/src/machine.js` is one Herdr server, shown as one floor. It
+`packages/bridge/src/machine.ts` is one Herdr server, shown as one floor. It
 talks to Herdr's unix socket (newline-delimited JSON, one request per
 connection), directly or through an SSH tunnel, keeps one long-lived
 `events.subscribe` connection, and on every event fetches `session.snapshot`
-again. `packages/bridge/src/herdr.js` turns that into a Kauak snapshot
+again. `packages/bridge/src/herdr.ts` turns that into a Kauak snapshot
 (`{ workspaces, panes }`), and Herdr's errors into plain sentences. What the
 bridge asks of a floor, a Machine offers in Kauak terms (`readPane`, `sendText`,
 `sendKeys`, `createDesk`, `createRoom`, `startAgent`, `focusPane`, the agent
@@ -59,7 +59,7 @@ then keeps one tunnel open (`ssh -N -L <local.sock>:<remote herdr.sock>
 
 ## The bridge server
 
-`packages/bridge/src/server.js` holds the floors (this machine, plus the ones
+`packages/bridge/src/server.ts` holds the floors (this machine, plus the ones
 saved in `~/.config/kauak/machines.json`) and speaks only the Kauak protocol. It
 broadcasts each floor's state and snapshot to every page, and every message
 about a floor names its machine. Each message from a page goes through
@@ -72,21 +72,21 @@ starts once the new shell is up.
 
 Three trackers add what Herdr does not report:
 
-- `packages/bridge/src/context.js` adds `context: { used, max }` to the Claude
+- `packages/bridge/src/context.ts` adds `context: { used, max }` to the Claude
   Code and Codex panes in each snapshot, from the last token count in the
   agent's transcript, and sends the snapshot again when that count changes. For
   a remote floor it keeps one more SSH connection open, running
   `packages/bridge/src/context_remote.py` there, and asks it for the counts in
   JSON lines.
-- `packages/bridge/src/diffs.js` adds `git_root` to every room in a git
+- `packages/bridge/src/diffs.ts` adds `git_root` to every room in a git
   checkout, prints a sheet for each file edit there (path, change, counts and
   unified hunks), keeps the last 50 for pages that connect later, and answers a
   printer's request for everything uncommitted; only checkouts a room is in are
   read. On a remote floor it does its git and file reads through
   `packages/bridge/src/diffs_remote.py` over its own SSH connection.
-  `packages/bridge/src/remote.js` runs both remote scripts, with the machine's
+  `packages/bridge/src/remote.ts` runs both remote scripts, with the machine's
   `python3`, so nothing is installed there.
-- `packages/bridge/src/commands.js` lists a pane's slash commands. The agent and
+- `packages/bridge/src/commands.ts` lists a pane's slash commands. The agent and
   its folder come from the snapshot, not from the page.
 
 The tests run the real server against a stand-in Herdr

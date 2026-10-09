@@ -1,5 +1,5 @@
 // A stand-in Herdr server for tests: a unix socket that speaks Herdr's
-// protocol as machine.js expects it (newline-delimited JSON, one request per
+// protocol as machine.ts expects it (newline-delimited JSON, one request per
 // connection, `events.subscribe` kept open) and answers from a fixture.
 // herdr-snapshot.json is a real 0.9.3 `session.snapshot`, scrubbed.
 

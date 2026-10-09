@@ -1,7 +1,7 @@
 // One Herdr server, shown in the office as one floor: the bridge's Herdr
-// adapter. server.js asks a Machine for what it needs in Kauak terms (its
+// adapter. server.ts asks a Machine for what it needs in Kauak terms (its
 // `info`, its `snapshot`, and operations like `readPane` or `createRoom`); this
-// file turns those into Herdr requests, and herdr.js turns Herdr's answers
+// file turns those into Herdr requests, and herdr.ts turns Herdr's answers
 // into the Kauak protocol (@kauak/protocol). Herdr's methods, fields and errors
 // go no further.
 //
@@ -17,13 +17,24 @@
 //   - `events.subscribe` is the exception: the connection stays open and streams
 //     `{"event": "...", "data": {...}}` envelopes
 
-import { execFile, spawn } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { RUNTIME, errorMessage, paneSession, toSnapshot } from "./herdr.js";
+import type { MachineInfo, RoomSpec, Snapshot } from "@kauak/protocol";
+import {
+  type AgentSession,
+  type HerdrError,
+  type HerdrMethod,
+  type HerdrResults,
+  type HerdrSnapshot,
+  RUNTIME,
+  errorMessage,
+  paneSession,
+  toSnapshot,
+} from "./herdr.ts";
 
 export const LOCAL_SOCKET =
   process.env.HERDR_SOCKET_PATH ?? process.env.HERDR_SOCKET ?? path.join(os.homedir(), ".config", "herdr", "herdr.sock");
@@ -84,7 +95,7 @@ let reqSeq = 0;
  * One request / one connection. Resolves with the parsed `result`; rejects
  * with Herdr's error message, its `code` and the `method` on the error.
  */
-function herdrRequest(socketPath, method, params = {}) {
+function herdrRequest<M extends HerdrMethod>(socketPath: string, method: M, params: object = {}): Promise<HerdrResults[M]> {
   return new Promise((resolve, reject) => {
     const id = `office:${++reqSeq}`;
     const sock = net.createConnection(socketPath);
@@ -112,13 +123,40 @@ function herdrRequest(socketPath, method, params = {}) {
   });
 }
 
+/** A floor's settings: its id and label, and the SSH target or local socket of its Herdr. */
+export interface MachineConfig {
+  id: string;
+  label: string;
+  ssh?: string | null;
+  socket?: string | null;
+  remoteSocket?: string | null;
+}
+
 /**
  * Emits "status" when `state`/`message` change, and "snapshot" with a fresh
  * Kauak snapshot after every Herdr event.
  * `state`: "connecting" → "live" ⇄ "down" (retries with backoff while down).
  */
 export class Machine extends EventEmitter {
-  constructor({ id, label, ssh = null, socket = null, remoteSocket = null }) {
+  id: string;
+  label: string;
+  ssh: string | null;
+  remoteSocket: string | null;
+  socketPath: string;
+  state: MachineInfo["state"];
+  message: string;
+  /** Herdr's latest `session.snapshot`; only this file and herdr.ts read it. */
+  raw: HerdrSnapshot | null;
+  /** The same as a Kauak Snapshot. */
+  snapshot: Snapshot | null;
+  tunnel: ChildProcess | null;
+  sub: net.Socket | null;
+  retryTimer: NodeJS.Timeout | null;
+  refreshTimer: NodeJS.Timeout | null;
+  attempt: number;
+  stopped: boolean;
+
+  constructor({ id, label, ssh = null, socket = null, remoteSocket = null }: MachineConfig) {
     super();
     this.id = id;
     this.label = label;
@@ -127,9 +165,7 @@ export class Machine extends EventEmitter {
     this.socketPath = ssh ? path.join(TUNNEL_DIR, `${id}.sock`) : (socket ?? LOCAL_SOCKET);
     this.state = "connecting";
     this.message = ssh ? `ssh ${ssh}…` : "";
-    /** Herdr's latest `session.snapshot`; only this file and herdr.js read it. */
     this.raw = null;
-    /** The same as a Kauak Snapshot. */
     this.snapshot = null;
     this.tunnel = null;
     this.sub = null;
@@ -140,7 +176,7 @@ export class Machine extends EventEmitter {
   }
 
   /** The floor's Kauak MachineInfo. */
-  get info() {
+  get info(): MachineInfo {
     return {
       id: this.id,
       label: this.label,
@@ -152,8 +188,8 @@ export class Machine extends EventEmitter {
   }
 
   /** Settings that go in the config file. */
-  get config() {
-    const c = { id: this.id, label: this.label };
+  get config(): MachineConfig {
+    const c: MachineConfig = { id: this.id, label: this.label };
     if (this.ssh) c.ssh = this.ssh;
     if (this.remoteSocket) c.remoteSocket = this.remoteSocket;
     if (!this.ssh && this.socketPath !== LOCAL_SOCKET) c.socket = this.socketPath;
@@ -166,27 +202,27 @@ export class Machine extends EventEmitter {
 
   stop() {
     this.stopped = true;
-    clearTimeout(this.retryTimer);
-    clearTimeout(this.refreshTimer);
+    clearTimeout(this.retryTimer as NodeJS.Timeout);
+    clearTimeout(this.refreshTimer as NodeJS.Timeout);
     this.sub?.destroy();
     this.closeTunnel();
   }
 
-  request(method, params) {
+  request<M extends HerdrMethod>(method: M, params?: object): Promise<HerdrResults[M]> {
     return herdrRequest(this.socketPath, method, params);
   }
 
   // ------------------------------------------------------------ Kauak operations
   //
-  // What server.js and the trackers ask of a floor. Each is a Herdr request or
-  // two; a failure rejects with a message fit to show (herdr.js).
+  // What server.ts and the trackers ask of a floor. Each is a Herdr request or
+  // two; a failure rejects with a message fit to show (herdr.ts).
 
-  focusPane(paneId) {
+  focusPane(paneId: string) {
     return this.call("pane.focus", { pane_id: paneId });
   }
 
   /** The pane's screen as ANSI text; with `lines`, the last `lines` rows of its history and screen. */
-  async readPane(paneId, lines = null) {
+  async readPane(paneId: string, lines: number | null = null): Promise<string> {
     const res = await this.call("pane.read", {
       pane_id: paneId,
       source: lines ? "recent" : "visible",
@@ -197,12 +233,12 @@ export class Machine extends EventEmitter {
     return res.read.text;
   }
 
-  sendText(paneId, text) {
+  sendText(paneId: string, text: string) {
     return this.call("pane.send_text", { pane_id: paneId, text });
   }
 
   /** Kauak's key names (KEY in @kauak/protocol) are Herdr's own, so they go as they are. */
-  async sendKeys(paneId, keys) {
+  async sendKeys(paneId: string, keys: string[]) {
     for (let i = 0; i < keys.length; i += MAX_KEYS_PER_CALL) {
       await this.call("pane.send_keys", { pane_id: paneId, keys: keys.slice(i, i + MAX_KEYS_PER_CALL) });
     }
@@ -215,22 +251,22 @@ export class Machine extends EventEmitter {
    * desk split off another came out as a narrow strip with the rest of the
    * panel empty.
    */
-  async createDesk(workspaceId) {
+  async createDesk(workspaceId: string): Promise<string> {
     const snap = this.raw;
     const room = snap?.workspaces.find((w) => w.workspace_id === workspaceId);
     if (!room) throw new Error("That room is gone.");
-    const panes = snap.panes.filter((p) => p.workspace_id === room.workspace_id);
+    const panes = snap!.panes.filter((p) => p.workspace_id === room.workspace_id);
     const cwd = room.worktree?.checkout_path ?? (panes.find((p) => p.tab_id === room.active_tab_id) ?? panes[0])?.cwd ?? null;
     const res = await this.call("tab.create", { workspace_id: room.workspace_id, cwd, focus: false });
     return res.root_pane.pane_id;
   }
 
   /**
-   * A new room (a Kauak RoomSpec, its folder already checked by server.js): a
+   * A new room (a Kauak RoomSpec, its folder already checked by server.ts): a
    * git worktree on a new branch, or a workspace in a folder. Returns its
    * first pane's id.
    */
-  async createRoom(room) {
+  async createRoom(room: RoomSpec): Promise<string> {
     const res =
       room.kind === "worktree"
         ? await this.call("worktree.create", {
@@ -245,34 +281,35 @@ export class Machine extends EventEmitter {
   }
 
   /** Start an agent of `kind` in a pane, once the pane's shell is ready for it. */
-  async startAgent(kind, paneId) {
+  async startAgent(kind: string, paneId: string) {
     // Agent names must be unique among live agents; the kind plus a random tag is.
     const name = `${kind}-${Math.random().toString(36).slice(2, 6)}`.slice(0, 32);
     for (const started = Date.now(); ; await new Promise((r) => setTimeout(r, AGENT_RETRY_MS))) {
       try {
         return await this.request("agent.start", { name, kind, pane_id: paneId });
       } catch (err) {
-        if (err.code !== "agent_pane_busy" || Date.now() - started > AGENT_WAIT_MS) throw new Error(errorMessage(err));
+        if ((err as HerdrError).code !== "agent_pane_busy" || Date.now() - started > AGENT_WAIT_MS)
+          throw new Error(errorMessage(err as HerdrError));
       }
     }
   }
 
   /** The agent session reported for the pane's agent (a transcript path or a session id), or null. */
-  paneSession(paneId) {
+  paneSession(paneId: string): AgentSession | null {
     return paneSession(this.raw, paneId);
   }
 
   /** The pids of the pane's foreground processes. */
-  async paneProcesses(paneId) {
+  async paneProcesses(paneId: string): Promise<number[]> {
     const res = await this.call("pane.process_info", { pane_id: paneId });
     return (res?.process_info?.foreground_processes ?? []).map((p) => p.pid).filter(Number.isInteger);
   }
 
-  async call(method, params) {
+  async call<M extends HerdrMethod>(method: M, params: object): Promise<HerdrResults[M]> {
     try {
       return await this.request(method, params);
     } catch (err) {
-      throw new Error(errorMessage(err));
+      throw new Error(errorMessage(err as HerdrError));
     }
   }
 
@@ -287,24 +324,24 @@ export class Machine extends EventEmitter {
       if (this.ssh && !this.tunnel) await this.openTunnel();
       this.subscribe();
     } catch (err) {
-      this.fail(err.message);
+      this.fail((err as Error).message);
     }
   }
 
   /** Mark the floor down and retry. A tunnel failure explains more than the connection drop it causes, so it wins. */
-  fail(message, fromTunnel = false) {
+  fail(message: string, fromTunnel = false) {
     if (this.stopped) return;
     this.sub?.destroy();
     this.sub = null;
     if (this.retryTimer && !fromTunnel) return;
     this.setState("down", message);
     if (this.retryTimer) return;
-    const wait = RETRY_MS[Math.min(this.attempt++, RETRY_MS.length - 1)];
+    const wait = RETRY_MS[Math.min(this.attempt++, RETRY_MS.length - 1)]!;
     console.warn(`[bridge] ${this.label}: ${message}; retrying in ${wait / 1000}s`);
     this.retryTimer = setTimeout(() => this.connect(), wait);
   }
 
-  setState(state, message = "") {
+  setState(state: MachineInfo["state"], message = "") {
     if (state === this.state && message === this.message) return;
     this.state = state;
     this.message = message;
@@ -327,12 +364,12 @@ export class Machine extends EventEmitter {
         this.scheduleRefresh();
       }
       buf += chunk;
-      let nl;
+      let nl: number;
       while ((nl = buf.indexOf("\n")) !== -1) {
         const line = buf.slice(0, nl).trim();
         buf = buf.slice(nl + 1);
         if (!line) continue;
-        let msg;
+        let msg: { event?: string; error?: unknown };
         try {
           msg = JSON.parse(line);
         } catch {
@@ -345,17 +382,17 @@ export class Machine extends EventEmitter {
         if (msg.event) this.scheduleRefresh();
       }
     });
-    const lost = (why) => {
+    const lost = (why: string) => {
       if (this.sub === sock) this.fail(why);
     };
-    sock.on("error", (err) =>
+    sock.on("error", (err: NodeJS.ErrnoException) =>
       lost(err.code === "ENOENT" || err.code === "ECONNREFUSED" ? `Herdr is not running (${err.code})` : err.message),
     );
     sock.on("close", () => lost(answered ? "Herdr closed the event stream" : `no reply from Herdr${this.ssh ? ` on ${this.ssh}` : ""}`));
   }
 
   scheduleRefresh() {
-    clearTimeout(this.refreshTimer);
+    clearTimeout(this.refreshTimer as NodeJS.Timeout);
     this.refreshTimer = setTimeout(() => {
       this.refresh().catch((err) => console.error(`[bridge] ${this.label}: snapshot failed:`, err.message));
     }, SNAPSHOT_DEBOUNCE_MS);
@@ -363,7 +400,7 @@ export class Machine extends EventEmitter {
 
   /** Fetch a fresh `session.snapshot` now and emit it as a Kauak snapshot. */
   async refresh() {
-    clearTimeout(this.refreshTimer);
+    clearTimeout(this.refreshTimer as NodeJS.Timeout);
     this.raw = (await this.request("session.snapshot")).snapshot;
     this.snapshot = toSnapshot(this.raw);
     this.attempt = 0;
@@ -397,7 +434,7 @@ export class Machine extends EventEmitter {
         "-L",
         `${this.socketPath}:${remote}`,
         "--",
-        this.ssh,
+        this.ssh!,
       ],
       { stdio: ["ignore", "ignore", "pipe"] },
     );
@@ -407,13 +444,14 @@ export class Machine extends EventEmitter {
     child.stderr.on("data", (d) => {
       stderr = (stderr + d).slice(-2000);
     });
-    const why = (code, signal) => lastLine(stderr) || (signal ? `killed by ${signal}` : `connection closed (exit ${code})`);
+    const why = (code: number | null, signal: NodeJS.Signals | null) =>
+      lastLine(stderr) || (signal ? `killed by ${signal}` : `connection closed (exit ${code})`);
 
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const started = Date.now();
       let settled = false;
       // ssh died before the socket showed up: forget it so the retry spawns a new one.
-      const died = (message) => {
+      const died = (message: string) => {
         if (settled) return;
         settled = true;
         clearInterval(poll);
@@ -450,8 +488,8 @@ export class Machine extends EventEmitter {
   }
 
   probeRemoteSocket() {
-    return new Promise((resolve, reject) => {
-      execFile(SSH, [...SSH_OPTS, "--", this.ssh, REMOTE_PROBE], { timeout: TUNNEL_READY_MS }, (err, stdout, stderr) => {
+    return new Promise<string>((resolve, reject) => {
+      execFile(SSH, [...SSH_OPTS, "--", this.ssh!, REMOTE_PROBE], { timeout: TUNNEL_READY_MS }, (err, stdout, stderr) => {
         if (!err) return resolve(stdout.trim());
         if (err.code === 3) return reject(new Error(`Herdr is not running on ${this.ssh} (no socket at ${stdout.trim()})`));
         reject(new Error(`ssh: ${lastLine(stderr) || err.message}`));
@@ -461,7 +499,7 @@ export class Machine extends EventEmitter {
 }
 
 /** Last line ssh printed, without its own "ssh: " prefix. */
-export function lastLine(s) {
+export function lastLine(s: string): string {
   return (
     s
       .trim()

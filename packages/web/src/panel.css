@@ -1,0 +1,386 @@
+/* ---- terminal panel ---- */
+#panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--panel-w);
+  background: var(--card);
+  border-left: 1px solid var(--line-2);
+  transform: translateX(100%);
+  transition: transform 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -12px 0 30px #0008;
+  z-index: 8;
+}
+#panel.open {
+  transform: none;
+}
+#panel-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  cursor: ew-resize;
+  touch-action: none;
+  z-index: 1;
+}
+#panel-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  transition: background 0.15s ease;
+}
+#panel-resize:hover::after,
+body.resizing-panel #panel-resize::after {
+  background: var(--accent);
+}
+#panel:not(.open) #panel-resize {
+  display: none;
+}
+body.resizing-panel,
+body.resizing-panel * {
+  cursor: ew-resize !important;
+  user-select: none;
+}
+#panel header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+#panel header .status {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--unknown);
+  flex: none;
+}
+#panel[data-status="working"] .status {
+  background: var(--working);
+}
+#panel[data-status="idle"] .status {
+  background: var(--idle);
+}
+#panel[data-status="blocked"] .status {
+  background: var(--blocked);
+  animation: pulse 1s infinite;
+}
+#panel[data-status="done"] .status {
+  background: var(--done);
+}
+#panel header .text {
+  flex: 1;
+  min-width: 0;
+}
+#panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#panel-meta {
+  font-size: 11px;
+  opacity: 0.65;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--mono);
+}
+#panel-kind {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: #ffffff14;
+}
+#panel-kind[data-kind="claude"] {
+  background: #d97757;
+  color: #1a1a1a;
+}
+#panel-kind[data-kind="codex"] {
+  background: #2ec4b6;
+  color: #1a1a1a;
+}
+#panel-kind[data-kind="gemini"] {
+  background: #6f7bf7;
+}
+#panel-kind[data-kind="copilot"] {
+  background: #9b7bff;
+}
+#panel-kind[data-kind="cursor"] {
+  background: #e0e0e0;
+  color: #1a1a1a;
+}
+#panel-kind[data-kind="opencode"] {
+  background: #f4a261;
+  color: #1a1a1a;
+}
+#panel-status {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+#panel-ctx {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#panel-ctx .ctx {
+  width: 44px;
+}
+#panel-ctx[hidden] {
+  display: none;
+}
+#panel header button {
+  background: #232739;
+  color: var(--text);
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+#panel header button:hover {
+  background: #2e3350;
+}
+#panel header button.primary {
+  background: #3b4470;
+  border-color: #55609a;
+}
+#panel-term {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  padding: 8px;
+}
+#panel-term .xterm {
+  opacity: 0.97;
+  /* xterm's hidden input box can sit outside the screen after a font change */
+  overflow: hidden;
+}
+#panel-input {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px calc(8px + var(--sab));
+  border-top: 1px solid var(--line);
+}
+#panel-input .compose {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--card-2);
+}
+#panel-input .compose:focus-within {
+  border-color: #55609a;
+  box-shadow: 0 0 0 1px #55609a;
+}
+#panel-text {
+  flex: 1;
+  min-width: 0;
+  max-height: 10em;
+  overflow-y: auto;
+  resize: none;
+  border: 0;
+  outline: 0;
+  padding: 5px 0;
+  background: transparent;
+  color: var(--text);
+  font: 13px / 1.45 var(--mono);
+}
+#panel-text::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+#panel-input button {
+  background: #232739;
+  color: var(--text);
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  cursor: pointer;
+}
+#panel-input button:hover {
+  background: #2e3350;
+}
+#panel-input button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+#panel-send {
+  flex: none;
+  padding: 5px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+#panel-take {
+  flex: none;
+  align-self: center;
+  padding: 3px 7px;
+  font: 600 11px var(--mono);
+  color: var(--muted) !important;
+}
+/* The "/" menu floats over the bottom of the mirror, names in one column and descriptions in the next. */
+#panel-slash {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(100% + 4px);
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: fit-content(45%) minmax(0, 1fr) auto;
+  column-gap: 14px;
+  align-content: start;
+  max-height: min(290px, 45vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--card-2);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  box-shadow: 0 -8px 24px #0009;
+}
+#panel-slash[hidden] {
+  display: none;
+}
+/* Floats over the bottom of the mirror while it is scrolled back into history. */
+#panel-live {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  z-index: 1;
+  padding: 5px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+  border-radius: 999px !important;
+  box-shadow: 0 4px 14px #0009;
+}
+#panel-live[hidden] {
+  display: none;
+}
+#panel-slash li {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+#panel-slash li[aria-selected="true"] {
+  background: #2e3350;
+}
+#panel-slash li > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#panel-slash .n {
+  font: 600 12px var(--mono);
+}
+#panel-slash li[aria-selected="true"] .n {
+  color: var(--accent);
+}
+#panel-slash .a {
+  font-weight: 400;
+  color: var(--muted);
+}
+#panel-slash .d {
+  grid-column: 2;
+  font-size: 12px;
+  color: var(--muted);
+}
+#panel-slash .s {
+  grid-column: 3;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  max-width: 16ch;
+  justify-self: end;
+}
+#panel-send.primary {
+  background: #3b4470;
+  border-color: #55609a;
+}
+#panel-send.primary:hover {
+  background: #46518a;
+}
+#panel-input .keys {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#panel-input .keys [role="toolbar"] {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+#panel-input .keys button {
+  font: 600 11px var(--mono);
+  min-width: 30px;
+  padding: 4px 7px;
+}
+#panel-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+  opacity: 0.75;
+  text-align: right;
+  overflow-wrap: anywhere;
+  transition: color 0.15s ease;
+}
+#panel-hint.warn {
+  opacity: 1;
+  color: var(--blocked);
+}
+
+@media (max-width: 900px) {
+  #panel-resize {
+    display: none;
+  }
+  /* 16px keeps iOS from zooming in when the message box takes focus. */
+  #panel-text {
+    font-size: 16px;
+  }
+  #panel-slash {
+    grid-template-columns: fit-content(55%) minmax(0, 1fr) auto;
+  }
+  #panel-slash .s {
+    display: none;
+  }
+  #panel-hint:not(.warn) {
+    display: none;
+  }
+  #panel-ctx .pct {
+    display: none;
+  }
+  #panel-ctx .ctx {
+    width: 28px;
+  }
+}

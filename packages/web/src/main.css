@@ -1,0 +1,225 @@
+:root {
+  color-scheme: dark;
+  --bg: #171a26;
+  --card: #0f1118;
+  --card-2: #161a26;
+  --line: #2a2e3f;
+  --line-2: #3a3f55;
+  --text: #e8e9f0;
+  --muted: #9aa0b4;
+  --accent: #ffd166;
+  --working: #5ad87a;
+  --idle: #8fb4ff;
+  --blocked: #ff6b6b;
+  --done: #ffd166;
+  --unknown: #7a7f93;
+  --ctx-ok: #7fd1b9;
+  --ctx-warn: #ffb347;
+  --ctx-full: #ff6b6b;
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  /* --panel-custom: the width the panel's edge was dragged to (panel.ts). */
+  --panel-w: var(--panel-custom, min(920px, 62vw));
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
+  --mono: ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  overflow: hidden;
+  font-family: var(--font);
+  color: var(--text);
+  font-size: 13px;
+}
+#app {
+  position: fixed;
+  inset: 0;
+}
+#app canvas {
+  display: block;
+}
+button {
+  font: inherit;
+  color: inherit;
+}
+.card {
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px #0006;
+}
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--unknown);
+  flex: none;
+}
+/* Context meter: how full an agent's context window is (web/src/context.ts). */
+.ctx {
+  display: inline-block;
+  position: relative;
+  width: 28px;
+  height: 5px;
+  border-radius: 3px;
+  background: #ffffff14;
+  box-shadow: inset 0 0 0 1px var(--line-2);
+  overflow: hidden;
+  flex: none;
+}
+.ctx i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+  border-radius: 3px;
+  background: var(--ctx-ok);
+}
+.ctx.warn i {
+  background: var(--ctx-warn);
+}
+.ctx.full i {
+  background: var(--ctx-full);
+}
+.st-working .dot {
+  background: var(--working);
+}
+.st-idle .dot {
+  background: var(--idle);
+}
+.st-blocked .dot {
+  background: var(--blocked);
+  box-shadow: 0 0 0 0 var(--blocked);
+  animation: ping 1.4s infinite;
+}
+.st-done .dot {
+  background: var(--done);
+}
+.st-unknown .dot {
+  background: var(--unknown);
+}
+@keyframes ping {
+  0% {
+    box-shadow: 0 0 0 0 #ff6b6b99;
+  }
+  100% {
+    box-shadow: 0 0 0 7px #ff6b6b00;
+  }
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ---- shared by several features: before all of their rules, so theirs win ties ---- */
+.btn {
+  background: var(--card-2);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 5px 9px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1;
+}
+.btn:hover {
+  background: #2e3350;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.btn kbd {
+  font: inherit;
+  opacity: 0.55;
+  margin-left: 5px;
+}
+#roster header,
+#feed header,
+#floors header,
+#radio header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+.btn.primary {
+  background: #3b4470;
+  border-color: #55609a;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- floor banner (shown when the elevator arrives) ---- */
+#floor-banner {
+  position: fixed;
+  left: 50%;
+  top: calc(66px + var(--sat));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 16px 7px 8px;
+  border-radius: 999px;
+  background: #0f1118e6;
+  border: 1px solid var(--line-2);
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 6;
+  white-space: nowrap;
+  box-shadow: 0 8px 24px #0006;
+}
+#floor-banner b {
+  color: #1a1a1a;
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 12px;
+}
+#floor-banner.show {
+  animation: banner 1.6s ease forwards;
+}
+@keyframes banner {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+  15%,
+  70% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  :root {
+    --panel-w: 100vw;
+  }
+  .btn kbd {
+    display: none;
+  }
+}

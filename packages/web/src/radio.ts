@@ -6,6 +6,7 @@
 // and how they're chosen.
 
 import { STATIONS, type Station } from "./stations";
+import "./radio.css";
 
 const MIN = 87.5,
   MAX = 108;

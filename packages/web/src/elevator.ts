@@ -4,6 +4,7 @@
 
 import { floorProblem, runtimeOf, type Floor } from "./floors";
 import type { AgentStatus } from "@kauak/protocol";
+import "./elevator.css";
 
 export interface ElevatorHandlers {
   onPick(floor: string): void;

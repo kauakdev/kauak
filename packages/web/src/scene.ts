@@ -24,6 +24,7 @@ import { printerOf, type Prints } from "./prints";
 import type { Tray } from "./printout";
 import { makeLounge, whereabouts, type Block, type Seat } from "./roam";
 import type { PaneInfo, Snapshot } from "@kauak/protocol";
+import "./scene.css";
 
 const labelStyle = new TextStyle({ fill: 0xe8e9f0, fontSize: 13, fontFamily: "ui-sans-serif, system-ui, sans-serif", fontWeight: "600" });
 const subStyle = new TextStyle({ fill: 0xaab0c8, fontSize: 11, fontFamily: "ui-sans-serif, system-ui, sans-serif" });

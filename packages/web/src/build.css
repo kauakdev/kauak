@@ -1,0 +1,184 @@
+/* ---- build mode (see build.ts) ---- */
+#btn-build[aria-pressed="true"] {
+  background: #ffd16626;
+  border-color: #ffd16688;
+  color: var(--accent);
+}
+#build-form {
+  position: fixed;
+  width: 300px;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+}
+#build-form[hidden],
+#build-form [hidden] {
+  display: none !important;
+}
+#build-form header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+#build-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#build-form .x {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+#build-form .x:hover {
+  color: var(--text);
+}
+#build-form .body {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#build-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+#build-form .opt {
+  opacity: 0.6;
+}
+#build-form input:not([type="radio"]),
+#build-form select {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--card-2);
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 6px 8px;
+  min-width: 0;
+}
+#build-form input:focus,
+#build-form select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+#build-form .kinds {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--card-2);
+  border: 1px solid var(--line-2);
+}
+#build-form .kinds label {
+  flex: 1;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 0;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+#build-form .kinds input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+#build-form .kinds label:has(input:checked) {
+  background: #3b4470;
+  color: var(--text);
+}
+#build-form .kinds label:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+}
+#build-form .pair {
+  display: flex;
+  gap: 6px;
+}
+#build-form .pair label {
+  flex: 1;
+  min-width: 0;
+}
+#build-form .note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+#build-form .err {
+  margin: 0;
+  font-size: 11px;
+  color: var(--blocked);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+#build-form .row {
+  display: flex;
+  gap: 6px;
+}
+#build-hint {
+  display: none;
+  position: fixed;
+  bottom: calc(14px + var(--sab));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #1a1a1a;
+  background: var(--accent);
+  z-index: 3;
+  white-space: nowrap;
+  pointer-events: none;
+}
+body.building #build-hint {
+  display: block;
+}
+body.building #hint {
+  display: none;
+}
+body.panel-open #build-hint {
+  display: none;
+}
+#toast {
+  position: fixed;
+  left: 50%;
+  top: calc(66px + var(--sat));
+  transform: translateX(-50%);
+  max-width: min(520px, calc(100vw - 24px));
+  padding: 9px 14px;
+  font-size: 12px;
+  line-height: 1.45;
+  border-left: 3px solid var(--blocked);
+  z-index: 9;
+  cursor: pointer;
+}
+#toast[hidden] {
+  display: none;
+}
+#tip[data-status="build"] {
+  border-left-color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  #build-hint {
+    display: none !important;
+  }
+}

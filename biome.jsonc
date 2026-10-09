@@ -3,8 +3,8 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     // JavaScript, TypeScript, JSON and CSS only. Markdown, the Python helpers and packages/web/index.html
-    // (whose inline CSS moves out later) keep their hand formatting; the Herdr snapshot in
-    // packages/bridge/src/runtimes/herdr/fixtures/ is a scrubbed real one, kept as Herdr wrote it.
+    // keep their hand formatting; the Herdr snapshot in packages/bridge/src/runtimes/herdr/fixtures/
+    // is a scrubbed real one, kept as Herdr wrote it.
     "includes": [
       "**/*.js",
       "**/*.mjs",
@@ -34,7 +34,9 @@
       "preset": "recommended",
       "style": {
         // tsconfig's noUncheckedIndexedAccess makes `list[i]!` how the page says an index is in range.
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "off",
+        // The page's CSS is ordered by feature, and reordering it for this rule could change which rule wins.
+        "noDescendingSpecificity": "off"
       },
       "suspicious": {
         // The bridge and the page read terminal output: escape characters are what the patterns match.

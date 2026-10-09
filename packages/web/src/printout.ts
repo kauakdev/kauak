@@ -16,6 +16,7 @@
 
 import type { Prints } from "./prints";
 import type { DiffSheet, FileDiff, Uncommitted } from "@kauak/protocol";
+import "./printout.css";
 
 /** Where a printer's top sheet is on screen, and the office's zoom. */
 export interface Tray {

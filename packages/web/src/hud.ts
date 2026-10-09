@@ -6,6 +6,7 @@
 import { contextLevel, contextPercent, contextText } from "./context";
 import { floorOf, floorProblem, runtimeOf, type Floor } from "./floors";
 import type { AgentStatus, PaneInfo, Snapshot } from "@kauak/protocol";
+import "./hud.css";
 
 const ORDER: AgentStatus[] = ["working", "idle", "blocked", "done", "unknown"];
 const MAX_FEED = 40;

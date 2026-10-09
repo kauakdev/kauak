@@ -1,0 +1,46 @@
+/* ---- tooltip ---- */
+#tip {
+  position: fixed;
+  pointer-events: none;
+  background: #0f1118f2;
+  border: 1px solid var(--line-2);
+  border-left: 3px solid var(--unknown);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  max-width: 340px;
+  display: none;
+  white-space: pre-wrap;
+  z-index: 9;
+  box-shadow: 0 8px 24px #0008;
+}
+#tip b {
+  color: var(--accent);
+}
+#tip .muted {
+  opacity: 0.65;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+#tip[data-status="working"] {
+  border-left-color: var(--working);
+}
+#tip[data-status="idle"] {
+  border-left-color: var(--idle);
+}
+#tip[data-status="blocked"] {
+  border-left-color: var(--blocked);
+}
+#tip[data-status="done"] {
+  border-left-color: var(--done);
+}
+#tip[data-status="print"] {
+  border-left-color: var(--accent);
+}
+#tip .add {
+  color: var(--working);
+}
+#tip .del {
+  color: var(--blocked);
+}

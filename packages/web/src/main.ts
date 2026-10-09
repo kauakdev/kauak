@@ -1,3 +1,5 @@
+// First, so the page-wide rules come before every feature's in the stylesheet and lose ties to them.
+import "./main.css";
 import { BuildMode } from "./build";
 import { Elevator } from "./elevator";
 import { EMPTY_SNAPSHOT, floorOf, keyOf, mergeSnapshots, namespaceSnapshot, type Floor } from "./floors";

@@ -1,0 +1,98 @@
+/* ---- demo card (demo mode only, see demo.ts) ---- */
+#demo {
+  position: fixed;
+  left: 50%;
+  bottom: calc(40px + var(--sab));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 6px 7px 8px;
+  max-width: calc(100vw - 24px);
+  font-size: 12px;
+  z-index: 5;
+}
+#demo[hidden],
+body.panel-open #demo {
+  display: none;
+}
+#demo .tag {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #1a1a1a;
+  background: var(--accent);
+  padding: 3px 7px;
+  border-radius: 5px;
+}
+#demo .txt {
+  color: var(--muted);
+  white-space: nowrap;
+}
+#demo .cmd {
+  font: 600 12px var(--mono);
+  background: #0b0d13;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  padding: 5px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#demo .cmd span {
+  color: var(--muted);
+}
+#demo .cmd i {
+  font: 500 10px var(--font);
+  font-style: normal;
+  color: var(--muted);
+  margin-left: 6px;
+}
+#demo .cmd:hover {
+  border-color: var(--accent);
+}
+#demo .cmd:focus-visible,
+#demo a:focus-visible,
+#demo .x:focus-visible {
+  outline: 2px solid var(--accent);
+}
+#demo a {
+  text-decoration: none;
+  white-space: nowrap;
+}
+#demo .x {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+#demo .x:hover {
+  color: var(--text);
+}
+@media (max-width: 1350px) {
+  #demo .txt {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  /* On phones the card is a strip under the top bar, and the elevator and radio move down below it. */
+  #demo {
+    top: calc(56px + var(--sat));
+    bottom: auto;
+    left: calc(12px + var(--sal));
+    right: calc(12px + var(--sar));
+    transform: none;
+    max-width: none;
+    justify-content: space-between;
+  }
+  #demo .cmd i {
+    display: none;
+  }
+  body.demo-card #floors,
+  body.demo-card #radio {
+    top: calc(102px + var(--sat));
+  }
+}

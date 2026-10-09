@@ -4,6 +4,7 @@
 // from the page's state (app/state.ts), re-rendering when they change.
 
 import type { AppState } from "../app/state";
+import { escapeHtml } from "../app/html";
 import { floorProblem, runtimeOf } from "./floors";
 import type { AgentStatus } from "@kauak/protocol";
 import "./elevator.css";
@@ -116,12 +117,12 @@ export class Elevator {
         const tip = `${f.number}F · ${info.label}${info.runtime.version ? ` · ${runtimeOf(info)}` : ""}\n${info.state}${info.message ? `: ${info.message}` : ""}\nkey ${f.number <= 9 ? f.number : "—"}`;
         return (
           `<div class="floor conn-${info.state} ${info.id === current ? "current" : ""}" role="listitem">` +
-          `<button class="go" data-floor="${esc(info.id)}" title="${esc(tip)}" ${info.id === current ? 'aria-current="true"' : ""}>` +
-          `<span class="fn">${f.number}F</span><span class="txt"><span class="name">${esc(info.label)}</span><span class="sub">${esc(sub)}</span></span>` +
+          `<button class="go" data-floor="${escapeHtml(info.id)}" title="${escapeHtml(tip)}" ${info.id === current ? 'aria-current="true"' : ""}>` +
+          `<span class="fn">${f.number}F</span><span class="txt"><span class="name">${escapeHtml(info.label)}</span><span class="sub">${escapeHtml(sub)}</span></span>` +
           `<span class="badges">${badges}<i class="conn-dot"></i></span></button>` +
           (info.id === "local"
             ? ""
-            : `<button class="rm" data-rm="${esc(info.id)}" title="Remove this floor" aria-label="Remove floor ${esc(info.label)}">×</button>`) +
+            : `<button class="rm" data-rm="${escapeHtml(info.id)}" title="Remove this floor" aria-label="Remove floor ${escapeHtml(info.label)}">×</button>`) +
           `</div>`
         );
       })
@@ -147,8 +148,4 @@ export class Elevator {
     this.showError("");
     if (open) this.input.focus();
   }
-}
-
-function esc(s: string): string {
-  return s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
 }

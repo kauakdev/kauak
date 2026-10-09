@@ -214,7 +214,7 @@ floors only through them. Its code is in feature folders under
 
 | Folder | What is in it |
 |---|---|
-| `app/` | `main.ts`, which builds the page and connects its parts; `state.ts`, the page's state; `storage.ts`, its saved preferences; `context.ts`, the context meter's numbers; the page-wide styles. |
+| `app/` | `main.ts`, which builds the page and connects its parts; `state.ts`, the page's state; `storage.ts`, its saved preferences; `context.ts`, the context meter's numbers; `html.ts`, the page's one HTML escape; the page-wide styles. |
 | `bridge/` | `ws.ts`, the connection to the bridge, and `demo.ts`, a simulated bridge. |
 | `office/` | The office: `layout.ts`, `iso.ts`, `scene.ts` and its parts, `props.ts`, `character.ts`, `roam.ts`, and build mode's form (`build.ts`). |
 | `floors/` | Floor keys and why a floor is down (`floors.ts`), and the elevator (`elevator.ts`). |

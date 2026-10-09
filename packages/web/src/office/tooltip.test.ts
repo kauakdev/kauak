@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { Tooltip, escapeHtml } from "./tooltip";
+import { Tooltip } from "./tooltip";
 import type { PaneInfo } from "@kauak/protocol";
 
 // The tooltip keeps itself inside the window.
@@ -19,13 +19,6 @@ const pane = (focused: boolean): PaneInfo => ({
   screen: null,
   scrollback: false,
   context: null,
-});
-
-test("escapeHtml makes names and titles safe to put in a tooltip's HTML or a double-quoted attribute", () => {
-  expect(escapeHtml(`<img src=x onerror="alert(1)"> & co`)).toBe("&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; co");
-  expect(escapeHtml("&amp;")).toBe("&amp;amp;");
-  expect(escapeHtml("it's fine · ✓")).toBe("it's fine · ✓");
-  expect(escapeHtml("")).toBe("");
 });
 
 test("a focused desk's tooltip names what runs its floor, escaped", () => {

@@ -20,7 +20,7 @@ import { CELL, WALL, type Desk, type Office, type Plot, type Room, type Spot, ty
 import * as P from "./props";
 import { printerOf } from "../printers/prints";
 import { makeLounge, type Block, type Seat } from "./roam";
-import { escapeHtml } from "./tooltip";
+import { escapeHtml } from "../app/html";
 import type { PaneInfo, Snapshot } from "@kauak/protocol";
 
 const labelStyle = new TextStyle({ fill: 0xe8e9f0, fontSize: 13, fontFamily: "ui-sans-serif, system-ui, sans-serif", fontWeight: "600" });

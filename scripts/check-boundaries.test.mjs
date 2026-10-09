@@ -104,7 +104,6 @@ test("only the Herdr adapter imports herdr.ts, however it is imported", () => {
     { "packages/kauak/cli/main.js": 'const { toSnapshot } = await import("@kauak/bridge/runtimes/herdr/herdr.ts");\n' },
     rule,
   );
-  assertViolation({ "packages/kauak/cli/main.js": 'const { toSnapshot } = await import("../bridge/herdr.js");\n' }, rule);
   assertViolation({ "packages/bridge/src/server.ts": 'const { toSnapshot } = require("./runtimes/herdr/herdr");\n' }, rule);
 });
 

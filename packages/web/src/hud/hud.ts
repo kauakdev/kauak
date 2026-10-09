@@ -5,6 +5,7 @@
 // connection chip and the empty state describe the floor on screen.
 
 import { contextLevel, contextPercent, contextText } from "../app/context";
+import { escapeHtml } from "../app/html";
 import type { AppState } from "../app/state";
 import { load, save } from "../app/storage";
 import { floorOf, floorProblem, runtimeOf, type Floor } from "../floors/floors";
@@ -248,7 +249,7 @@ export class Hud {
       if (many) {
         html.push(
           `<h2 class="floor-h conn-${f.info.state} ${f.info.id === this.current ? "current" : ""}"><span class="fn">${f.number}F</span>` +
-            `<span class="name">${esc(f.info.label)}</span>${state ? `<span class="state" title="${esc(f.info.message)}">${esc(state)}</span>` : ""}</h2>`,
+            `<span class="name">${escapeHtml(f.info.label)}</span>${state ? `<span class="state" title="${escapeHtml(f.info.message)}">${escapeHtml(state)}</span>` : ""}</h2>`,
         );
       }
       if (f.snapshot) html.push(`<div class="floor-body conn-${f.info.state}">${this.rosterGroups(f.snapshot, f.info.runtime.name)}</div>`);
@@ -269,21 +270,21 @@ export class Hud {
       const name = ws.repo?.name ?? (panes[0]?.cwd?.split("/").pop() || "loose");
       const g = groups.get(key) ?? { name, rows: [] };
       g.rows.push(
-        `<div class="room"><span>${esc(ws.label || ws.workspace_id)}</span>${ws.focused ? `<em title="focused in ${esc(runtime)}">●</em>` : ""}</div>`,
+        `<div class="room"><span>${escapeHtml(ws.label || ws.workspace_id)}</span>${ws.focused ? `<em title="focused in ${escapeHtml(runtime)}">●</em>` : ""}</div>`,
       );
       for (const p of panes) {
         this.order.push(p.pane_id);
         const t = this.tracked.get(p.pane_id);
         const title = p.title || p.cwd?.split("/").pop() || p.pane_id;
         g.rows.push(
-          `<button class="pane st-${p.agent_status} ${p.pane_id === this.state.selected ? "selected" : ""}" data-pane="${esc(p.pane_id)}">` +
-            `<i class="dot"></i><span class="kind">${esc(p.agent ?? "shell")}</span><span class="title">${esc(title)}</span>${contextMeter(p)}` +
+          `<button class="pane st-${p.agent_status} ${p.pane_id === this.state.selected ? "selected" : ""}" data-pane="${escapeHtml(p.pane_id)}">` +
+            `<i class="dot"></i><span class="kind">${escapeHtml(p.agent ?? "shell")}</span><span class="title">${escapeHtml(title)}</span>${contextMeter(p)}` +
             `<span class="age" data-since="${t?.since ?? Date.now()}">${ago(t?.since ?? Date.now())}</span></button>`,
         );
       }
       groups.set(key, g);
     }
-    return [...groups.values()].map((g) => `<section><h3>${esc(g.name)}</h3>${g.rows.join("")}</section>`).join("");
+    return [...groups.values()].map((g) => `<section><h3>${escapeHtml(g.name)}</h3>${g.rows.join("")}</section>`).join("");
   }
 
   private renderFeed() {
@@ -298,7 +299,7 @@ export class Hud {
       .map((it) => {
         const n = numberOf.get(it.floor);
         const tag = many && n ? `<b class="fl">${n}F</b>` : "";
-        return `<button class="ev st-${it.status}" data-pane="${esc(it.paneId)}"><i class="dot"></i><span>${tag}${esc(it.text)}</span><time data-since="${it.at}">${ago(it.at)}</time></button>`;
+        return `<button class="ev st-${it.status}" data-pane="${escapeHtml(it.paneId)}"><i class="dot"></i><span>${tag}${escapeHtml(it.text)}</span><time data-since="${it.at}">${ago(it.at)}</time></button>`;
       })
       .join("");
     for (const el of this.feed.querySelectorAll<HTMLElement>(".ev"))
@@ -323,7 +324,7 @@ export class Hud {
 function contextMeter(p: PaneInfo): string {
   const c = p.context;
   if (!c) return "<span></span>";
-  return `<span class="ctx ${contextLevel(c)}" title="Context: ${esc(contextText(c))}"><i style="width:${contextPercent(c)}"></i></span>`;
+  return `<span class="ctx ${contextLevel(c)}" title="Context: ${escapeHtml(contextText(c))}"><i style="width:${contextPercent(c)}"></i></span>`;
 }
 
 function ago(ts: number): string {
@@ -334,8 +335,4 @@ function ago(ts: number): string {
   if (m < 60) return `${m}m`;
   const h = Math.round(m / 60);
   return h < 48 ? `${h}h` : `${Math.round(h / 24)}d`;
-}
-
-function esc(s: string): string {
-  return s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
 }

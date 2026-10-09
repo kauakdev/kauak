@@ -203,7 +203,7 @@ describe("findPath", () => {
     ]);
   });
 
-  test("an unreachable goal gets a straight line to it", () => {
+  test("an unreachable goal gets a straight line to it, so an agent with work still gets back to its desk", () => {
     const l = makeLounge("w1", 6, 4, [{ x: 2.5, y: 0, w: 1, d: 4 }], null, [], []);
     expect(findPath(l, { x: 1, y: 1 }, { x: 5, y: 1 })).toStrictEqual([{ x: 5, y: 1 }]);
   });

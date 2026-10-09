@@ -85,7 +85,8 @@ export function buildOffice(snap: Snapshot, build = false): Office {
     panesByWs.set(p.workspace_id, list);
   }
 
-  // Group by repository. Workspaces without a repo share a "loose" wing.
+  // Group by repository, or by folder (below). A wing in "/" and one with no folder are both named "loose",
+  // but stay apart: they are different folders, and a new room opens in its wing's folder (build.ts).
   const groups = new Map<string, { name: string; ws: WorkspaceInfo[] }>();
   for (const ws of [...snap.workspaces].sort((a, b) => a.number - b.number)) {
     // The runtime may not know a workspace's repository (Herdr only does for

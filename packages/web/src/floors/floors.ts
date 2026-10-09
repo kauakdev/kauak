@@ -20,7 +20,7 @@ export function floorProblem(info: MachineInfo): string {
   const m = info.message;
   if (/timed out/i.test(m)) return "offline · ssh timed out";
   if (/Permission denied/i.test(m)) return "ssh key refused";
-  if (/Host key verification failed/i.test(m)) return `unknown host key · run ssh ${info.ssh ?? ""} once`;
+  if (/Host key verification failed/i.test(m)) return info.ssh ? `unknown host key · run ssh ${info.ssh} once` : "unknown host key";
   if (/Could not resolve hostname|Name or service not known/i.test(m)) return "unknown host";
   if (/Connection refused/i.test(m)) return "ssh refused the connection";
   const runtime = info.runtime.name;
@@ -42,6 +42,7 @@ export function keyOf(machine: string, id: string): string {
 
 /** Machine ids never contain "/", pane and workspace ids may, so split at the first one. */
 export function splitKey(key: string): { machine: string; id: string } {
+  // Every key comes from keyOf (a ?pane= link without a machine gets "local/" in app/state.ts), so there is always a "/".
   const i = key.indexOf("/");
   return { machine: key.slice(0, i), id: key.slice(i + 1) };
 }

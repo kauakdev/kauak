@@ -15,6 +15,7 @@
 // each angle smoothly rather than blending two matrices.
 
 import type { Prints } from "./prints";
+import { escapeHtml } from "../app/html";
 import type { DiffSheet, FileDiff, Uncommitted } from "@kauak/protocol";
 import "./printout.css";
 
@@ -359,7 +360,7 @@ export class Printout {
     const s = list[this.index];
     if (!s) {
       this.sheet.innerHTML = `
-        <header class="po-head"><div class="po-meta"><span>kauak print service</span><span>${esc(this.label)}</span></div>
+        <header class="po-head"><div class="po-meta"><span>kauak print service</span><span>${escapeHtml(this.label)}</span></div>
         <h2 id="po-path" class="po-path">Nothing printed yet</h2></header>
         <div class="po-body po-empty">Each time a file in this room's checkout changes, the printer prints a sheet with what changed.
           Everything not committed yet is under Uncommitted.</div>
@@ -370,7 +371,7 @@ export class Printout {
     const time = new Date(s.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     this.sheet.innerHTML = `
       <header class="po-head">
-        <div class="po-meta"><span>kauak print service · ${esc(this.label)}</span><span>#${String(this.index + 1).padStart(3, "0")} · ${time}</span></div>
+        <div class="po-meta"><span>kauak print service · ${escapeHtml(this.label)}</span><span>#${String(this.index + 1).padStart(3, "0")} · ${time}</span></div>
         <h2 id="po-path" class="po-path">${pathHtml(s.path)}</h2>
         <div class="po-sub">${tag(s)}${counts(s.added, s.removed)}<span class="ago">${ago(s.at)}</span></div>
       </header>
@@ -383,7 +384,7 @@ export class Printout {
     const w = this.work;
     const head = (sub: string) => `
       <header class="po-head">
-        <div class="po-meta"><span>kauak print service · ${esc(this.label)}</span><span>uncommitted${w ? ` · ${clock(w.at)}` : ""}</span></div>
+        <div class="po-meta"><span>kauak print service · ${escapeHtml(this.label)}</span><span>uncommitted${w ? ` · ${clock(w.at)}` : ""}</span></div>
         <h2 id="po-path" class="po-path">Uncommitted changes</h2>
         ${sub}
       </header>`;
@@ -393,7 +394,7 @@ export class Printout {
     }
     if (w.error || !w.files.length) {
       const text = w.error
-        ? `Could not read the checkout: ${esc(w.error)}`
+        ? `Could not read the checkout: ${escapeHtml(w.error)}`
         : "Nothing uncommitted: the working tree matches the last commit.";
       this.sheet.innerHTML = `${head("")}<div class="po-body po-empty">${text}</div><footer class="po-foot">· · ·</footer>`;
       return;
@@ -405,7 +406,7 @@ export class Printout {
     const index = w.files
       .map(
         (f, i) =>
-          `<li><a href="#" data-jump="${i}">${tag(f, true)}<span class="p">${esc(f.path)}</span>${counts(f.added, f.removed)}</a></li>`,
+          `<li><a href="#" data-jump="${i}">${tag(f, true)}<span class="p">${escapeHtml(f.path)}</span>${counts(f.added, f.removed)}</a></li>`,
       )
       .join("");
     const pages = w.files
@@ -413,7 +414,7 @@ export class Printout {
         (f, i) => `
       <section class="po-file" data-file="${i}">
         <h3 class="po-file-h">${tag(f)}<span class="p">${pathHtml(f.path)}</span>${counts(f.added, f.removed)}</h3>
-        ${f.from ? `<div class="po-from">from ${esc(f.from)}</div>` : ""}
+        ${f.from ? `<div class="po-from">from ${escapeHtml(f.from)}</div>` : ""}
         ${fileBody(f)}
       </section>`,
       )
@@ -496,7 +497,7 @@ export class Printout {
 /** A file's rows, or why there are none. */
 function fileBody(f: FileDiff): string {
   const more = f.truncated ? `<div class="po-more">… the rest did not fit on the sheet</div>` : "";
-  return f.note ? `<div class="po-note">${esc(f.note)}</div>` : rows(f.diff) + more;
+  return f.note ? `<div class="po-note">${escapeHtml(f.note)}</div>` : rows(f.diff) + more;
 }
 
 /** Unified hunks as numbered rows. */
@@ -509,11 +510,11 @@ function rows(diff: string): string {
     if (h) {
       o = Number(h[1]);
       n = Number(h[2]);
-      out.push(`<div class="r hunk"><span></span><span></span><span></span><code>${esc(line)}</code></div>`);
+      out.push(`<div class="r hunk"><span></span><span></span><span></span><code>${escapeHtml(line)}</code></div>`);
       continue;
     }
     const k = line[0],
-      text = esc(line.slice(1));
+      text = escapeHtml(line.slice(1));
     if (k === "+") out.push(`<div class="r add"><span></span><span>${n++}</span><span>+</span><code>${text}</code></div>`);
     else if (k === "-") out.push(`<div class="r del"><span>${o++}</span><span></span><span>−</span><code>${text}</code></div>`);
     else out.push(`<div class="r"><span>${o++}</span><span>${n++}</span><span></span><code>${text}</code></div>`);
@@ -534,7 +535,7 @@ function counts(added: number, removed: number): string {
 
 function pathHtml(p: string): string {
   const slash = p.lastIndexOf("/");
-  return `<span class="dir">${esc(p.slice(0, slash + 1))}</span>${esc(p.slice(slash + 1))}`;
+  return `<span class="dir">${escapeHtml(p.slice(0, slash + 1))}</span>${escapeHtml(p.slice(slash + 1))}`;
 }
 
 function clock(at: number): string {
@@ -551,8 +552,4 @@ function ago(at: number): string {
 
 function kebab(k: string): string {
   return k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
-}
-
-function esc(s: string): string {
-  return s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
 }

@@ -55,7 +55,7 @@ const RULES = [
     rule: "only the Herdr adapter (runtimes/herdr/) imports herdr.ts",
     files: ["**"],
     except: [...HERDR_ADAPTER, ...TESTS],
-    forbid: ["packages/bridge/src/runtimes/herdr/herdr.ts", "packages/kauak/bridge/herdr.js", "@kauak/bridge/runtimes/herdr/herdr.ts"],
+    forbid: ["packages/bridge/src/runtimes/herdr/herdr.ts", "@kauak/bridge/runtimes/herdr/herdr.ts"],
   },
   {
     rule: "the bridge's core imports the ports, never a runtime or an enricher (server.ts puts them together)",

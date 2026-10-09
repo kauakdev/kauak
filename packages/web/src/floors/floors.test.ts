@@ -48,7 +48,7 @@ describe("keys", () => {
     }
   });
 
-  test("a key without a slash, which keyOf never makes, loses its last character as the machine", () => {
+  test("a key without a slash, which keyOf never makes, is not guarded: it loses its last character as the machine", () => {
     expect(splitKey("local")).toStrictEqual({ machine: "loca", id: "local" });
   });
 });
@@ -96,7 +96,7 @@ describe("floorProblem", () => {
     expect(problem("ssh: connect to host devbox port 22: Connection timed out")).toBe("offline · ssh timed out");
     expect(problem("me@devbox: permission denied (publickey).")).toBe("ssh key refused");
     expect(problem("Host key verification failed.")).toBe("unknown host key · run ssh devbox once");
-    expect(problem("Host key verification failed.", { ssh: null })).toBe("unknown host key · run ssh  once");
+    expect(problem("Host key verification failed.", { ssh: null })).toBe("unknown host key");
     expect(problem("ssh: Could not resolve hostname devbox: Name or service not known")).toBe("unknown host");
     expect(problem("ssh: devbox: Name or service not known")).toBe("unknown host");
     expect(problem("ssh: connect to host devbox port 22: Connection refused")).toBe("ssh refused the connection");

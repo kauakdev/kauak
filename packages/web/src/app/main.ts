@@ -4,6 +4,7 @@ import { BuildMode } from "../office/build";
 import { Elevator } from "../floors/elevator";
 import { EMPTY_SNAPSHOT } from "../floors/floors";
 import { AppState } from "./state";
+import { escapeHtml } from "./html";
 import { Hud } from "../hud/hud";
 import { TerminalPanel } from "../terminal/panel";
 import { Prints } from "../printers/prints";
@@ -120,10 +121,6 @@ async function main() {
     scene.setSelected(state.selected);
     if (state.selected) scene.focusPane(state.selected);
   });
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
 }
 
 main();

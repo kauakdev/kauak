@@ -2,6 +2,7 @@
 // desk, a room's printer or a build-mode slot, coloured by what it describes.
 
 import { contextText } from "../app/context";
+import { escapeHtml } from "../app/html";
 import type { Prints } from "../printers/prints";
 import { whereabouts, type Roam } from "./roam";
 import type { PaneInfo } from "@kauak/protocol";
@@ -60,8 +61,4 @@ export class Tooltip {
 
 function shortPath(p: string): string {
   return p.replace(/^\/home\/[^/]+/, "~");
-}
-
-export function escapeHtml(s: string): string {
-  return s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
 }

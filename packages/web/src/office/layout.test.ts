@@ -175,7 +175,7 @@ describe("buildOffice", () => {
     expectSound(office, snap);
   });
 
-  test("a workspace with no repository, no pane folder and no label, or in /, lands in a wing called loose", () => {
+  test("a workspace with no folder or label and one in / get two wings, both called loose, as their folders differ", () => {
     const snap: Snapshot = {
       workspaces: [workspace("w1", 1, { repo: null, label: "" }), workspace("w2", 2, { repo: null })],
       panes: [pane("w2:p1", "w2", { cwd: "/" })],

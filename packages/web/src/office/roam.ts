@@ -387,6 +387,7 @@ export function findPath(l: Lounge, from: Spot, to: Spot): Spot[] {
   const s = nearestFree(l, from),
     e = nearestFree(l, to);
   const cells = s >= 0 && e >= 0 ? astar(l, s, e) : null;
+  // Walled off by furniture: walk straight there through it, since an agent with work must get back to its desk.
   if (!cells) return [to];
   const pts = [from, ...cells.map((c) => center(l, c)), to];
   const out: Spot[] = [];

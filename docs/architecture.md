@@ -33,10 +33,12 @@ its options and runs it; a new command is one module in
 
 Loading the bridge starts nothing. Its settings are one frozen object that
 `resolveConfig(env, flags)` (`packages/bridge/src/config.ts`) makes from the
-environment (the variables in [configuration.md](configuration.md), with their
-`AGENT_OFFICE_*` fallbacks) and from what the entry point knows itself: the
-`--port` option and where the built page is. No other module reads
-`process.env`. `createBridge(config)` (`packages/bridge/src/server.ts`) makes
+environment (the variables in [configuration.md](configuration.md)) and from
+what the entry point knows itself: the `--port` option and where the built page
+is. No other module reads `process.env`. Before that, each entry point calls
+`copyLegacyFloors(env)`, in the same file, which copies the floors saved before
+the rename to the kauak folder once.
+`createBridge(config)` (`packages/bridge/src/server.ts`) makes
 the floors, starting nothing, and returns `{ listen(), close(), floors }`:
 `listen()` starts the floors and opens the port, and resolves with the office's
 URL, or null when there is no built page; `close()` stops the floors, whose SSH

@@ -1,13 +1,13 @@
 // resolveConfig: the bridge's settings from an environment and the entry
-// point's flags, with the defaults, every variable, the AGENT_OFFICE_* names
-// from before the rename, and the saved floors' legacy folder.
+// point's flags, with the defaults and every variable. copyLegacyFloors: the
+// floors saved before the rename, copied to the kauak folder once.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resolveConfig } from "./config.ts";
+import { copyLegacyFloors, resolveConfig } from "./config.ts";
 
 /** A throwaway home folder, as HOME for os.homedir() while `fn` runs. */
 function withHome(t, fn) {
@@ -62,52 +62,139 @@ test("each variable sets its field", () => {
   assert.equal(resolveConfig({ HERDR_SOCKET_PATH: "/run/herdr.sock", HERDR_SOCKET: "/run/old-herdr.sock" }).herdrSocket, "/run/herdr.sock");
 });
 
-test("each AGENT_OFFICE_* variable still works, and its KAUAK_* name wins", () => {
-  const old = {
-    AGENT_OFFICE_PORT: "8124",
-    AGENT_OFFICE_HOST: "::",
-    AGENT_OFFICE_ORIGINS: "old.lan",
-    AGENT_OFFICE_CONFIG: "/srv/agent-office/machines.json",
-    AGENT_OFFICE_SSH: "/opt/ssh",
-  };
-  const config = resolveConfig(old);
-  assert.equal(config.port, 8124);
-  assert.equal(config.host, "::");
-  assert.deepEqual(config.origins, ["localhost", "127.0.0.1", "[::1]", "old.lan"]);
-  assert.equal(config.machinesFile, "/srv/agent-office/machines.json");
-  assert.equal(config.sshCommand, "/opt/ssh");
-
-  const both = resolveConfig({
-    ...old,
-    KAUAK_PORT: "8125",
-    KAUAK_HOST: "127.0.0.1",
-    KAUAK_ORIGINS: "new.lan",
-    KAUAK_CONFIG: "/srv/kauak/machines.json",
-    KAUAK_SSH: "ssh",
+test("the AGENT_OFFICE_* names from before the rename are not read", (t) => {
+  withHome(t, () => {
+    const old = {
+      AGENT_OFFICE_PORT: "8124",
+      AGENT_OFFICE_HOST: "::",
+      AGENT_OFFICE_ORIGINS: "old.lan",
+      AGENT_OFFICE_CONFIG: "/srv/agent-office/machines.json",
+      AGENT_OFFICE_SSH: "/opt/ssh",
+    };
+    assert.deepEqual(resolveConfig(old), resolveConfig({}));
   });
-  assert.equal(both.port, 8125);
-  assert.equal(both.host, "127.0.0.1");
-  assert.deepEqual(both.origins, ["localhost", "127.0.0.1", "[::1]", "new.lan"]);
-  assert.equal(both.machinesFile, "/srv/kauak/machines.json");
-  assert.equal(both.sshCommand, "ssh");
 });
 
-test("floors saved before the rename are used until the kauak folder has its own", (t) => {
+/** The two places floors are saved under `home`: the kauak folder's, and the one from before the rename. */
+function floorFiles(home) {
+  return {
+    kauak: path.join(home, ".config", "kauak", "machines.json"),
+    legacy: path.join(home, ".config", "agent-office", "machines.json"),
+  };
+}
+
+/** Writes `text` to `file`, making its folder. */
+function write(file, text) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, text);
+}
+
+/** What `fn` logs, line by line, with nothing printed. */
+function logged(t, fn) {
+  const log = t.mock.method(console, "log", () => {});
+  const error = t.mock.method(console, "error", () => {});
+  fn();
+  const lines = (m) => m.mock.calls.map((c) => c.arguments.join(" "));
+  const out = { log: lines(log), error: lines(error) };
+  log.mock.restore();
+  error.mock.restore();
+  return out;
+}
+
+const LEGACY_FLOORS = '{ "machines": [ { "id": "devbox", "label": "devbox", "ssh": "devbox" } ] }\n';
+
+test("resolveConfig names the kauak file and copies nothing, even with floors from before the rename", (t) => {
   withHome(t, (home) => {
-    const kauak = path.join(home, ".config", "kauak", "machines.json");
-    const legacy = path.join(home, ".config", "agent-office", "machines.json");
-    fs.mkdirSync(path.dirname(legacy), { recursive: true });
-    fs.writeFileSync(legacy, '{ "machines": [] }\n');
-    assert.equal(resolveConfig({}).machinesFile, legacy);
-    assert.equal(resolveConfig({ KAUAK_CONFIG: "/srv/kauak/floors.json" }).machinesFile, "/srv/kauak/floors.json");
-    fs.mkdirSync(path.dirname(kauak), { recursive: true });
-    fs.writeFileSync(kauak, '{ "machines": [] }\n');
+    const { kauak, legacy } = floorFiles(home);
+    write(legacy, LEGACY_FLOORS);
     assert.equal(resolveConfig({}).machinesFile, kauak);
+    assert.equal(fs.existsSync(path.join(home, ".config", "kauak")), false);
   });
+});
+
+test("floors saved before the rename are copied to the kauak folder once, and the old file is left as it was", (t) => {
+  withHome(t, (home) => {
+    const { kauak, legacy } = floorFiles(home);
+    write(legacy, LEGACY_FLOORS);
+    const before = fs.statSync(legacy);
+
+    assert.deepEqual(
+      logged(t, () => copyLegacyFloors({})),
+      { log: [`[bridge] copied the saved floors from ${legacy} to ${kauak}; the old file is left as it was`], error: [] },
+    );
+    assert.equal(fs.readFileSync(kauak, "utf8"), LEGACY_FLOORS);
+    assert.equal(fs.readFileSync(legacy, "utf8"), LEGACY_FLOORS);
+    assert.equal(fs.statSync(legacy).mtimeMs, before.mtimeMs);
+    assert.deepEqual(fs.readdirSync(path.dirname(legacy)), ["machines.json"]);
+    assert.equal(resolveConfig({}).machinesFile, kauak);
+
+    // Started again, after an older version saved a floor in the old file: nothing is copied or said.
+    fs.writeFileSync(legacy, '{ "machines": [] }\n');
+    assert.deepEqual(
+      logged(t, () => copyLegacyFloors({})),
+      { log: [], error: [] },
+    );
+    assert.equal(fs.readFileSync(kauak, "utf8"), LEGACY_FLOORS);
+  });
+});
+
+test("a kauak file that exists is never overwritten", (t) => {
+  withHome(t, (home) => {
+    const { kauak, legacy } = floorFiles(home);
+    write(legacy, LEGACY_FLOORS);
+    write(kauak, '{ "machines": [] }\n');
+    assert.deepEqual(
+      logged(t, () => copyLegacyFloors({})),
+      { log: [], error: [] },
+    );
+    assert.equal(fs.readFileSync(kauak, "utf8"), '{ "machines": [] }\n');
+    assert.equal(fs.readFileSync(legacy, "utf8"), LEGACY_FLOORS);
+  });
+});
+
+test("with KAUAK_CONFIG set, nothing is copied", (t) => {
+  withHome(t, (home) => {
+    const { legacy } = floorFiles(home);
+    write(legacy, LEGACY_FLOORS);
+    const env = { KAUAK_CONFIG: path.join(home, "floors.json") };
+    assert.deepEqual(
+      logged(t, () => copyLegacyFloors(env)),
+      { log: [], error: [] },
+    );
+    assert.equal(fs.existsSync(env.KAUAK_CONFIG), false);
+    assert.equal(fs.existsSync(path.join(home, ".config", "kauak")), false);
+    assert.equal(resolveConfig(env).machinesFile, env.KAUAK_CONFIG);
+  });
+});
+
+test("a copy that fails says why in one line, and the bridge goes on with the kauak file, as a fresh install", (t) => {
+  const failures = {
+    "the kauak folder cannot be made": ({ kauak }) => write(path.dirname(kauak), "a file, not a folder"),
+    "the old file is a folder": ({ legacy }) => {
+      fs.rmSync(legacy);
+      fs.mkdirSync(legacy);
+    },
+    // root reads any file, so the old file's permissions stop only another user.
+    ...(process.getuid?.() !== 0 && { "the old file cannot be read": ({ legacy }) => fs.chmodSync(legacy, 0) }),
+  };
+  for (const [why, fail] of Object.entries(failures)) {
+    withHome(t, (home) => {
+      const files = floorFiles(home);
+      write(files.legacy, LEGACY_FLOORS);
+      fail(files);
+      const out = logged(t, () => copyLegacyFloors({}));
+      assert.deepEqual(out.log, [], why);
+      assert.equal(out.error.length, 1, why);
+      assert.match(out.error[0], /^\[bridge\] could not copy the saved floors from .+: \w+: /, why);
+      assert.ok(out.error[0].includes(files.legacy) && out.error[0].includes(files.kauak), why);
+      assert.equal(fs.existsSync(files.kauak), false, why);
+      assert.equal(resolveConfig({}).machinesFile, files.kauak, why);
+    });
+  }
 });
 
 test("the entry point's flags: --port over the environment, and the page's folder", () => {
-  const config = resolveConfig({ KAUAK_PORT: "8123", AGENT_OFFICE_PORT: "8124" }, { port: 9001, pageDir: "/opt/kauak/dist" });
+  const config = resolveConfig({ KAUAK_PORT: "8123" }, { port: 9001, pageDir: "/opt/kauak/dist" });
   assert.equal(config.port, 9001);
   assert.equal(config.pageDir, "/opt/kauak/dist");
   assert.equal(resolveConfig({ KAUAK_PORT: "8123" }, {}).port, 8123);

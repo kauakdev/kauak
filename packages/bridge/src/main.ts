@@ -4,9 +4,11 @@
 // serve` (packages/kauak/cli/commands/serve.js) starts the bridge the same way.
 
 import { fileURLToPath } from "node:url";
-import { resolveConfig } from "./config.ts";
+import { copyLegacyFloors, resolveConfig } from "./config.ts";
 import { createBridge } from "./server.ts";
 
+// Floors saved before the rename move to the kauak folder once, before the bridge reads them.
+copyLegacyFloors(process.env);
 const bridge = createBridge(resolveConfig(process.env, { pageDir: fileURLToPath(new URL("../../kauak/dist/", import.meta.url)) }));
 
 // SSH tunnels and remote context readers are child processes; take them down with the bridge.

@@ -45,6 +45,7 @@ const CLEAN = {
   "packages/web/src/app/main.ts":
     'import type { AgentStatus } from "@kauak/protocol";\nimport { Theme } from "@kauak/appearance/contracts";\n',
   "packages/web/src/bridge/demo.ts": 'const SEARCHES = ["retries", "session.snapshot"];\n',
+  "packages/web/src/bridge/ws.test.ts": 'import { expect, test } from "vitest";\nconst EVENTS = ["pane.created", "tab.closed"];\n',
 };
 
 /** Runs the check on CLEAN with `changes` applied (null removes a file); returns its exit code and output lines. */

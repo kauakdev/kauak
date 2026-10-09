@@ -115,10 +115,14 @@ the page, and only the bridge's entry points
 `process.env`, which they hand to `resolveConfig`. When a file moves, update
 the rules at the top of the script.
 
-`pnpm test` runs `node --test` in each package and in `scripts/`, which finds
-every `*.test.mjs`. Tests use Node's built-in runner (`node:test` with
-`node:assert/strict`) and sit next to the code they test. The bridge's tests
-run against a stand-in Herdr
+`pnpm test` runs each package's tests, then those in `scripts/`. Tests sit next
+to the code they test. The page's (`packages/web`) are TypeScript,
+`*.test.ts`, run once by [Vitest](https://vitest.dev) in Node, with no browser
+or DOM: they import `describe`, `test`, `expect` and `vi` from `vitest`, and
+Vite resolves the page's imports as it does for the build. `pnpm --filter
+@kauak/web test` runs them alone. Everywhere else, tests are `*.test.mjs`, run
+by Node's built-in runner (`node --test`, with `node:test` and
+`node:assert/strict`). The bridge's tests run against a stand-in Herdr
 (`packages/bridge/src/runtimes/herdr/fixtures/fake-herdr.mjs`), so they need
 no Herdr installed.
 

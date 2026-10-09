@@ -32,8 +32,9 @@ const RUNTIMES = ["packages/bridge/src/runtimes/**", "@kauak/bridge/runtimes/**"
 const ENRICHERS = ["packages/bridge/src/enrichers/**", "@kauak/bridge/enrichers/**"];
 // The Herdr adapter: the only code that speaks Herdr's API.
 const HERDR_ADAPTER = ["packages/bridge/src/runtimes/herdr/**"];
-// Tests drive a stand-in Herdr and check that nothing of it leaks, so they name it.
-const TESTS = ["**/*.test.mjs", "packages/bridge/src/runtimes/herdr/fixtures/**"];
+// Tests drive a stand-in Herdr and check that nothing of it leaks, so they name it. The page's
+// tests are TypeScript run by Vitest (*.test.ts), the rest JavaScript run by node:test (*.test.mjs).
+const TESTS = ["**/*.test.mjs", "**/*.test.ts", "packages/bridge/src/runtimes/herdr/fixtures/**"];
 // Workspace packages are imported by relative path or by name, and a name is checked as written.
 const BRIDGE = ["packages/bridge/**", "@kauak/bridge", "@kauak/bridge/**"];
 // The CLI, bin/kauak.js, and the bundle of the bridge the npm package carries.

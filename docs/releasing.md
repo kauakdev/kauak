@@ -44,14 +44,14 @@ pnpm verify:pack
 ```
 
 It packs the package as `npm publish` would (the `prepack` script type-checks
-the protocol and the page, builds the page and bundles the bridge first),
-checks the file list, installs the tarball with `npm install`, `npm install -g`
-and `npx` into a temporary folder, checks that no installed file imports a
-workspace package, and runs `kauak --version`, `kauak --help`, `kauak serve`
-and bare `kauak` from each, checking that the page, its files and the
-WebSocket answer. It never touches
-your Herdr, saved floors, global packages or browser (stand-in openers record
-what bare `kauak` would open), and it needs the npm registry to install `ws`.
+the protocol, the bridge and the page, builds the page and bundles the bridge
+first), checks the file list, installs the tarball with `npm install`,
+`npm install -g` and `npx` into a temporary folder, checks that no installed
+file imports a workspace package, and runs `kauak --version`, `kauak --help`,
+`kauak serve` and bare `kauak` from each, checking that the page, its files and
+the WebSocket answer. It never touches your Herdr, saved floors, global
+packages or browser (stand-in openers record what bare `kauak` would open), and
+it needs the npm registry to install `ws`.
 CI runs it on every pull request, on the latest Node 22, on Node 24 (the
 current LTS) and on Node 22.0.0, the oldest version the package supports.
 

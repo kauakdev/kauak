@@ -83,7 +83,7 @@ const FLOORS: { id: string; label: string; ssh: string | null; host: string; roo
 ];
 
 const AGENTS = ["claude", "codex", "gemini", "opencode", "aider", "cursor"];
-// The agents whose context use the bridge can read (bridge/context.js), and their windows.
+// The agents whose context use the bridge can read (its enrichers/context/), and their windows.
 const WINDOW: Record<string, number> = { claude: 1_000_000, codex: 258_400 };
 // What a fresh session starts with: system prompt, tools, memory files.
 const BASE_CONTEXT: [number, number] = [14_000, 22_000];

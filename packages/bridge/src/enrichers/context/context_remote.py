@@ -1,4 +1,4 @@
-# Context meters for a remote floor: the part of bridge/context.ts that has
+# Context meters for a remote floor: the part of context.ts that has
 # to run where the agents' transcripts are. The bridge starts it over SSH
 # (`python3 -c ...`, so nothing is installed on the remote machine) and keeps
 # it running; it keeps its own caches between requests.

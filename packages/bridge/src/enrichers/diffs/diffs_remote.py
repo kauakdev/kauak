@@ -1,4 +1,4 @@
-# Printers for a remote floor: what bridge/diffs.ts needs from the checkouts
+# Printers for a remote floor: what diffs.ts needs from the checkouts
 # on that machine, which is git and the files themselves. The bridge starts it
 # over SSH like context_remote.py (ssh/remote.ts); all the deciding (what
 # changed, the diffs) stays in diffs.ts.

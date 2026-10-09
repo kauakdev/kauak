@@ -479,9 +479,10 @@ export function peakPosterOnSideWall(
 
 // ------------------------------------------------------------------ printer
 //
-// The room's printer (scene.ts): a printer on a low stand, paper standing in
-// its feed at the back and printed sheets landing on a tray in front of it
-// (+y). The sheets and the light are drawn apart, so the scene can animate them.
+// The room's printer (printer-animator.ts): a printer on a low stand, paper
+// standing in its feed at the back and printed sheets landing on a tray in
+// front of it (+y). The sheets and the light are drawn apart, so they can be
+// animated.
 
 /** Its footprint from its back corner, in tiles; where a sheet lies on the tray; heights in px. */
 export const PRINTER = {

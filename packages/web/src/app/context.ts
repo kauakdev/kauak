@@ -1,5 +1,5 @@
 // How full an agent's context window is (`PaneInfo.context`, added by the
-// bridge from the agent's transcript; see bridge/context.js). Shared by the
+// bridge from the agent's transcript, in its enrichers/context/). Shared by the
 // meter under each agent's name tag, the roster, the tooltip and the panel.
 
 import type { ContextUsage } from "@kauak/protocol";

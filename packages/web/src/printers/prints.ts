@@ -1,6 +1,7 @@
 // What every room's printer has printed: one sheet per file edit in the
-// room's git checkout (bridge/diffs.js). Rooms in one checkout share a
-// printer's sheets, so they are kept per floor and checkout ("machine/<root>").
+// room's git checkout (the bridge's enrichers/diffs/). Rooms in one checkout
+// share a printer's sheets, so they are kept per floor and checkout
+// ("machine/<root>").
 //
 // A sheet that arrives live is queued until the scene has printed it, one at
 // a time; the ones a page gets on connecting are already on the tray, and

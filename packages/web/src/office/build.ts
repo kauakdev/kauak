@@ -1,7 +1,7 @@
 // Build mode: the top-bar Build button (B) shows "+" slots in the office
-// (scene.ts), and clicking one opens this form. It asks Herdr, through the
-// bridge, for a new desk (a new tab in the room) or a new room (a git
-// worktree on a new branch, or a workspace in a folder), with an optional
+// (floor-renderer.ts), and clicking one opens this form. It asks Herdr,
+// through the bridge, for a new desk (a new tab in the room) or a new room (a
+// git worktree on a new branch, or a workspace in a folder), with an optional
 // agent. Once the pane exists the office opens it like any other desk.
 
 import { load, save } from "../app/storage";

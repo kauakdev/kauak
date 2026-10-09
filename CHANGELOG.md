@@ -34,6 +34,9 @@ turns Unreleased into the new version's section, as
   in …", "focused in …" and the build form's hints) names what runs that floor,
   as the bridge reports it, instead of always saying Herdr. With Herdr it reads
   as before.
+- Running Kauak from a checkout (`pnpm dev`, `pnpm start`, `pnpm test`) needs
+  Node 22.18 or newer, which runs the bridge's TypeScript as it is. The npm
+  package still runs on any Node 22.
 
 ### Removed
 

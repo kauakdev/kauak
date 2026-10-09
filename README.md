@@ -103,10 +103,10 @@ Herdr, and it would not exist without it.
 Herdr (a unix socket on each machine; through an SSH tunnel for a remote one)
    │  Herdr's API
    ▼
-Herdr adapter    packages/bridge/src/runtimes/herdr/machine.ts, packages/bridge/src/runtimes/herdr/herdr.ts
-   │  Kauak terms
+Herdr adapter    packages/bridge/src/runtimes/herdr/ (machine.ts, herdr.ts)
+   │  Kauak terms, the Runtime port
    ▼
-Bridge server    packages/bridge/src/core/bridge.ts
+Bridge           packages/bridge/src/ (core/, enrichers/, transport/ws.ts)
    │  the Kauak protocol, over a WebSocket
    ▼
 Page             packages/web/
@@ -120,10 +120,12 @@ Page             packages/web/
   messages between the page and the bridge, described in
   [docs/protocol.md](docs/protocol.md). The bridge checks every message from a
   page against it.
-- **Bridge server** (`packages/bridge/src/core/bridge.ts`, Node, TypeScript):
-  serves the page and the WebSocket on 127.0.0.1:7788, and adds what Herdr does
-  not report: context usage, read from the agents' transcripts, and file diffs,
-  from git.
+- **Bridge** (`packages/bridge/`, Node, TypeScript): its core
+  (`packages/bridge/src/core/`) holds the floors and answers each message from
+  a page, `packages/bridge/src/transport/ws.ts` serves the page and the
+  WebSocket on 127.0.0.1:7788, and its enrichers
+  (`packages/bridge/src/enrichers/`) add what Herdr does not report: context
+  usage, read from the agents' transcripts, and file diffs, from git.
 - **Page** (`packages/web/`, TypeScript, PixiJS, xterm.js, built with Vite):
   lays each snapshot out as floors and rooms, draws the office, and holds the
   roster, activity feed, terminal panel and build mode. For the demo,

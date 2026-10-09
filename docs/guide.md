@@ -178,7 +178,7 @@ anything), wheel to zoom.
 ## Demo
 
 `?demo` in the URL (or `kauak serve --demo`) swaps the bridge for a
-simulated one (`packages/web/src/demo.ts`): two floors of made-up agents that
+simulated one (`packages/web/src/bridge/demo.ts`): two floors of made-up agents that
 work, get blocked and finish on their own. The terminal panel works there too:
 Enter or Esc answers a blocked agent, a typed task puts an idle one to work, a
 finished Claude suggests a next message, `/` lists a few made-up commands, and

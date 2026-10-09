@@ -73,10 +73,7 @@ leaves the previous banner intact. Storage/quota errors are visible and leave
 the previously saved configuration active. Clearing site data removes these
 local settings; they do not sync between devices or origins.
 
-The settings are saved under the `kauak.appearance.v1` key. Settings saved
-before the rename, under `agent-office.plugins.v1`, are copied there once, the
-first time the page loads without it, with the included packages' new IDs. The
-old key is left as it was, for an older version, and is not read after that.
+The settings are saved under the `kauak.appearance.v1` key.
 
 ## Author and load a package
 
@@ -91,8 +88,7 @@ kept. Replace a package by removing it and importing its new version.
 For a package shipped with the repo, add its JSON to
 `packages/appearance/packages/`, then include it in `bundledPackages` in
 `packages/web/src/appearance/catalog.ts`. There is no per-package switch in the
-scene. IDs starting with `kauak.` are reserved for included packages, and so
-are those starting with `agent-office.`, their IDs before the rename; custom
+scene. IDs starting with `kauak.` are reserved for included packages; custom
 IDs can use lowercase letters, numbers, dots and hyphens, for example
 `company.harbor`.
 
@@ -194,9 +190,8 @@ git diff --check
 
 Contract tests cover import incompatibility, bounds, duplicate/reserved IDs,
 code/URL rejection, registry fallback, separate persisted capabilities and
-banners, corrupted storage and quota errors, and the one-time copy of settings
-saved before the rename. They compile the public API in a temporary directory
-and do not use a browser or the bridge.
+banners, corrupted storage and quota errors. They compile the public API in a
+temporary directory and do not use a browser or the bridge.
 
 Browser checks on **5 October 2026** used a separate Chrome context and the
 demo, with a neutral **Company banner test** image. The tool could not access

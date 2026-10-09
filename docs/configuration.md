@@ -24,16 +24,7 @@ when the command line is wrong.
 - `KAUAK_SSH`: SSH executable (default `ssh`)
 - `VITE_BRIDGE_PORT`: port the page connects to (default: `7788` under `pnpm dev`, else the port the page was served from)
 
-Floors are saved in `~/.config/kauak/machines.json`. Floors saved before the
-rename, in `~/.config/agent-office/machines.json`, are copied there once: the
-first time the bridge starts without a kauak file (and without `KAUAK_CONFIG`),
-it copies the old file and says so in its log. The old file is left as it was,
-for an older version, and is not read after that. In the browser, the
-appearance settings and the page's other preferences (the floor on screen, the
-hidden feed, the build form's agent, the radio and the terminal panel's width)
-saved before the rename are copied to their new keys the same way, once, and
-the old keys are left as they were. The `AGENT_OFFICE_*` environment variables
-are no longer read; use their `KAUAK_*` names.
+Floors are saved in `~/.config/kauak/machines.json`.
 
 ## Opening the office from another device
 

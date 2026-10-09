@@ -141,8 +141,7 @@ export class TerminalPanel {
     addEventListener("resize", () => this.autosize()); // the panel's width follows the window's
     // A pane wider than the panel gets small text: dragging the edge makes room.
     const grip = document.getElementById("panel-resize")!;
-    // Only a width this reads (a number, not 0) is copied from the old key.
-    this.setWidth(Number(load(WIDTH_KEY, (v) => Boolean(Number(v)))) || null);
+    this.setWidth(Number(load(WIDTH_KEY)) || null);
     grip.addEventListener("pointerdown", (e) => this.dragWidth(e, grip));
     grip.addEventListener("dblclick", () => {
       this.setWidth(null);

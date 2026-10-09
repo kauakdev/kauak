@@ -420,15 +420,12 @@ export class Radio {
   }
 }
 
-// Only settings this reads are copied from the old key: not broken JSON, nor JSON of something other than an object.
+// Broken JSON, or JSON of something other than an object, reads as nothing saved.
 function restore(): Saved {
-  return parse(load(KEY, (raw) => parse(raw) !== null) ?? "{}") ?? {};
-}
-function parse(raw: string): Saved | null {
   try {
-    const v: unknown = JSON.parse(raw);
-    return v && typeof v === "object" ? v : null;
+    const v: unknown = JSON.parse(load(KEY) ?? "{}");
+    return v && typeof v === "object" ? v : {};
   } catch {
-    return null;
+    return {};
   }
 }

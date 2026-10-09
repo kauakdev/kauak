@@ -38,7 +38,6 @@ const {
   defaults,
   resolveAnchor,
   SETTINGS_KEY,
-  LEGACY_SETTINGS_KEY,
   validateBanner,
 } = createRequire(import.meta.url)(path.join(temp, "registry.js"));
 const read = (name) => JSON.parse(fs.readFileSync(new URL(name, import.meta.url), "utf8"));
@@ -59,7 +58,6 @@ test("imports reject incompatible APIs, unknown capabilities, code/URLs and rese
     (p) => (p.capabilities.actions = {}),
     (p) => (p.script = "evil.js"),
     (p) => (p.id = "kauak.classic"),
-    (p) => (p.id = "agent-office.classic"),
     (p) => (p.capabilities["office.theme"].materials.wood = "url(https://x)"),
   ]) {
     const p = custom();
@@ -126,7 +124,7 @@ test("preferences round-trip custom packages and banner independently; a saved t
   savePreferences(storage, p);
   assert.deepEqual(loadPreferences(storage).value.banner, p.banner);
   const older = JSON.parse(raw);
-  older.selections["terminal.provider"] = "agent-office.herdr";
+  older.selections["terminal.provider"] = "kauak.herdr";
   raw = JSON.stringify(older);
   assert.deepEqual(loadPreferences(storage), { value: p, warnings: [] });
   const removed = new AppearanceRegistry(builtins);
@@ -180,16 +178,11 @@ function memory(items = {}) {
     },
   };
 }
-// Settings as an earlier version saved them, with the imported Harbor office and a banner.
-const legacySettings = (selections) =>
+// Settings with the imported Harbor office and a banner.
+const saved = () =>
   JSON.stringify({
     schemaVersion: 1,
-    selections: {
-      "office.theme": "example.harbor",
-      "office.characters": "agent-office.orbital",
-      "terminal.provider": "agent-office.herdr",
-      ...selections,
-    },
+    selections: { "office.theme": "example.harbor", "office.characters": "kauak.orbital" },
     packages: [custom()],
     banner: {
       dataUrl: "data:image/png;base64,aGVsbG8=",
@@ -201,24 +194,9 @@ const legacySettings = (selections) =>
       background: "dark",
     },
   });
-test("settings saved before the rename are copied to the new key once, and the old key is left as it was", () => {
-  const old = legacySettings(),
-    storage = memory({ [LEGACY_SETTINGS_KEY]: old });
-  const first = loadPreferences(storage);
-  assert.deepEqual(first.warnings, []);
-  assert.equal(first.value.packages[0].id, "example.harbor");
-  assert.equal(first.value.banner.name, "Example");
-  assert.deepEqual(storage.writes, [SETTINGS_KEY]);
-  assert.deepEqual(JSON.parse(storage.store.get(SETTINGS_KEY)), first.value);
-  assert.equal(storage.store.get(LEGACY_SETTINGS_KEY), old);
-  storage.reads.length = 0;
-  assert.deepEqual(loadPreferences(storage), first);
-  assert.deepEqual(storage.reads, [SETTINGS_KEY]);
-  assert.deepEqual(storage.writes, [SETTINGS_KEY]);
-});
-test("settings under the new key win over the old key, which is then not read, even when they are broken", () => {
-  for (const current of [JSON.stringify(defaults()), "{"]) {
-    const storage = memory({ [SETTINGS_KEY]: current, [LEGACY_SETTINGS_KEY]: legacySettings() });
+test("only the settings key is read, and loading writes nothing, even when the settings are missing or broken", () => {
+  for (const current of [null, JSON.stringify(defaults()), "{"]) {
+    const storage = memory(current === null ? {} : { [SETTINGS_KEY]: current });
     const loaded = loadPreferences(storage);
     assert.deepEqual(loaded.value, defaults());
     assert.equal(loaded.warnings.length, current === "{" ? 1 : 0);
@@ -226,54 +204,20 @@ test("settings under the new key win over the old key, which is then not read, e
     assert.deepEqual(storage.writes, []);
   }
 });
-test("broken settings under the old key give the defaults, as broken settings always have, and nothing is written", () => {
-  const notSettings = JSON.parse(legacySettings());
-  notSettings.selections = "agent-office.orbital";
-  for (const old of [
+test("broken settings give the defaults, even with valid packages and a banner inside, and nothing is written", () => {
+  const notSettings = JSON.parse(saved());
+  notSettings.selections = "kauak.orbital";
+  for (const raw of [
     "{",
-    JSON.stringify({ ...JSON.parse(legacySettings()), schemaVersion: 2 }),
+    JSON.stringify({ ...JSON.parse(saved()), schemaVersion: 2 }),
     JSON.stringify(notSettings),
     " ".repeat(3_100_000),
   ]) {
-    const storage = memory({ [LEGACY_SETTINGS_KEY]: old });
+    const storage = memory({ [SETTINGS_KEY]: raw });
     const loaded = loadPreferences(storage);
     assert.deepEqual(loaded.value, defaults());
     assert.match(loaded.warnings.join(), /could not be read/);
     assert.deepEqual(storage.writes, []);
-    assert.equal(storage.store.get(LEGACY_SETTINGS_KEY), old);
+    assert.equal(storage.store.get(SETTINGS_KEY), raw);
   }
-});
-test("selections of the included packages' old ids are copied with their new ids", () => {
-  const storage = memory({
-    [LEGACY_SETTINGS_KEY]: legacySettings({ "office.theme": "agent-office.basecamp", "office.characters": "agent-office.classic" }),
-  });
-  const { value } = loadPreferences(storage);
-  assert.deepEqual(value.selections, { "office.theme": "kauak.basecamp", "office.characters": "kauak.classic" });
-  const r = new AppearanceRegistry(builtins, value.packages);
-  for (const [cap, id] of Object.entries(value.selections))
-    assert.deepEqual([r.resolve(cap, id).package.id, r.resolve(cap, id).fallback], [id, false]);
-  assert.deepEqual(loadPreferences(memory({ [LEGACY_SETTINGS_KEY]: legacySettings() })).value.selections, {
-    "office.theme": "example.harbor",
-    "office.characters": "kauak.orbital",
-  });
-});
-test("the terminal.provider selection an earlier version saved is dropped from the copy", () => {
-  const storage = memory({ [LEGACY_SETTINGS_KEY]: legacySettings() });
-  assert.deepEqual(Object.keys(loadPreferences(storage).value.selections), ["office.theme", "office.characters"]);
-  assert.deepEqual(Object.keys(JSON.parse(storage.store.get(SETTINGS_KEY)).selections), ["office.theme", "office.characters"]);
-});
-test("a copy the browser cannot save still loads, and is tried again on the next load", () => {
-  const storage = memory({ [LEGACY_SETTINGS_KEY]: legacySettings() }),
-    blocked = {
-      getItem: storage.getItem,
-      setItem: () => {
-        throw new Error("quota");
-      },
-    };
-  const loaded = loadPreferences(blocked);
-  assert.deepEqual(loaded.warnings, []);
-  assert.equal(loaded.value.selections["office.characters"], "kauak.orbital");
-  assert.equal(storage.store.has(SETTINGS_KEY), false);
-  assert.deepEqual(loadPreferences(storage), loaded);
-  assert.deepEqual(storage.writes, [SETTINGS_KEY]);
 });

@@ -10,16 +10,8 @@ import {
 } from "./contracts";
 
 export const SETTINGS_KEY = "kauak.appearance.v1";
-/** Where settings were saved before the rename. loadPreferences copies them to SETTINGS_KEY once. */
-export const LEGACY_SETTINGS_KEY = "agent-office.plugins.v1";
-// The included packages' ids before the rename, which selections saved under LEGACY_SETTINGS_KEY name.
-const LEGACY_IDS = new Map([
-  ["agent-office.classic", "kauak.classic"],
-  ["agent-office.orbital", "kauak.orbital"],
-  ["agent-office.basecamp", "kauak.basecamp"],
-]);
-// Included packages use kauak.*, and used agent-office.* before the rename, so an old copy of one cannot shadow it.
-const RESERVED_PREFIXES = ["kauak.", "agent-office."];
+// Included packages use kauak.*, so an imported package cannot shadow one.
+const RESERVED_PREFIX = "kauak.";
 export const MAX_PACKAGE_BYTES = 64 * 1024;
 export const MAX_PACKAGES = 8;
 export const MAX_BANNER_BYTES = 1_500_000;
@@ -150,8 +142,7 @@ export function validateManifest(value: unknown, trusted = false): AppearancePac
   const o = object(value, "package");
   keys(o, ["schemaVersion", "id", "name", "version", "description", "capabilities"], "package");
   const packageId = id(o.id, "package.id");
-  if (!trusted && RESERVED_PREFIXES.some((prefix) => packageId.startsWith(prefix)))
-    fail("package.id", "kauak.* and agent-office.* are reserved for included packages");
+  if (!trusted && packageId.startsWith(RESERVED_PREFIX)) fail("package.id", "kauak.* is reserved for included packages");
   const ver = str(o.version, "package.version", 32);
   if (!/^\d+\.\d+\.\d+$/.test(ver)) fail("package.version", "expected a version such as 1.0.0");
   const caps = object(o.capabilities, "package.capabilities");
@@ -247,22 +238,13 @@ export interface StorageLike {
 }
 export function loadPreferences(storage: StorageLike): { value: Preferences; warnings: string[] } {
   try {
-    const raw = storage.getItem(SETTINGS_KEY);
-    if (raw !== null) return readPreferences(raw);
-    // The first time, settings saved before the rename are copied to SETTINGS_KEY with the
-    // included packages' new ids. The old key is left as it was, for an older version, and
-    // is not read once the copy is saved; a copy that cannot be saved is tried on the next load.
-    const legacy = storage.getItem(LEGACY_SETTINGS_KEY);
-    if (!legacy) return { value: defaults(), warnings: [] };
-    const copied = readPreferences(legacy, LEGACY_IDS);
-    savePreferences(storage, copied.value);
-    return copied;
+    return readPreferences(storage.getItem(SETTINGS_KEY));
   } catch {
     return { value: defaults(), warnings: ["Saved appearance settings could not be read. Included packages are being used."] };
   }
 }
 /** A saved package or banner that fails is skipped with a warning; settings that cannot be read at all throw. */
-function readPreferences(raw: string, renamed = new Map<string, string>()): { value: Preferences; warnings: string[] } {
+function readPreferences(raw: string | null): { value: Preferences; warnings: string[] } {
   const value = defaults(),
     warnings: string[] = [];
   if (!raw) return { value, warnings };
@@ -274,7 +256,7 @@ function readPreferences(raw: string, renamed = new Map<string, string>()): { va
   // no longer has (terminal.provider, in earlier versions) is dropped.
   for (const cap of Object.keys(CAPABILITIES) as Capability[]) {
     const selected = s[cap];
-    if (typeof selected === "string") value.selections[cap] = renamed.get(selected) ?? selected;
+    if (typeof selected === "string") value.selections[cap] = selected;
   }
   if (Array.isArray(o.packages))
     for (const p of o.packages.slice(0, MAX_PACKAGES)) {

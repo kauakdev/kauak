@@ -60,16 +60,14 @@ its options and runs it; a new command is one module in
 `packages/kauak/cli/commands/` and one entry there.
 
 `kauak serve` (`packages/kauak/cli/commands/serve.js`) starts the bridge with
-three calls to it:
+two calls to it:
 
-1. `copyLegacyFloors(env)` (`packages/bridge/src/config.ts`) copies the floors
-   saved before the rename to the kauak folder, once.
-2. `resolveConfig(env, flags)`, in the same file, makes the bridge's settings,
-   one frozen `BridgeConfig`, from the environment (the variables in
-   [configuration.md](configuration.md)) and from what the entry point knows
-   itself: the `--port` option and where the built page is. No other module
-   reads `process.env`.
-3. `createBridge(config)` (`packages/bridge/src/server.ts`) makes the bridge
+1. `resolveConfig(env, flags)` (`packages/bridge/src/config.ts`) makes the
+   bridge's settings, one frozen `BridgeConfig`, from the environment (the
+   variables in [configuration.md](configuration.md)) and from what the entry
+   point knows itself: the `--port` option and where the built page is. No
+   other module reads `process.env`.
+2. `createBridge(config)` (`packages/bridge/src/server.ts`) makes the bridge
    and its floors, starting nothing, and returns `{ listen(), close(), floors }`.
    `listen()` starts the floors and opens the port, and resolves with the
    office's URL, or null when there is no built page; `close()` stops the
@@ -251,11 +249,9 @@ the office scene.
 
 `packages/web/src/app/storage.ts` saves the page's preferences in
 `localStorage`: the floor on screen, the hidden feed, the build form's agent,
-the radio and the terminal panel's width, each under a `kauak.*` key. The first
-read of a key without a value copies the one saved under its `agent-office.*`
-name from before the rename, once, if its reader would use it. The appearance
-settings are saved apart, by `@kauak/appearance` (below), and so is the
-background, under `kauak.background.v1`.
+the radio and the terminal panel's width, each under a `kauak.*` key. The
+appearance settings are saved apart, by `@kauak/appearance` (below), and so is
+the background, under `kauak.background.v1`.
 
 ### The office
 
@@ -305,8 +301,7 @@ cannot use, and loads and saves the settings (`loadPreferences`,
 The page lists the included packages in
 `packages/web/src/appearance/catalog.ts`, and `settings.ts` there is the
 dialog that chooses them, imports others and sets the company banner. All of
-that is saved in the browser under `kauak.appearance.v1`; settings saved
-before the rename are copied there once. See the
+that is saved in the browser under `kauak.appearance.v1`. See the
 [appearance and banner guide](appearance/README.md).
 
 ## Where a change goes

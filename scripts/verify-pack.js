@@ -87,7 +87,7 @@ for (const opener of ["xdg-open", "open"]) {
 
 // The npm_* settings a script runner (npm run, pnpm) passes down would point
 // the npm commands below at this checkout; kauak's settings come only from here.
-const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(npm_|KAUAK_|AGENT_OFFICE_)/.test(k)));
+const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(npm_|KAUAK_)/.test(k)));
 Object.assign(env, {
   PATH: `${openers}${path.delimiter}${process.env.PATH}`,
   npm_config_cache: path.join(temp, "npm-cache"),

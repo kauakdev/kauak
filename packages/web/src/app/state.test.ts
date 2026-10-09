@@ -48,24 +48,18 @@ test("starts on ?floor=, else the saved floor, else this machine's; a ?pane= dee
   expect(make("?pane=nas/w1:p1").state.current).toBe("nas");
 });
 
-test("a floor saved before the rename is copied to kauak.floor once and left as it was; ?floor= reads neither", () => {
-  stored.set("agent-office.floor", "devbox");
+test("?floor= reads no saved floor; without it, kauak.floor is read as saved, even empty, and a move saves it", () => {
+  stored.set("kauak.floor", "devbox");
   expect(make("?floor=nas").state.current).toBe("nas");
   expect(reads).toStrictEqual([]);
-  expect(stored.has("kauak.floor")).toBe(false);
 
   const { state } = make();
   expect(state.current).toBe("devbox");
-  expect(reads).toStrictEqual(["kauak.floor", "agent-office.floor"]);
-  expect(stored.get("kauak.floor")).toBe("devbox");
+  expect(reads).toStrictEqual(["kauak.floor"]);
   state.setMachines([machine("local"), machine("devbox"), machine("nas")]);
   state.goToFloor("nas");
   expect(stored.get("kauak.floor")).toBe("nas");
-  expect(stored.get("agent-office.floor")).toBe("devbox");
-
-  reads.length = 0;
   expect(make().state.current).toBe("nas");
-  expect(reads).toStrictEqual(["kauak.floor"]);
   stored.set("kauak.floor", "");
   expect(make().state.current).toBe("");
 });

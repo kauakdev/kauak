@@ -55,8 +55,6 @@ export class BuildMode {
   private submit = this.form.querySelector<HTMLButtonElement>("button[type=submit]")!;
   private field = (name: string) => this.form.elements.namedItem(name) as HTMLInputElement;
   private agent = this.form.elements.namedItem("agent") as HTMLSelectElement;
-  /** A saved agent the select has no option for falls back to None, so the old key's is not copied. */
-  private offers = (agent: string) => [...this.agent.options].some((o) => o.value === agent);
   private toast = document.getElementById("toast")!;
   private on = false;
   private target: BuildTarget | null = null;
@@ -75,7 +73,7 @@ export class BuildMode {
       `<option value="">None (just a shell)</option>` +
       COMMON_AGENTS.map((k) => `<option>${k}</option>`).join("") +
       `<optgroup label="More agents">${MORE_AGENTS.map((k) => `<option>${k}</option>`).join("")}</optgroup>`;
-    this.agent.value = load(AGENT_KEY, this.offers) ?? "";
+    this.agent.value = load(AGENT_KEY) ?? "";
     if (this.agent.selectedIndex < 0) this.agent.value = "";
     this.btn.addEventListener("click", () => this.toggle(!this.on));
     for (const b of this.form.querySelectorAll("[data-cancel]")) b.addEventListener("click", () => this.close());
@@ -135,7 +133,7 @@ export class BuildMode {
     this.target = target;
     this.floor = floor;
     this.form.reset();
-    this.agent.value = load(AGENT_KEY, this.offers) ?? "";
+    this.agent.value = load(AGENT_KEY) ?? "";
     if (this.agent.selectedIndex < 0) this.agent.value = "";
     if (target.kind === "desk") {
       this.title.textContent = `New desk · ${target.room.workspace.label || target.room.workspace.workspace_id}`;

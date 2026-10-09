@@ -40,10 +40,8 @@ export async function run(values) {
   if (port !== undefined && (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535))
     throw new UsageError(`invalid port '${port}' (use 1-65535)`);
 
-  const { copyLegacyFloors, resolveConfig } = await import(PACKED ? "../../bridge/config.js" : "../../../bridge/src/config.ts");
+  const { resolveConfig } = await import(PACKED ? "../../bridge/config.js" : "../../../bridge/src/config.ts");
   const { createBridge } = await import(PACKED ? "../../bridge/server.js" : "../../../bridge/src/server.ts");
-  // Floors saved before the rename move to the kauak folder once, before the bridge reads them.
-  copyLegacyFloors(process.env);
   const config = resolveConfig(process.env, { port: port === undefined ? undefined : Number(port), pageDir: PAGE_DIR });
   const bridge = createBridge(config);
   // SSH tunnels and remote context readers are child processes; take them down with the bridge.

@@ -40,11 +40,6 @@ npm install -g kauak
 kauak serve
 ```
 
-> [!NOTE]
-> These commands need Kauak's first npm release. If `npm view kauak` finds
-> nothing, that has not happened yet: [run it from source](#run-from-source)
-> instead.
-
 ## Run from source
 
 You need Node.js 22.18 or newer and [pnpm](https://pnpm.io).
@@ -157,7 +152,6 @@ directly.
 
 Kauak 0.1 is its first version. Next up:
 
-- Publishing to npm, so the quick start above works.
 - Sprites in place of the procedurally drawn furniture and people, one piece at
   a time.
 

@@ -50,7 +50,7 @@ kauak serve
 You need Node.js 22.18 or newer and [pnpm](https://pnpm.io).
 
 ```sh
-git clone https://github.com/agustinrbeltran/kauak.git
+git clone https://github.com/kauakdev/kauak.git
 cd kauak
 pnpm install
 pnpm dev

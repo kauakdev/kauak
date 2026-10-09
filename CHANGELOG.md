@@ -30,6 +30,10 @@ turns Unreleased into the new version's section, as
 
 ### Changed
 
+- The repository moved to
+  [github.com/kauakdev/kauak](https://github.com/kauakdev/kauak). The npm
+  package's homepage, issues and repository links, the README's clone command
+  and the demo page point there.
 - The included appearance packages' ids are `kauak.classic`, `kauak.orbital`
   and `kauak.basecamp`, and an imported package may no longer use an id that
   starts with `kauak.`.
@@ -58,4 +62,4 @@ turns Unreleased into the new version's section, as
   no repository and no folder to go by, only a label, was listed under "loose"
   while the office put it in a wing named after its label.
 
-[Unreleased]: https://github.com/agustinrbeltran/kauak/commits/main
+[Unreleased]: https://github.com/kauakdev/kauak/commits/main

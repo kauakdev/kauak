@@ -6,10 +6,13 @@ on the shape before you spend time on it.
 
 ## Set up
 
-You need Node.js 22 or newer and [pnpm](https://pnpm.io) (the repository is
-locked with `pnpm-lock.yaml`). To see real agents you also need
-[Herdr](https://herdr.dev) running; without it, the demo mode simulates
-everything.
+You need Node.js 22.18 or newer and [pnpm](https://pnpm.io) (the repository
+is locked with `pnpm-lock.yaml`). The bridge runs from its source, and the
+protocol it imports is TypeScript, which Node runs by stripping its types from
+22.18 on, so there is no build or watch step to run it or the tests. The npm
+package still runs on any Node 22, because it carries the bridge as plain
+JavaScript. To see real agents you also need [Herdr](https://herdr.dev)
+running; without it, the demo mode simulates everything.
 
 ```sh
 pnpm install
@@ -18,8 +21,8 @@ pnpm dev
 
 `pnpm dev` starts the bridge on port 7788 and Vite on
 http://localhost:5178, which reloads the page as you edit `packages/web/`. The
-bridge does not reload: restart `pnpm dev` after changing `packages/bridge/`.
-Open http://localhost:5178/?demo for simulated agents.
+bridge does not reload: restart `pnpm dev` after changing `packages/bridge/` or
+`packages/protocol/`. Open http://localhost:5178/?demo for simulated agents.
 
 The bridge drives your real Herdr: it can type into your panes and create
 tabs and worktrees. While you work on it, consider pointing it at a separate
@@ -29,12 +32,16 @@ everyday Kauak, say), run a second bridge with
 
 ## Layout
 
-A pnpm workspace of four packages, each with its own `package.json` and README:
+A pnpm workspace of five packages, each with its own `package.json` and README:
 
+- `packages/protocol/` (`@kauak/protocol`): the Kauak protocol, its types and
+  the checks the bridge runs on every message from a page, in one TypeScript
+  module, `src/index.ts`. It imports nothing, so the bridge and the page both
+  import it by name.
 - `packages/bridge/` (`@kauak/bridge`): the Node bridge, in `src/`, plain ESM
-  JavaScript with no build step. Its only runtime dependency is `ws`.
-  `machine.js` and `herdr.js` are the Herdr adapter, the only files that speak
-  Herdr's API.
+  JavaScript with no build step. Its runtime dependencies are `ws` and the
+  protocol. `machine.js` and `herdr.js` are the Herdr adapter, the only files
+  that speak Herdr's API. `scripts/bundle.js` bundles it for the npm package.
 - `packages/kauak/` (`kauak`, the npm package): `bin/kauak.js` and `cli/`, the
   `kauak` command. A new command is one module in `cli/commands/` and one entry
   in `COMMANDS` in `cli/main.js`, whose opening comment says what the module
@@ -53,13 +60,15 @@ check and the page's license list.
 
 ## Changing what the page and the bridge say
 
-The page and the bridge talk only in the Kauak protocol: its types are in
-`packages/bridge/src/protocol.d.ts` (the page imports them through
-`packages/web/src/types.ts`), its checks in `packages/bridge/src/protocol.js`,
-and its reference in [docs/protocol.md](docs/protocol.md). The bridge drops any
-message from a page that the checks do not know, so a new or changed message
-means updating all three, and `packages/web/src/demo.ts` too, so the demo keeps
-working. Herdr's own fields and methods stay in the adapter.
+The page and the bridge talk only in the Kauak protocol: its types and its
+checks are in `packages/protocol/src/index.ts` (`@kauak/protocol`), and its
+reference in [docs/protocol.md](docs/protocol.md). The bridge drops any message
+from a page that the checks do not know, so a new or changed message starts in
+`packages/protocol` (a message from the page does not compile until
+`parseClientMessage` has a parser for it), then the bridge
+(`packages/bridge/src/server.js`), then `packages/web/src/demo.ts`, so the demo
+keeps working, and the reference. Herdr's own fields and methods stay in the
+adapter.
 
 ## Before you open a pull request
 
@@ -85,11 +94,13 @@ formatted by hand.
 `pnpm check:boundaries` (`scripts/check-boundaries.mjs`) keeps the pieces
 apart: only the Herdr adapter (`packages/bridge/src/machine.js`,
 `packages/bridge/src/herdr.js`, `packages/bridge/src/remote.js`) imports
-`herdr.js` or names Herdr's methods, the trackers and the protocol do not import
-the adapter, `packages/appearance/src/registry.ts` imports nothing but its
-contracts and uses no DOM, the page imports only the protocol's types from the
-bridge, and the bridge and the CLI import nothing from the page. When a file
-moves, update the rules at the top of the script.
+`herdr.js` or names Herdr's methods, the trackers do not import the adapter,
+`packages/protocol` imports nothing (no other package, no Node or DOM) and the
+others import it by its name, `packages/appearance/src/registry.ts` imports
+nothing but its contracts and uses no DOM, the page imports the protocol and
+the appearance packages but nothing of the bridge or the CLI, and the bridge
+and the CLI import nothing from the page. When a file moves, update the rules
+at the top of the script.
 
 `pnpm test` runs `node --test` in each package and in `scripts/`, which finds
 every `*.test.mjs`. Tests use Node's built-in runner (`node:test` with
@@ -102,9 +113,10 @@ installed.
 `npm install -g` and `npx` in a temporary folder, and runs `kauak serve` from
 each. It needs the npm registry, and matters most when you change what the
 package ships: a new folder that the CLI loads at runtime has to be added to
-`files` in `packages/kauak/package.json` (the bridge's `src/` is copied in whole
-when packing). Packing copies the bridge, README and LICENSE into
-`packages/kauak/` and removes them afterwards; a `packages/kauak/bridge/` left
+`files` in `packages/kauak/package.json`. The bridge goes in as a bundle of
+`src/server.js` and `src/machine.js` with the protocol inlined, plus the Python
+helpers. Packing writes that bundle and copies README and LICENSE into
+`packages/kauak/`, and removes them afterwards; a `packages/kauak/bridge/` left
 behind by an interrupted pack is safe to delete.
 
 CI (`.github/workflows/ci.yml`) runs all of them on Node 22 and 24, for every

@@ -5,7 +5,7 @@
 // agent. Once the pane exists the office opens it like any other desk.
 
 import type { BuildTarget } from "./scene";
-import type { RoomSpec } from "./types";
+import type { RoomSpec } from "@kauak/protocol";
 
 // Herdr's agent kinds (`herdr agent`, 0.9.1), the usual ones first.
 const COMMON_AGENTS = ["claude", "codex", "gemini", "cursor", "copilot", "opencode"];

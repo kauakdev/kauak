@@ -10,21 +10,29 @@ goes in:
 
 - `bin/kauak.js`, the `kauak` executable (package.json `bin`), and `cli/`, the
   commands it runs
-- `bridge/`, the bridge `kauak serve` starts, run as is (plain JavaScript, no
-  build), with the two Python helpers it runs on remote floors over SSH. Its
-  source is `packages/bridge/src`; `prepack` copies it in
-  (`packages/kauak/scripts/assemble.js`) and `postpack` removes the copy
+- `bridge/`, the bridge `kauak serve` starts, as a bundle: `server.js` and
+  `machine.js`, the two modules the CLI loads, built by Vite from
+  `packages/bridge/src` into plain JavaScript for Node 22 (not minified, no
+  source maps), with the two Python helpers it runs on remote floors over SSH
+  beside them. It is bundled rather than copied because the bridge imports the
+  protocol, `@kauak/protocol`, which is TypeScript and not on npm; the bundle
+  inlines it, and leaves only `ws` and Node's own modules as imports.
+  `prepack` makes it (`pnpm --filter @kauak/bridge bundle`,
+  `packages/bridge/scripts/bundle.js`) and `postpack` removes it
 - `dist/`, the built office page the bridge serves, with
   `THIRD_PARTY_LICENSES.txt` for the packages bundled into it (written by
   `scripts/third-party-licenses.js` on every build)
 - `package.json`, `README.md` and `LICENSE`, which npm always adds. README and
-  LICENSE are the repository's, copied in by `prepack` like the bridge
+  LICENSE are the repository's, copied in by `prepack`
+  (`packages/kauak/scripts/assemble.js`)
 
-Tests, test fixtures and type declarations are left out, and so is
+Tests, test fixtures, TypeScript and type declarations are left out, and so is
 `dist/kauak-banner.png`, which only the demo site uses (as its social preview).
 The page's own packages (pixi.js, xterm.js) are devDependencies, since they are
-bundled into `dist/`; the only runtime dependency is `ws`. A new directory
-that the CLI loads at runtime has to be added to `files`.
+bundled into `dist/`; the only runtime dependency is `ws`. No dependency or
+import in the package may be a workspace package (`@kauak/*`, `workspace:`),
+since npm cannot install one. A new directory that the CLI loads at runtime has
+to be added to `files`.
 
 The package exposes no module: `exports` only lets tools read its
 package.json, because importing the bridge would start a server.
@@ -36,10 +44,12 @@ pnpm verify:pack
 ```
 
 It packs the package as `npm publish` would (the `prepack` script type-checks
-and builds the page first), checks the file list, installs the tarball with
-`npm install`, `npm install -g` and `npx` into a temporary folder, and runs
-`kauak --version`, `kauak --help`, `kauak serve` and bare `kauak` from each,
-checking that the page, its files and the WebSocket answer. It never touches
+the protocol and the page, builds the page and bundles the bridge first),
+checks the file list, installs the tarball with `npm install`, `npm install -g`
+and `npx` into a temporary folder, checks that no installed file imports a
+workspace package, and runs `kauak --version`, `kauak --help`, `kauak serve`
+and bare `kauak` from each, checking that the page, its files and the
+WebSocket answer. It never touches
 your Herdr, saved floors, global packages or browser (stand-in openers record
 what bare `kauak` would open), and it needs the npm registry to install `ws`.
 CI runs it on every pull request, on Node 22 (the oldest version the package

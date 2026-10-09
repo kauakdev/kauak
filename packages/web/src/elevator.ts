@@ -3,7 +3,7 @@
 // Also owns the "add floor" form. Re-rendered on bridge pushes only.
 
 import { floorProblem, runtimeOf, type Floor } from "./floors";
-import type { AgentStatus } from "./types";
+import type { AgentStatus } from "@kauak/protocol";
 
 export interface ElevatorHandlers {
   onPick(floor: string): void;

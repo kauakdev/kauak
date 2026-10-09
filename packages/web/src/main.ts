@@ -9,7 +9,7 @@ import { Radio } from "./radio";
 import { AppearanceSettings } from "./plugins/settings";
 import { OfficeBackground } from "./plugins/background";
 import { OfficeScene } from "./scene";
-import type { MachineInfo, Snapshot } from "./types";
+import type { MachineInfo, Snapshot } from "@kauak/protocol";
 import { Bridge, type BridgeApi, type BridgeHandlers } from "./ws";
 
 const FLOOR_KEY = "agent-office.floor";

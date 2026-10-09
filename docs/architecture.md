@@ -4,8 +4,9 @@ Kauak has two halves. The bridge (`packages/bridge/`, Node) runs on your
 machine, talks to every Herdr server it knows about and sends what it learns to
 the page over a WebSocket. The page (`packages/web/`, TypeScript and PixiJS)
 turns that into the office and sends your clicks and keystrokes back. Between
-them is the Kauak protocol, which belongs to Kauak, not to Herdr: Herdr's
-methods, fields, events and errors stop at the bridge's Herdr adapter.
+them is the Kauak protocol (`packages/protocol/`, TypeScript, imported by
+both), which belongs to Kauak, not to Herdr: Herdr's methods, fields, events
+and errors stop at the bridge's Herdr adapter.
 
 ```
 Herdr on this machine (unix socket)     Herdr on another machine (through an SSH tunnel)
@@ -15,7 +16,7 @@ Herdr adapter    packages/bridge/src/machine.js + packages/bridge/src/herdr.js, 
    │  Kauak terms: info, snapshot, readPane, createRoom…
    ▼
 Bridge server    packages/bridge/src/server.js, with context.js, diffs.js and commands.js
-   │  the Kauak protocol, over a WebSocket
+   │  the Kauak protocol (packages/protocol), over a WebSocket
    ▼
 Page             packages/web/src/ws.ts → the office      (packages/web/src/demo.ts speaks it too, with no bridge)
 ```
@@ -32,10 +33,11 @@ its options and runs it; a new command is one module in
 (`packages/kauak/cli/commands/serve.js`) loads `packages/bridge/src/server.js`,
 which starts listening as it is loaded and serves the built page
 (`packages/kauak/dist/`) on the same port as the WebSocket, so the office is one
-process and one URL. The npm package ships it as `dist/`, already built
-(`prepack` builds it, and copies the bridge in beside the CLI), so an installed
-`kauak serve` needs no build. `pnpm dev` runs the bridge on its own and serves
-the page from Vite instead.
+process and one URL. The npm package ships it as `dist/`, already built, with
+the bridge bundled beside the CLI (`prepack` does both), so an installed
+`kauak serve` needs no build. From a checkout the bridge runs from its source,
+TypeScript protocol included, on Node's type stripping. `pnpm dev` runs the
+bridge on its own and serves the page from Vite instead.
 
 ## The Herdr adapter
 
@@ -61,12 +63,12 @@ then keeps one tunnel open (`ssh -N -L <local.sock>:<remote herdr.sock>
 saved in `~/.config/kauak/machines.json`) and speaks only the Kauak protocol. It
 broadcasts each floor's state and snapshot to every page, and every message
 about a floor names its machine. Each message from a page goes through
-`parseClientMessage` (`packages/bridge/src/protocol.js`), which checks and trims
-it or drops it; the protocol's types are in `packages/bridge/src/protocol.d.ts`.
-Input is queued per pane and run in order, and acknowledged with `input_ack`,
-after which the page reads the pane again. Build mode's requests become
-`createDesk` and `createRoom` on the floor's Machine, and its agent starts once
-the new shell is up.
+`parseClientMessage` (`@kauak/protocol`, `packages/protocol/src/index.ts`),
+which checks and trims it or drops it; the protocol's types are in the same
+file. Input is queued per pane and run in order, and acknowledged with
+`input_ack`, after which the page reads the pane again. Build mode's requests
+become `createDesk` and `createRoom` on the floor's Machine, and its agent
+starts once the new shell is up.
 
 Three trackers add what Herdr does not report:
 
@@ -93,7 +95,7 @@ snapshot), and check that nothing of Herdr's reaches the WebSocket.
 
 ## The page
 
-`packages/web/src/types.ts` re-exports the protocol's types, so the page knows
+The page imports the protocol's types from `@kauak/protocol`, so it knows
 floors only through them. `packages/web/src/ws.ts` is the connection to the
 bridge and `packages/web/src/demo.ts` a simulated bridge with the same
 interface, producing Kauak snapshots of made-up agents.

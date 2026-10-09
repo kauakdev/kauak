@@ -15,7 +15,7 @@
 // each angle smoothly rather than blending two matrices.
 
 import type { Prints } from "./prints";
-import type { DiffSheet, FileDiff, Uncommitted } from "./types";
+import type { DiffSheet, FileDiff, Uncommitted } from "@kauak/protocol";
 
 /** Where a printer's top sheet is on screen, and the office's zoom. */
 export interface Tray {

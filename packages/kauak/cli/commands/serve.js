@@ -6,8 +6,8 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { UsageError } from "../errors.js";
 
-// The npm package carries a copy of the bridge beside the CLI (scripts/assemble.js makes it when
-// packing); a checkout has none and runs the bridge's own source in packages/bridge.
+// The npm package carries a bundle of the bridge beside the CLI (packages/bridge/scripts/bundle.js
+// makes it when packing); a checkout has none and runs the bridge's own source in packages/bridge.
 const PACKED = fs.existsSync(new URL("../../bridge/server.js", import.meta.url));
 
 export const name = "serve";

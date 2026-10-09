@@ -1,13 +1,14 @@
 // Checks the package that `npm publish` would upload, the way people get it.
 //
-// `npm pack` builds the page (the prepack script) and writes the tarball,
-// whose file list must have what `kauak serve` needs and nothing from
-// development. The tarball is then installed into empty folders the three
-// ways kauak is run (npm install, npm install -g, npx), and each install's
-// `kauak` must print its version and help. `kauak serve --no-open`, and bare
-// `kauak`, which runs serve and opens the browser, must serve the page and
-// everything it links to, accept the page's WebSocket and stop on Ctrl+C with
-// nothing left running.
+// `npm pack` builds the page and bundles the bridge (the prepack script) and
+// writes the tarball, whose file list must have what `kauak serve` needs and
+// nothing from development. The tarball is then installed into empty folders
+// the three ways kauak is run (npm install, npm install -g, npx); no installed
+// file may import a workspace package, and each install's `kauak` must print
+// its version and help. `kauak serve --no-open`, and bare `kauak`, which runs
+// serve and opens the browser, must serve the page and everything it links
+// to, accept the page's WebSocket and stop on Ctrl+C with nothing left
+// running.
 //
 // It all happens in a temporary folder with its own npm cache, a Herdr socket
 // that does not exist, no saved floors and stand-in browser openers, so the
@@ -51,6 +52,7 @@ const FORBIDDEN = [
   [/(^|\/)[^/]+\.test\.[^/]+$/, "a test"],
   [/(^|\/)fixtures\//, "a test fixture"],
   [/\.d\.ts$/, "type declarations (the package has no importable API)"],
+  [/\.[cm]?ts$/, "TypeScript (Node does not strip types under node_modules)"],
   [/\.map$/, "a source map"],
   [/\.tgz$/, "a tarball"],
   [/^(packages|web|shared|plugins|docs|scripts|node_modules|dist-demo|\.github|\.agents|\.claude)\//, "development files"],
@@ -60,6 +62,9 @@ const FORBIDDEN = [
   ],
   [/^dist\/kauak-banner\.png$/, "only the demo site's social preview uses it"],
 ];
+// The workspace's packages (@kauak/protocol...) are not on npm, so nothing shipped may import one:
+// the bridge's bundle inlines what it uses of them.
+const WORKSPACE_IMPORT = /\b(?:from|import|require)\s*\(?\s*["'`]@kauak\//;
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "kauak-verify-pack-"));
 const children = new Set();
@@ -152,15 +157,24 @@ function pack() {
   for (const f of files.keys()) {
     for (const [pattern, why] of FORBIDDEN) assert.ok(!pattern.test(f), `${f} should not be in the package: ${why}`);
   }
+  for (const field of ["dependencies", "peerDependencies", "optionalDependencies"]) {
+    for (const [dep, spec] of Object.entries(PKG[field] ?? {}))
+      assert.ok(!dep.startsWith("@kauak/") && !spec.startsWith("workspace:"), `${field} has ${dep}@${spec}, which npm cannot install`);
+  }
   ok(`npm pack: rebuilt the page, ${info.entryCount} files, all required ones and nothing from development`);
   return path.join(temp, info.filename);
 }
 
-/** An install has the package with a runnable bin and its dependencies, and none of the devDependencies. */
+/** An install has the package with a runnable bin and its dependencies, none of the devDependencies, and no workspace imports. */
 function checkInstall(nodeModules) {
   const dir = path.join(nodeModules, PKG.name);
   const bin = fs.readFileSync(path.join(dir, "bin", "kauak.js"), "utf8");
   assert.ok(bin.startsWith("#!/usr/bin/env node\n"), "bin/kauak.js does not start with a node shebang");
+  for (const file of fs.readdirSync(dir, { recursive: true })) {
+    if (file.split(path.sep)[0] === "node_modules" || !/\.[cm]?js$/.test(file)) continue;
+    const text = fs.readFileSync(path.join(dir, file), "utf8");
+    assert.ok(!WORKSPACE_IMPORT.test(text), `${file} imports a workspace package: ${text.match(WORKSPACE_IMPORT)?.[0]}`);
+  }
   // A dependency is next to the package (npm install) or inside it (npm install -g).
   const installed = (dep) => [nodeModules, path.join(dir, "node_modules")].some((d) => fs.existsSync(path.join(d, dep)));
   for (const dep of Object.keys(PKG.dependencies ?? {})) assert.ok(installed(dep), `dependency ${dep} was not installed`);

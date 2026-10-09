@@ -21,7 +21,7 @@ import "@xterm/xterm/css/xterm.css";
 import { contextLevel, contextPercent, contextText } from "./context";
 import { promptShadow, type Shadow } from "./shadow";
 import { SlashMenu } from "./slash";
-import type { InputOp, PaneInfo, SlashCommand, Snapshot } from "./types";
+import type { InputOp, PaneInfo, SlashCommand, Snapshot } from "@kauak/protocol";
 
 const POLL_MS = 400;
 // Rows of history read above the pane's screen. Every poll carries them

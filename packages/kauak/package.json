@@ -17,7 +17,7 @@
   "scripts": {
     "start": "node bin/kauak.js serve",
     "test": "node --test",
-    "prepack": "pnpm --filter @kauak/web typecheck && pnpm --filter @kauak/web build && node scripts/assemble.js",
+    "prepack": "pnpm --filter @kauak/protocol --filter @kauak/web typecheck && pnpm --filter @kauak/web build && pnpm --filter @kauak/bridge bundle && node scripts/assemble.js",
     "postpack": "node scripts/assemble.js --clean"
   },
   "dependencies": {

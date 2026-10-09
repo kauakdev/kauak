@@ -9,7 +9,7 @@
 // wing ends in a slot for a new room, and a last slot below the wings takes a
 // room in any other folder.
 
-import type { PaneInfo, Snapshot, WorkspaceInfo } from "./types";
+import type { PaneInfo, Snapshot, WorkspaceInfo } from "@kauak/protocol";
 
 export const CELL = 3; // tiles per desk cell
 export const WALL = 1; // tiles of padding inside a room

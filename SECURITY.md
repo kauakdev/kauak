@@ -43,7 +43,7 @@ Whoever controls the bridge can therefore run commands in your terminals.
   `localhost`, `127.0.0.1` or `[::1]` (on any port), plus the hostnames you
   list in `KAUAK_ORIGINS`.
 - Every message from a page goes through `parseClientMessage`
-  (`packages/bridge/src/protocol.js`), which checks its shape and sizes before
+  (`packages/protocol/src/index.ts`), which checks its shape and sizes before
   the bridge acts on it. Messages it does not know are dropped, keys outside a
   short list of names (`enter`, `ctrl+c`…) are dropped, and text sent to a pane
   is cut at 64 KB per piece. The format is in

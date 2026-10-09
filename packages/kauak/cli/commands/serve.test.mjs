@@ -8,6 +8,7 @@ import { once } from "node:events";
 import { spawn, spawnSync } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { bundle } from "../../../bridge/scripts/bundle.js";
 import { assemble } from "../../scripts/assemble.js";
 
 // The server runs from a directory outside the checkout, with a Herdr socket
@@ -122,9 +123,10 @@ test("`kauak --demo` points at the demo and skips the Herdr hint", { skip: notBu
 });
 test("exits 1 with a clear message when the office page is not built", { timeout: 20_000 }, async (t) => {
   // An install without dist/: the package's files except the page, plus its dependencies. The
-  // bridge is copied in as packing does.
+  // bridge is bundled in and README and LICENSE copied, as packing does.
   const pkg = path.join(temp, "no-page");
   const { files } = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+  await bundle(path.join(pkg, "bridge"), { logLevel: "warn" });
   assemble(pkg);
   for (const entry of files.filter((f) => !/^(dist\b|bridge\b|!)/.test(f)))
     fs.cpSync(path.join(ROOT, entry), path.join(pkg, entry), { recursive: true });

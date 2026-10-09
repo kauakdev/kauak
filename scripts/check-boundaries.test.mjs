@@ -12,24 +12,24 @@ const SCRIPT = fileURLToPath(new URL("./check-boundaries.mjs", import.meta.url))
 const CLEAN = {
   "packages/bridge/src/machine.js":
     'import { toSnapshot } from "./herdr.js";\nexport const snapshot = (request) => request("session.snapshot");\n',
-  "packages/bridge/src/herdr.js": 'import { AGENT_STATUSES } from "./protocol.js";\n// Herdr\'s `pane.read` answers in rows.\n',
+  "packages/bridge/src/herdr.js": 'import { AGENT_STATUSES } from "@kauak/protocol";\n// Herdr\'s `pane.read` answers in rows.\n',
   "packages/bridge/src/remote.js": 'import { SSH } from "./machine.js";\n',
-  "packages/bridge/src/protocol.js": "export const AGENT_STATUSES = [];\n",
-  "packages/bridge/src/protocol.d.ts": 'export type AgentStatus = "idle" | "working";\n',
   "packages/bridge/src/context.js":
     '// Herdr reports no token counts, so read them from the transcript.\nimport { RemoteScript } from "./remote.js";\n',
   "packages/bridge/src/diffs.js": 'import { RemoteScript } from "./remote.js";\n',
   "packages/bridge/src/commands.js": 'import fs from "node:fs";\n',
-  "packages/bridge/src/server.js": 'import { Machine } from "./machine.js";\nimport { parseClientMessage } from "./protocol.js";\n',
+  "packages/bridge/src/server.js": 'import { Machine } from "./machine.js";\nimport { parseClientMessage } from "@kauak/protocol";\n',
   "packages/bridge/src/server.test.mjs": 'import { toSnapshot } from "./herdr.js";\nconst calls = ["pane.read", "tab.create"];\n',
   "packages/bridge/src/fixtures/fake-herdr.mjs": 'export const METHOD = "session.snapshot";\n',
+  "packages/protocol/src/index.ts":
+    'export type AgentStatus = "idle" | "working";\nexport const AGENT_STATUSES: readonly AgentStatus[] = ["idle", "working"];\n',
+  "packages/protocol/src/protocol.test.mjs": 'import test from "node:test";\nimport { parseClientMessage } from "./index.ts";\n',
   "packages/kauak/cli/main.js": 'export async function serve() {\n  await import("../../bridge/src/server.js");\n}\n',
   "packages/kauak/bin/kauak.js": 'import { main } from "../cli/main.js";\n',
   "packages/appearance/src/contracts.ts": "export interface Theme {\n  name: string;\n}\n",
   "packages/appearance/src/registry.ts":
     'import type { Theme } from "./contracts";\nexport const load = (storage: { getItem(k: string): string | null }) => storage.getItem("theme");\nexport const title = (t: Theme) => ({ document: t.name });\n',
-  "packages/web/src/types.ts": 'export type * from "../../bridge/src/protocol";\n',
-  "packages/web/src/main.ts": 'import type { AgentStatus } from "./types";\nimport { Theme } from "@kauak/appearance/contracts";\n',
+  "packages/web/src/main.ts": 'import type { AgentStatus } from "@kauak/protocol";\nimport { Theme } from "@kauak/appearance/contracts";\n',
   "packages/web/src/demo.ts": 'const SEARCHES = ["retries", "session.snapshot"];\n',
 };
 
@@ -99,15 +99,40 @@ test("imports in comments, strings and template literals are not imports", () =>
   assert.equal(status, 0, lines.join("\n"));
 });
 
-test("the trackers and the protocol do not import the Herdr adapter", () => {
+test("the trackers do not import the Herdr adapter", () => {
   assertViolation(
     { "packages/bridge/src/context.js": 'import { RemoteScript } from "./remote.js";\nimport { LOCAL_SOCKET } from "./machine.js";\n' },
-    /^packages\/bridge\/src\/context\.js:2: imports "\.\/machine\.js" \(packages\/bridge\/src\/machine\.js\): the trackers and the protocol/,
+    /^packages\/bridge\/src\/context\.js:2: imports "\.\/machine\.js" \(packages\/bridge\/src\/machine\.js\): the trackers reach a floor/,
   );
   assertViolation(
-    { "packages/bridge/src/protocol.js": 'import { RUNTIME } from "./herdr.js";\n' },
-    /^packages\/bridge\/src\/protocol\.js:1: .*the trackers/,
+    { "packages/bridge/src/commands.js": 'import { Machine } from "@kauak/bridge/machine.js";\n' },
+    /^packages\/bridge\/src\/commands\.js:1: .*the trackers/,
   );
+});
+
+test("the protocol imports nothing, and uses neither Node nor the DOM", () => {
+  const rule = /the protocol imports nothing/;
+  assertViolation(
+    { "packages/protocol/src/index.ts": 'import fs from "node:fs";\n' },
+    /^packages\/protocol\/src\/index\.ts:1: imports "node:fs": the protocol imports nothing/,
+  );
+  assertViolation({ "packages/protocol/src/index.ts": 'import { RUNTIME } from "../../bridge/src/herdr.js";\n' }, rule);
+  assertViolation({ "packages/protocol/src/index.ts": 'import type { Theme } from "@kauak/appearance/contracts";\n' }, rule);
+  assertViolation({ "packages/protocol/src/index.ts": 'import { WebSocket } from "ws";\n' }, rule);
+  assertViolation(
+    { "packages/protocol/src/index.ts": "export const home = () => process.env.HOME;\n" },
+    /^packages\/protocol\/src\/index\.ts:1: uses process: the protocol imports nothing/,
+  );
+  assertViolation({ "packages/protocol/src/index.ts": "export const title = () => document.title;\n" }, /uses document: the protocol/);
+});
+
+test("the bridge and the page import the protocol by its name, not by its path", () => {
+  const rule = /import the protocol by its name/;
+  assertViolation(
+    { "packages/bridge/src/server.js": 'import { parseClientMessage } from "../../protocol/src/index.ts";\n' },
+    /^packages\/bridge\/src\/server\.js:1: imports "\.\.\/\.\.\/protocol\/src\/index\.ts" \(packages\/protocol\/src\/index\.ts\): other packages import the protocol by its name/,
+  );
+  assertViolation({ "packages/web/src/main.ts": 'import type { AgentStatus } from "../../protocol/src";\n' }, rule);
 });
 
 test("Herdr's method names are flagged outside the adapter, but not in comments, tests or the demo", () => {
@@ -136,8 +161,8 @@ test("the appearance registry imports nothing but its contracts and uses no DOM"
     /^packages\/appearance\/src\/registry\.ts:2: imports "pixi\.js": the appearance registry/,
   );
   assertViolation({ "packages/appearance/src/registry.ts": 'import { Terminal } from "@xterm/xterm";\n' }, rule);
-  assertViolation({ "packages/appearance/src/registry.ts": 'import { parseClientMessage } from "../../bridge/src/protocol.js";\n' }, rule);
-  assertViolation({ "packages/appearance/src/registry.ts": 'import { parseClientMessage } from "@kauak/bridge/protocol.js";\n' }, rule);
+  assertViolation({ "packages/appearance/src/registry.ts": 'import { Machine } from "../../bridge/src/machine.js";\n' }, rule);
+  assertViolation({ "packages/appearance/src/registry.ts": 'import { parseClientMessage } from "@kauak/protocol";\n' }, rule);
   assertViolation({ "packages/appearance/src/registry.ts": 'import { keyOf } from "../../web/src/floors";\n' }, rule);
   assertViolation(
     { "packages/appearance/src/registry.ts": 'export const load = () => localStorage.getItem("theme");\n' },
@@ -148,27 +173,31 @@ test("the appearance registry imports nothing but its contracts and uses no DOM"
 
 test("packages/appearance imports nothing from the bridge, the CLI or the page", () => {
   assertViolation(
-    { "packages/appearance/src/contracts.ts": 'import type { Snapshot } from "../../bridge/src/protocol";\n' },
+    { "packages/appearance/src/contracts.ts": 'import type { Machine } from "../../bridge/src/machine.js";\n' },
     /^packages\/appearance\/src\/contracts\.ts:1: .*appearance contracts/,
   );
   assertViolation(
-    { "packages/appearance/src/contracts.ts": 'import type { Snapshot } from "@kauak/bridge/protocol.js";\n' },
+    { "packages/appearance/src/contracts.ts": 'import type { Machine } from "@kauak/bridge/machine.js";\n' },
     /^packages\/appearance\/src\/contracts\.ts:1: .*appearance contracts/,
   );
 });
 
-test("the page imports only the protocol's types from the bridge, and nothing of the CLI", () => {
-  const rule = /the page knows the bridge only through the protocol's types/;
+test("the page imports the protocol and the appearance packages, and nothing of the bridge or the CLI", () => {
+  const rule = /the page imports the protocol and the appearance packages/;
   assertViolation(
     { "packages/web/src/main.ts": 'import { ready } from "../../bridge/src/server.js";\n' },
-    /^packages\/web\/src\/main\.ts:1: imports "\.\.\/\.\.\/bridge\/src\/server\.js" \(packages\/bridge\/src\/server\.js\): the page knows the bridge/,
+    /^packages\/web\/src\/main\.ts:1: imports "\.\.\/\.\.\/bridge\/src\/server\.js" \(packages\/bridge\/src\/server\.js\): the page imports the protocol/,
   );
-  // The protocol's rules are bridge code; only its types may cross.
   assertViolation({ "packages/web/src/main.ts": 'import { ready } from "@kauak/bridge/server.js";\n' }, rule);
-  assertViolation({ "packages/web/src/main.ts": 'import { parseClientMessage } from "../../bridge/src/protocol";\n' }, rule);
-  assertViolation({ "packages/web/src/main.ts": 'import { AGENT_STATUSES } from "../../bridge/src/protocol.js";\n' }, rule);
+  // Types are no exception: what the page knows of the bridge is the protocol.
+  assertViolation({ "packages/web/src/main.ts": 'import type { Machine } from "../../bridge/src/machine.js";\n' }, rule);
+  assertViolation({ "packages/web/src/main.ts": 'export type * from "@kauak/bridge/machine.js";\n' }, rule);
   assertViolation({ "packages/web/src/main.ts": 'import { main } from "../../kauak/cli/main.js";\n' }, rule);
-  const { status, lines } = check({ "packages/web/src/main.ts": 'import type { AgentStatus } from "../../bridge/src/protocol";\n' });
+  // The protocol's rules may cross as well as its types.
+  const { status, lines } = check({
+    "packages/web/src/main.ts":
+      'import { AGENT_STATUSES, type AgentStatus } from "@kauak/protocol";\nimport { Theme } from "@kauak/appearance/contracts";\n',
+  });
   assert.equal(status, 0, lines.join("\n"));
 });
 

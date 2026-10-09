@@ -2,7 +2,7 @@
 // bridge from the agent's transcript; see bridge/context.js). Shared by the
 // meter under each agent's name tag, the roster, the tooltip and the panel.
 
-import type { ContextUsage } from "./types";
+import type { ContextUsage } from "@kauak/protocol";
 
 export type ContextLevel = "ok" | "warn" | "full";
 

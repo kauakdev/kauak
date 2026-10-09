@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@kauak/appearance": "workspace:*",
+    "@kauak/protocol": "workspace:*",
     "@xterm/xterm": "^6.0.0",
     "pixi.js": "^8.6.0"
   },

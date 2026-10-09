@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { KEY, MAX_INPUT_OPS, MAX_INPUT_TEXT, MAX_READ_LINES, parseClientMessage as parse } from "./protocol.js";
+import { KEY, MAX_INPUT_OPS, MAX_INPUT_TEXT, MAX_READ_LINES, parseClientMessage as parse } from "./index.ts";
 
 test("every message the page sends is accepted as it is", () => {
   const sent = [

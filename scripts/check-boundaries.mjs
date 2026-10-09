@@ -1,9 +1,9 @@
 // Checks the boundaries docs/architecture.md and docs/protocol.md state in
 // prose, so a change cannot quietly cross them: Herdr's API is spoken only in
-// the bridge's Herdr adapter, the trackers and the protocol reach a floor only
-// through the Machine they are given, the appearance registry is data with no
-// DOM, Pixi or bridge in it, and the page and the bridge meet only in the
-// protocol's types.
+// the bridge's Herdr adapter, the trackers reach a floor only through the
+// Machine they are given, the protocol imports nothing (the bridge and the
+// page both load it), the appearance registry is data with no DOM, Pixi or
+// bridge in it, and the page and the bridge meet only in the protocol.
 //
 // It reads every JavaScript and TypeScript file under the repository (or the
 // folder given as the first argument), finds what each one imports (`import`,
@@ -25,16 +25,15 @@ const HERDR_ADAPTER = ["packages/bridge/src/machine.js", "packages/bridge/src/he
 const TESTS = ["**/*.test.mjs", "packages/bridge/src/fixtures/**"];
 // Workspace packages are imported by relative path or by name, and a name is checked as written.
 const BRIDGE = ["packages/bridge/**", "@kauak/bridge", "@kauak/bridge/**"];
-// The CLI, bin/kauak.js, and the copy of the bridge the npm package carries.
+// The CLI, bin/kauak.js, and the bundle of the bridge the npm package carries.
 const KAUAK = ["packages/kauak/**", "kauak", "kauak/**"];
 const WEB = ["packages/web/**", "@kauak/web", "@kauak/web/**"];
 
 // Each rule applies to `files` (minus `except`) and checks any of:
-//   forbid   imports that may not be made (repository paths or package names), `unless` one of these
-//            (with `typeOnly`, only by `import type` or `export type`)
+//   forbid   imports that may not be made (repository paths or package names)
 //   only     the only imports allowed; anything else is a violation
 //   strings  string literals that may not appear
-//   globals  browser globals that may not be used
+//   globals  globals (the browser's, Node's) that may not be used
 const RULES = [
   {
     rule: "only the Herdr adapter (machine.js, herdr.js, remote.js) imports herdr.js",
@@ -43,13 +42,8 @@ const RULES = [
     forbid: ["packages/bridge/src/herdr.js", "packages/kauak/bridge/herdr.js", "@kauak/bridge/herdr.js"],
   },
   {
-    rule: "the trackers and the protocol reach a floor through the Machine they are given, not the Herdr adapter",
-    files: [
-      "packages/bridge/src/context.js",
-      "packages/bridge/src/diffs.js",
-      "packages/bridge/src/commands.js",
-      "packages/bridge/src/protocol.js",
-    ],
+    rule: "the trackers reach a floor through the Machine they are given, not the Herdr adapter",
+    files: ["packages/bridge/src/context.js", "packages/bridge/src/diffs.js", "packages/bridge/src/commands.js"],
     forbid: ["packages/bridge/src/machine.js", "packages/bridge/src/herdr.js", "@kauak/bridge/machine.js", "@kauak/bridge/herdr.js"],
   },
   {
@@ -58,6 +52,19 @@ const RULES = [
     // The demo's made-up terminals show code that calls Herdr.
     except: [...HERDR_ADAPTER, ...TESTS, "packages/web/src/demo.ts"],
     strings: /^(session|events|workspace|worktree|tab|pane|agent|layout)\.[a-z][a-z_]*$/,
+  },
+  {
+    rule: "the protocol imports nothing, as the bridge and the page both load it: no workspace package, Node or DOM",
+    files: ["packages/protocol/**"],
+    except: TESTS,
+    only: [],
+    globals: /^(window|document|navigator|location|localStorage|sessionStorage|(HTML|SVG)\w*Element|process|Buffer)$/,
+  },
+  {
+    rule: "other packages import the protocol by its name, @kauak/protocol, as their package.json declares, not by its path",
+    files: ["**"],
+    except: ["packages/protocol/**"],
+    forbid: ["packages/protocol/**"],
   },
   {
     rule: "the appearance registry imports nothing but its contracts: no DOM, Pixi, xterm, bridge or page",
@@ -71,11 +78,9 @@ const RULES = [
     forbid: [...BRIDGE, ...KAUAK, ...WEB],
   },
   {
-    rule: "the page knows the bridge only through the protocol's types (import type), and nothing of the CLI",
+    rule: "the page imports the protocol and the appearance packages, and nothing of the bridge or the CLI",
     files: ["packages/web/**"],
     forbid: [...BRIDGE, ...KAUAK],
-    unless: ["packages/bridge/src/protocol.d.ts"],
-    typeOnly: true,
   },
   {
     rule: "the bridge and the CLI import nothing from the page",
@@ -113,10 +118,9 @@ for (const r of RULES) {
   if (!matched.length) problems.push(`scripts/check-boundaries.mjs: rule matches no files, update RULES: ${r.rule}`);
   for (const file of matched) {
     const { imports, strings, identifiers } = scanned.get(file);
-    for (const { specifier, line, types } of imports) {
+    for (const { specifier, line } of imports) {
       const target = resolve(file, specifier);
-      const excused = matches(target, r.unless) && (types || !r.typeOnly);
-      const bad = r.only ? !matches(target, r.only) : matches(target, r.forbid) && !excused;
+      const bad = r.only ? !matches(target, r.only) : matches(target, r.forbid);
       if (bad) problems.push(`${file}:${line}: imports "${specifier}"${target === specifier ? "" : ` (${target})`}: ${r.rule}`);
     }
     if (r.strings)
@@ -212,10 +216,9 @@ function scan(src) {
       imports.push(specifierOf(next));
     } else if (t.value === "import" && !isPunct(next, ".")) {
       // import a, { b, type c } from "x" / import * as a from "x" / import type { a } from "x"
-      const types = isWord(next, "type") && !isWord(at(i + 2), "from");
       for (let j = i + 1; j < tokens.length && !isPunct(tokens[j], ";"); j++) {
         if (isWord(tokens[j], "from") && at(j + 1).type === "string") {
-          imports.push(specifierOf(at(j + 1), types));
+          imports.push(specifierOf(at(j + 1)));
           i = j + 1;
           break;
         }
@@ -224,8 +227,7 @@ function scan(src) {
     } else if (t.value === "export") {
       // export * from "x" / export * as a from "x" / export { a } from "x" / export type * from "x"
       let j = i + 1;
-      const types = isWord(at(j), "type");
-      if (types) j++;
+      if (isWord(at(j), "type")) j++;
       if (isPunct(at(j), "*")) {
         j++;
         if (isWord(at(j), "as")) j += 2;
@@ -233,14 +235,14 @@ function scan(src) {
         while (j < tokens.length && !isPunct(tokens[j], "}")) j++;
         j++;
       } else continue;
-      if (isWord(at(j), "from") && at(j + 1).type === "string") imports.push(specifierOf(at(j + 1), types));
+      if (isWord(at(j), "from") && at(j + 1).type === "string") imports.push(specifierOf(at(j + 1)));
     }
   }
   return { imports, strings, identifiers, balanced };
 }
 
-function specifierOf(token, types = false) {
-  return { specifier: token.value, line: token.line, types };
+function specifierOf(token) {
+  return { specifier: token.value, line: token.line };
 }
 
 /** Tokens: words, strings (quoted, or template literals without ${}), numbers and punctuation; comments are dropped. */

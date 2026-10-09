@@ -2,7 +2,7 @@
 // adapter. server.js asks a Machine for what it needs in Kauak terms (its
 // `info`, its `snapshot`, and operations like `readPane` or `createRoom`); this
 // file turns those into Herdr requests, and herdr.js turns Herdr's answers
-// into the Kauak protocol (protocol.d.ts). Herdr's methods, fields and errors
+// into the Kauak protocol (@kauak/protocol). Herdr's methods, fields and errors
 // go no further.
 //
 // Herdr only listens on a local unix socket, so a remote machine is reached
@@ -201,7 +201,7 @@ export class Machine extends EventEmitter {
     return this.call("pane.send_text", { pane_id: paneId, text });
   }
 
-  /** Kauak's key names (KEY in protocol.js) are Herdr's own, so they go as they are. */
+  /** Kauak's key names (KEY in @kauak/protocol) are Herdr's own, so they go as they are. */
   async sendKeys(paneId, keys) {
     for (let i = 0; i < keys.length; i += MAX_KEYS_PER_CALL) {
       await this.call("pane.send_keys", { pane_id: paneId, keys: keys.slice(i, i + MAX_KEYS_PER_CALL) });

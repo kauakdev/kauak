@@ -14,7 +14,7 @@ import { WebSocket } from "ws";
 import { FIXTURE, fakeHerdr, herdrError } from "./fixtures/fake-herdr.mjs";
 import { toSnapshot } from "./herdr.js";
 
-// Every message type the bridge may send (BridgeMessage in protocol.d.ts).
+// Every message type the bridge may send (BridgeMessage in @kauak/protocol).
 const BRIDGE_TYPES = new Set([
   "machines",
   "machine_added",

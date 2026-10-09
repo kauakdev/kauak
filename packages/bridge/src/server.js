@@ -8,7 +8,7 @@
 // added (see context.js) and each room's git checkout, whose edits its
 // printer prints as they happen (see diffs.js).
 //
-// Pages speak the Kauak protocol (protocol.d.ts, docs/protocol.md), and so
+// Pages speak the Kauak protocol (@kauak/protocol, docs/protocol.md), and so
 // does this file: it knows a floor only through its Machine (machine.js, the
 // Herdr adapter), never Herdr's methods, fields or errors.
 //
@@ -21,12 +21,12 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { AGENT_KIND, GIT_REF, MAX_INPUT_TEXT, SSH_TARGET, parseClientMessage } from "@kauak/protocol";
 import { WebSocketServer } from "ws";
 import { slashCommands } from "./commands.js";
 import { ContextTracker } from "./context.js";
 import { DiffTracker } from "./diffs.js";
 import { LOCAL_SOCKET, Machine } from "./machine.js";
-import { AGENT_KIND, GIT_REF, MAX_INPUT_TEXT, SSH_TARGET, parseClientMessage } from "./protocol.js";
 
 const WS_PORT = Number(process.env.KAUAK_PORT ?? process.env.AGENT_OFFICE_PORT ?? 7788);
 // The bridge can type into terminals, create panes and worktrees, and open SSH

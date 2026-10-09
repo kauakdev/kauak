@@ -1,9 +1,9 @@
 // Herdr → Kauak: how Herdr's API shapes become the Kauak protocol
-// (protocol.d.ts). machine.js speaks Herdr's socket protocol and calls these
+// (@kauak/protocol). machine.js speaks Herdr's socket protocol and calls these
 // on what comes back; nothing past the bridge sees a Herdr field, method or
 // error. Verified against Herdr 0.9.x, protocol 22 (`herdr api schema`).
 
-import { AGENT_STATUSES } from "./protocol.js";
+import { AGENT_STATUSES } from "@kauak/protocol";
 
 export const RUNTIME = "Herdr";
 

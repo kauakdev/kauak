@@ -27,7 +27,7 @@ import {
   type Pose,
   type Roam,
 } from "./roam";
-import type { AgentStatus, ContextUsage } from "./types";
+import type { AgentStatus, ContextUsage } from "@kauak/protocol";
 
 export const STATUS_COLOR: Record<AgentStatus, number> = {
   working: 0x5ad87a,

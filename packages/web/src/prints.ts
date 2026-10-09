@@ -7,7 +7,7 @@
 // only live ones count as new until they are read.
 
 import { floorOf, keyOf } from "./floors";
-import type { DiffSheet, WorkspaceInfo } from "./types";
+import type { DiffSheet, WorkspaceInfo } from "@kauak/protocol";
 
 // Same as the bridge keeps per checkout.
 const MAX_SHEETS = 50;

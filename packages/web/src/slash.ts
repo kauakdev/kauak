@@ -3,7 +3,7 @@
 // in the agent's own prompt. The panel owns the keys (↑ ↓ pick, Tab
 // completes, Enter runs, Esc closes); this class filters and draws.
 
-import type { SlashCommand } from "./types";
+import type { SlashCommand } from "@kauak/protocol";
 
 // "/", then a name so far: no space yet (arguments close the menu), no "/"
 // further on (a path such as /tmp/x is not a command).

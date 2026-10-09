@@ -6,12 +6,15 @@
   "exports": { "./*": "./src/*" },
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "bundle": "node scripts/bundle.js"
   },
   "dependencies": {
+    "@kauak/protocol": "workspace:*",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/ws": "^8.5.12"
+    "@types/ws": "^8.5.12",
+    "vite": "^6.0.0"
   }
 }

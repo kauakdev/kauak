@@ -14,7 +14,7 @@
 
 import { kindColor } from "./character";
 import { keyOf, splitKey } from "./floors";
-import type { AgentStatus, DiffSheet, FileDiff, InputOp, MachineInfo, PaneInfo, RoomSpec, SlashCommand, Snapshot } from "./types";
+import type { AgentStatus, DiffSheet, FileDiff, InputOp, MachineInfo, PaneInfo, RoomSpec, SlashCommand, Snapshot } from "@kauak/protocol";
 import type { BridgeApi, BridgeHandlers } from "./ws";
 
 const COLS = 100;

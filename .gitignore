@@ -2,7 +2,8 @@ node_modules
 dist
 dist-demo
 *.tgz
-# Copies packing makes in the npm package (packages/kauak/scripts/assemble.js).
+# What packing puts in the npm package: the bridge's bundle (packages/bridge/scripts/bundle.js)
+# and copies of README and LICENSE (packages/kauak/scripts/assemble.js).
 packages/kauak/bridge/
 packages/kauak/README.md
 packages/kauak/LICENSE

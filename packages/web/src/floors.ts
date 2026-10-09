@@ -3,7 +3,7 @@
 // ("devbox/w1:p1"). Everything past the bridge connection works with these
 // keys and never has to know which machine a pane lives on.
 
-import type { MachineInfo, Snapshot } from "./types";
+import type { MachineInfo, Snapshot } from "@kauak/protocol";
 
 export interface Floor {
   info: MachineInfo;

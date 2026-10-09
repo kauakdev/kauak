@@ -14,7 +14,7 @@ packages/bridge/src/machine.js + packages/bridge/src/herdr.js    the Herdr adapt
   │   Kauak terms: machine.info, machine.snapshot, readPane, createRoom…
   ▼
 packages/bridge/src/server.js (with context.js, diffs.js, commands.js)
-  │   the Kauak protocol over the WebSocket
+  │   the Kauak protocol (packages/protocol) over the WebSocket
   ▼
 packages/web/src/ws.ts → the office    packages/web/src/demo.ts speaks it too, with no bridge at all
 ```
@@ -23,8 +23,7 @@ packages/web/src/ws.ts → the office    packages/web/src/demo.ts speaks it too,
 
 | File | What it knows |
 |---|---|
-| `packages/bridge/src/protocol.d.ts` | The protocol's types: every message both ways, and the snapshot. The page imports them through `packages/web/src/types.ts`. |
-| `packages/bridge/src/protocol.js` | Its rules: `parseClientMessage` checks and trims every message from a page before the bridge acts on it, and drops anything else. Also the shared limits and patterns (key names, SSH targets, branch names, agent kinds). |
+| `packages/protocol/src/index.ts` (`@kauak/protocol`) | The protocol's types: every message both ways, and the snapshot. And its rules: `parseClientMessage` checks and trims every message from a page before the bridge acts on it, and drops anything else (a page message type without a parser does not compile). Also the shared limits and patterns (key names, SSH targets, branch names, agent kinds). It imports nothing: the bridge imports it, and the page its types. |
 | `packages/bridge/src/herdr.js` | Herdr → Kauak, as pure functions: a `session.snapshot` becomes a Kauak snapshot, Herdr's errors become messages fit to show, the agent session Herdr's hooks reported for a pane. |
 | `packages/bridge/src/machine.js` | One Herdr server: its socket protocol, the SSH tunnel, the event subscription, and the Kauak-level operations below, each made of Herdr requests. |
 | `packages/bridge/src/server.js` | The WebSocket, the floors, the input queue and build mode, in Kauak terms only. |

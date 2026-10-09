@@ -47,6 +47,8 @@ kauak serve
 
 ## Run from source
 
+You need Node.js 22.18 or newer and [pnpm](https://pnpm.io).
+
 ```sh
 git clone https://github.com/agustinrbeltran/kauak.git
 cd kauak
@@ -114,10 +116,10 @@ Page             packages/web/
   `packages/bridge/src/herdr.js`): one per floor. It talks to Herdr's socket,
   here or through an SSH tunnel, and translates Herdr's snapshots and errors
   into Kauak's own. Herdr-specific code lives only here.
-- **Kauak protocol** (`packages/bridge/src/protocol.d.ts`,
-  `packages/bridge/src/protocol.js`): the JSON messages between the page and the
-  bridge, described in [docs/protocol.md](docs/protocol.md). The bridge checks
-  every message from a page against it.
+- **Kauak protocol** (`packages/protocol/src/index.ts`, TypeScript): the JSON
+  messages between the page and the bridge, described in
+  [docs/protocol.md](docs/protocol.md). The bridge checks every message from a
+  page against it.
 - **Bridge server** (`packages/bridge/src/server.js`, Node, plain JavaScript):
   serves the page and the WebSocket on 127.0.0.1:7788, and adds what Herdr does
   not report: context usage, read from the agents' transcripts, and file diffs,

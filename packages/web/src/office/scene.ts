@@ -150,9 +150,11 @@ export class OfficeScene {
 
   /**
    * Show one floor. Changing floors refits the camera and slides the new floor
-   * in from above (`dir` 1, going up) or below (-1).
+   * in from above (`dir` 1, going up) or below (-1). `runtime` names what runs
+   * it, for the tooltip.
    */
-  showFloor(floorId: string, snap: Snapshot, dir = 0) {
+  showFloor(floorId: string, snap: Snapshot, dir = 0, runtime = "") {
+    this.tooltip.runtime = runtime;
     if (floorId !== this.floorId) {
       this.floorId = floorId;
       this.camera.newFloor(dir);

@@ -26,7 +26,7 @@ import "@xterm/xterm/css/xterm.css";
 import { contextLevel, contextPercent, contextText } from "../app/context";
 import type { AppState } from "../app/state";
 import { load, save } from "../app/storage";
-import { mergeSnapshots } from "../floors/floors";
+import { floorOf, mergeSnapshots } from "../floors/floors";
 import { promptShadow, type Shadow } from "./shadow";
 import { SlashMenu } from "./slash";
 import type { InputOp, PaneInfo, SlashCommand, Snapshot } from "@kauak/protocol";
@@ -72,6 +72,7 @@ export class TerminalPanel {
   private sendBtn = document.getElementById("panel-send") as HTMLButtonElement;
   private takeBtn = document.getElementById("panel-take") as HTMLButtonElement;
   private liveBtn = document.getElementById("panel-live") as HTMLButtonElement;
+  private focusBtn = document.getElementById("panel-focus") as HTMLButtonElement;
   private menu = new SlashMenu(document.getElementById("panel-slash")!, this.box);
   private term: Terminal;
   private pane: PaneInfo | null = null;
@@ -118,7 +119,7 @@ export class TerminalPanel {
     this.term.attachCustomWheelEventHandler(() => false);
 
     document.getElementById("panel-close")!.addEventListener("click", () => this.close());
-    document.getElementById("panel-focus")!.addEventListener("click", () => {
+    this.focusBtn.addEventListener("click", () => {
       if (this.pane) this.onFocus(this.pane.pane_id);
     });
     for (const b of this.el.querySelectorAll<HTMLButtonElement>("[data-key]"))
@@ -472,6 +473,9 @@ export class TerminalPanel {
     kind.textContent = p.agent ?? "shell";
     kind.dataset.kind = p.agent ?? "";
     document.getElementById("panel-status")!.textContent = p.agent ? p.agent_status : "no agent";
+    const runtime = this.state.floors().find((f) => f.info.id === floorOf(p.pane_id))?.info.runtime.name ?? "";
+    this.focusBtn.textContent = `Focus in ${runtime}`;
+    this.focusBtn.title = `Switch ${runtime} to this pane`;
     const ctx = document.getElementById("panel-ctx")!;
     ctx.hidden = !p.context;
     if (p.context) {

@@ -199,18 +199,18 @@ export class Hud {
       text = `${f.info.label} unreachable`;
       this.showEmpty(
         `Floor ${f.number} · ${f.info.label} is unreachable`,
-        `${(f.info.message || "Herdr did not answer").replace(/\.?$/, ".")} Retrying on its own.`,
+        `${(f.info.message || `${f.info.runtime.name} did not answer`).replace(/\.?$/, ".")} Retrying on its own.`,
       );
     } else if (!f.snapshot) {
       text = "connecting…";
-      this.showEmpty(`Taking the elevator to ${f.info.label}…`, f.info.message || "Waiting for Herdr.");
+      this.showEmpty(`Taking the elevator to ${f.info.label}…`, f.info.message || `Waiting for ${f.info.runtime.name}.`);
     } else {
       ok = f.info.state === "live";
       text = `${f.number}F · ${runtimeOf(f.info)}`;
       if (f.snapshot.panes.length === 0)
         this.showEmpty(
           `Floor ${f.number} is empty`,
-          `Open a workspace or pane in Herdr${f.info.ssh ? ` on ${f.info.label}` : ""} and it will appear here.`,
+          `Open a workspace or pane in ${f.info.runtime.name}${f.info.ssh ? ` on ${f.info.label}` : ""} and it will appear here.`,
         );
       else this.empty.hidden = true;
     }
@@ -251,14 +251,15 @@ export class Hud {
             `<span class="name">${esc(f.info.label)}</span>${state ? `<span class="state" title="${esc(f.info.message)}">${esc(state)}</span>` : ""}</h2>`,
         );
       }
-      if (f.snapshot) html.push(`<div class="floor-body conn-${f.info.state}">${this.rosterGroups(f.snapshot)}</div>`);
+      if (f.snapshot) html.push(`<div class="floor-body conn-${f.info.state}">${this.rosterGroups(f.snapshot, f.info.runtime.name)}</div>`);
     }
     this.roster.innerHTML = html.join("");
     for (const el of this.roster.querySelectorAll<HTMLElement>(".pane"))
       el.addEventListener("click", () => this.state.select(el.dataset.pane!));
   }
 
-  private rosterGroups(s: Snapshot): string {
+  /** `runtime` names what runs the floor, for the focused room's marker. */
+  private rosterGroups(s: Snapshot, runtime: string): string {
     const byWs = new Map<string, PaneInfo[]>();
     for (const p of s.panes) byWs.set(p.workspace_id, [...(byWs.get(p.workspace_id) ?? []), p]);
     const groups = new Map<string, { name: string; rows: string[] }>();
@@ -268,7 +269,7 @@ export class Hud {
       const name = ws.repo?.name ?? (panes[0]?.cwd?.split("/").pop() || "loose");
       const g = groups.get(key) ?? { name, rows: [] };
       g.rows.push(
-        `<div class="room"><span>${esc(ws.label || ws.workspace_id)}</span>${ws.focused ? '<em title="focused in Herdr">●</em>' : ""}</div>`,
+        `<div class="room"><span>${esc(ws.label || ws.workspace_id)}</span>${ws.focused ? `<em title="focused in ${esc(runtime)}">●</em>` : ""}</div>`,
       );
       for (const p of panes) {
         this.order.push(p.pane_id);

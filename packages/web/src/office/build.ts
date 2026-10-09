@@ -60,7 +60,8 @@ export class BuildMode {
   private toast = document.getElementById("toast")!;
   private on = false;
   private target: BuildTarget | null = null;
-  private floor = { id: "", label: "", remote: false };
+  /** The floor the form adds to; `runtime` names what runs it ("Herdr"). */
+  private floor = { id: "", label: "", remote: false, runtime: "" };
   private mode: Mode = "desk";
   private reqId = 0;
   private pending: number | null = null;
@@ -129,7 +130,7 @@ export class BuildMode {
   }
 
   /** Open the form for a slot clicked at screen point (x, y) on `floor`. */
-  open(target: BuildTarget, floor: { id: string; label: string; remote: boolean }, x: number, y: number) {
+  open(target: BuildTarget, floor: { id: string; label: string; remote: boolean; runtime: string }, x: number, y: number) {
     if (this.pending !== null) return; // one request at a time
     this.target = target;
     this.floor = floor;
@@ -195,10 +196,10 @@ export class BuildMode {
     this.field("cwd").placeholder = this.floor.remote ? "/home/you/code/project" : "~/code/project";
     this.note.textContent =
       mode === "desk"
-        ? `Opens a new tab in this room in Herdr. An agent must be installed on ${this.floor.label} to start.`
+        ? `Opens a new tab in this room in ${this.floor.runtime}. An agent must be installed on ${this.floor.label} to start.`
         : mode === "worktree"
           ? "Creates a git worktree on a new branch (in ~/.herdr/worktrees) and opens it as a room."
-          : `Opens a Herdr workspace in that folder${this.floor.remote ? ` on ${this.floor.label} (absolute path)` : ""}.`;
+          : `Opens a ${this.floor.runtime} workspace in that folder${this.floor.remote ? ` on ${this.floor.label} (absolute path)` : ""}.`;
   }
 
   private send() {
@@ -227,7 +228,8 @@ export class BuildMode {
     this.submit.disabled = true;
     this.submit.textContent = "Creating…";
     this.showError("");
-    this.timer = window.setTimeout(() => this.failed("No answer from the bridge. Check Herdr, then try again.", id), REPLY_TIMEOUT_MS);
+    const late = `No answer from the bridge. Check ${this.floor.runtime}, then try again.`;
+    this.timer = window.setTimeout(() => this.failed(late, id), REPLY_TIMEOUT_MS);
   }
 
   /** No request in flight any more. */

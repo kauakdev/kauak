@@ -187,7 +187,11 @@ Not part of the protocol yet, on purpose:
 - **Capabilities.** Nothing says what a runtime can do. The build form's list
   of agent kinds is Herdr's, and a runtime without worktrees, tabs or agent
   statuses would need the protocol to say so.
-- **Copy.** Some of the page's text still names Herdr ("Focus in Herdr", the
-  build form's hints, "focused in Herdr"), as the product is built around
-  it today. The text that shows the runtime's name or version (the floor chip,
-  the elevator, why a floor is down) takes it from `runtime`.
+- **Copy.** The page's text about whatever runs a floor takes its name from
+  `runtime`: the floor chip, the elevator, why a floor is down or empty,
+  "Focus in …", "focused in …" and the build form's hints. What still names
+  Herdr is about Herdr itself or about Kauak as a whole: the page's
+  description, and the add-floor button's tooltip and note (the bridge only
+  connects to Herdr); the new desk hint's "tab" and the worktree hint's
+  `~/.herdr/worktrees` (Herdr's tabs and folder, which the protocol cannot
+  describe for another runtime); and the demo's worktree folders.

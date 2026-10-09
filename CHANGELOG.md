@@ -30,6 +30,10 @@ turns Unreleased into the new version's section, as
   `agent-office.radio` and `agent-office.panel-width`, are copied to the same
   names under `kauak.` once, the first time the page reads each without its new
   key. The old keys are left as they were and are not read after that.
+- The page's text about a floor (why it is not answering or still empty, "Focus
+  in …", "focused in …" and the build form's hints) names what runs that floor,
+  as the bridge reports it, instead of always saying Herdr. With Herdr it reads
+  as before.
 
 ### Removed
 

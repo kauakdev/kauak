@@ -7,6 +7,9 @@ import { whereabouts, type Roam } from "./roam";
 import type { PaneInfo } from "@kauak/protocol";
 
 export class Tooltip {
+  /** What runs the floor drawn ("Herdr"), for a focused pane. */
+  runtime = "";
+
   constructor(private tip: HTMLElement) {}
 
   hide() {
@@ -21,7 +24,7 @@ export class Tooltip {
       : "<b>shell</b> · no agent";
     const context = pane.context ? `\ncontext: ${contextText(pane.context)}` : "";
     this.place(
-      `${who}\n${escapeHtml(pane.title)}${context}\n<span class="muted">${escapeHtml(shortPath(pane.cwd ?? ""))}\n${pane.pane_id}${pane.focused ? " · focused in Herdr" : ""}</span>`,
+      `${who}\n${escapeHtml(pane.title)}${context}\n<span class="muted">${escapeHtml(shortPath(pane.cwd ?? ""))}\n${pane.pane_id}${pane.focused ? ` · focused in ${escapeHtml(this.runtime)}` : ""}</span>`,
       pane.agent_status,
       x,
       y,

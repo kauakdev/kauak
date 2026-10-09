@@ -32,9 +32,9 @@ async function main() {
   state.subscribe((change) => {
     if (change.type === "selection" || (change.type === "floors" && !change.current)) return;
     const dir = change.type === "floor" ? change.dir : 0;
-    scene.showFloor(state.current, state.snapshot(state.current) ?? EMPTY_SNAPSHOT, dir);
-    if (dir !== 0) {
-      const to = state.floors().find((f) => f.info.id === state.current)!;
+    const to = state.floors().find((f) => f.info.id === state.current);
+    scene.showFloor(state.current, state.snapshot(state.current) ?? EMPTY_SNAPSHOT, dir, to?.info.runtime.name);
+    if (dir !== 0 && to) {
       banner.innerHTML = `<b>${to.number}F</b>${escapeHtml(to.info.label)}`;
       banner.classList.remove("show");
       void banner.offsetWidth; // restart the animation
@@ -92,7 +92,7 @@ async function main() {
   });
   scene.onBuild = (target, x, y) => {
     const info = state.floors().find((f) => f.info.id === state.current)?.info;
-    if (info) build.open(target, { id: info.id, label: info.label, remote: info.ssh !== null }, x, y);
+    if (info) build.open(target, { id: info.id, label: info.label, remote: info.ssh !== null, runtime: info.runtime.name }, x, y);
   };
   scene.onSelectPane = (pane) => state.select(pane.pane_id);
   scene.onEmptyClick = () => {

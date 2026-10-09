@@ -162,7 +162,15 @@ keys. `packages/web/src/floors/elevator.ts` is the floor switcher.
 `packages/web/src/office/layout.ts` turns a snapshot into a floor plan in tile
 units. `packages/web/src/office/scene.ts` renders it with PixiJS in layers
 (ground, platforms, floor and walls, depth-sorted objects, selection overlay,
-labels, dust). Furniture lives in `packages/web/src/office/props.ts` and
+labels, dust). It is the page's one entry to the office: it builds the layers
+and, on every snapshot and every frame, runs its parts in a fixed order.
+`floor-renderer.ts` draws a floor into the layers, `printer-animator.ts` the
+rooms' printers and the sheets they print, `picker.ts` turns the pointer into
+hovers and clicks and marks the selected desk, `camera.ts` pans, zooms and fits
+the view and slides a new floor in, and `tooltip.ts` owns the tooltip. The parts
+know each other only through their constructor arguments; the theme and the
+reduced-motion setting are two small objects the scene owns and they read.
+Furniture lives in `packages/web/src/office/props.ts` and
 desks/people in `packages/web/src/office/character.ts`; every visual is drawn
 procedurally today so sprites can replace the helpers one at a time.
 `packages/web/src/office/roam.ts` decides where idle agents go and walks them

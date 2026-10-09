@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// The `kauak` executable (`npx kauak <command>`, or `kauak <command>` after
-// `npm install -g kauak`). The command line itself is in cli/main.js.
+// The `kauak` executable (`npx @kauakdev/kauak <command>`, or `kauak <command>`
+// after `npm install -g @kauakdev/kauak`). The command line itself is in
+// cli/main.js.
 
 import { main } from "../cli/main.js";
 

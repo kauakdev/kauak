@@ -26,17 +26,18 @@ tab.
 You need Node.js 22 or newer, and Herdr (0.9.x) running on this machine.
 
 ```sh
-npx kauak serve
+npx @kauakdev/kauak serve
 ```
 
 The office opens at http://127.0.0.1:7788. The package carries the built page,
-so there is nothing to clone or build. `npx kauak serve --demo` shows simulated
-agents without Herdr, and `npx kauak serve --help` lists the options.
+so there is nothing to clone or build. `npx @kauakdev/kauak serve --demo` shows
+simulated agents without Herdr, and `npx @kauakdev/kauak serve --help` lists the
+options.
 
 To keep the `kauak` command around, install it globally instead:
 
 ```sh
-npm install -g kauak
+npm install -g @kauakdev/kauak
 kauak serve
 ```
 

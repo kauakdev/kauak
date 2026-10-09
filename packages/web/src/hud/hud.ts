@@ -192,7 +192,7 @@ export class Hud {
       text = "bridge offline · retrying";
       this.showEmpty(
         "The bridge is offline",
-        "Start it with npx kauak serve (or pnpm dev in a checkout). This page reconnects on its own.",
+        "Start it with npx @kauakdev/kauak serve (or pnpm dev in a checkout). This page reconnects on its own.",
       );
     } else if (!f) {
       text = "connecting…";

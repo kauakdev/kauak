@@ -96,7 +96,7 @@ IDs can use lowercase letters, numbers, dots and hyphens, for example
 `company.harbor`. A package is 64 KB at most.
 
 There are two places to load it from, and no need for a checkout of the
-repository: `npx kauak serve` has both.
+repository: `npx @kauakdev/kauak serve` has both.
 
 **In this browser.** Import the JSON through **More appearances**. It is
 validated before saving, appears in the appropriate selectors, survives a

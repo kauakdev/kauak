@@ -89,7 +89,7 @@ test("serves the office page on --port and stops with exit 0 on Ctrl+C", { skip:
   const s = start(t, ["serve", "--no-open", "--port", String(port)]);
   assert.ok(await s.until("Press Ctrl+C to stop."), s.stdout + s.stderr);
   assert.match(s.stdout, new RegExp(`kauak is running at http://127\\.0\\.0\\.1:${port}/\\n`));
-  assert.match(s.stdout, /Herdr is not running on this machine .*\n.*npx kauak serve --demo/);
+  assert.match(s.stdout, /Herdr is not running on this machine .*\n.*npx @kauakdev\/kauak serve --demo/);
   const res = await fetch(`http://127.0.0.1:${port}/`);
   assert.equal(res.status, 200);
   assert.match(res.headers.get("content-type"), /^text\/html/);

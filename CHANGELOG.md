@@ -11,6 +11,14 @@ turns Unreleased into the new version's section, as
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-09
+
+### Changed
+
+- The npm package is `@kauakdev/kauak`: run `npx @kauakdev/kauak serve`, or
+  `npm install -g @kauakdev/kauak` and then `kauak serve` as before. The
+  `kauak` package is deprecated and stays at 0.1.0.
+
 ## [0.1.0] - 2026-10-09
 
 ### Added
@@ -64,5 +72,6 @@ turns Unreleased into the new version's section, as
   no repository and no folder to go by, only a label, was listed under "loose"
   while the office put it in a wing named after its label.
 
-[Unreleased]: https://github.com/kauakdev/kauak/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/kauakdev/kauak/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/kauakdev/kauak/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kauakdev/kauak/releases/tag/v0.1.0

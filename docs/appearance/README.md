@@ -33,7 +33,8 @@ It goes well with the **Moonlit summit** background.
 
 Appearance changes do not create, close, rename, focus or send input to
 terminal sessions. Which terminals the office shows is up to the bridge and
-its runtime adapters, never an appearance package.
+its runtime adapters, never an appearance package. The bridge serves the
+packages installed on its machine as files and does not read them.
 
 ## Try it
 
@@ -77,20 +78,47 @@ The settings are saved under the `kauak.appearance.v1` key.
 
 ## Author and load a package
 
-Copy [harbor.json](harbor.json), change its ID/name and edit its palette. This
-example contributes only an office; either included character package can
-still be selected. Import the JSON through **More appearances**. It is
+Start from the example: **Download harbor.json** in **More appearances** saves
+[harbor.json](../../packages/appearance/examples/harbor.json), the same file
+the repository keeps. Change its ID and name and edit its palette. This example
+contributes only an office; either included character package can still be
+selected. IDs starting with `kauak.` are reserved for included packages; custom
+IDs can use lowercase letters, numbers, dots and hyphens, for example
+`company.harbor`. A package is 64 KB at most.
+
+There are two places to load it from, and no need for a checkout of the
+repository: `npx kauak serve` has both.
+
+**In this browser.** Import the JSON through **More appearances**. It is
 validated before saving, appears in the appropriate selectors, survives a
 reload and can be removed from settings. An import does not automatically
-change the current selection. Up to eight custom packages of 64 KB each are
-kept. Replace a package by removing it and importing its new version.
+change the current selection. Up to eight custom packages are kept, on this
+browser and origin only. Replace a package by removing it and importing its
+new version.
+
+**On the machine that serves the office.** Put the JSON in
+`~/.config/kauak/appearances/` (or the folder `KAUAK_APPEARANCES` names), or
+start the office with `kauak serve --appearance <file>`, once per file. The
+bridge serves every `.json` file there as `/appearances.json`, and the page
+loads them with the included packages each time it opens, for every browser
+that opens this office. Edit a file and reload the page; remove the file to
+uninstall it. Settings list them under **Installed on this machine**, with
+each file's path, and a file that is not a valid package is listed with what
+is wrong with it while the others load. The bridge does not read what is in
+the files: the page validates them as it validates an import, so a file may
+not use a reserved ID either. When a file and an import share an ID, the file
+wins: the import is not used, and **More appearances** says so beside it so it
+can be removed, and a new import with an installed file's ID is refused. The
+selection is saved in the
+browser as before, so an office chosen from an installed package comes back
+on reload as long as the file is there, and falls back to **Classic office**
+with a note if it is not. The static demo site has no bridge, so it has no
+installed packages.
 
 For a package shipped with the repo, add its JSON to
 `packages/appearance/packages/`, then include it in `bundledPackages` in
 `packages/web/src/appearance/catalog.ts`. There is no per-package switch in the
-scene. IDs starting with `kauak.` are reserved for included packages; custom
-IDs can use lowercase letters, numbers, dots and hyphens, for example
-`company.harbor`.
+scene.
 
 The public API is [contracts.ts](../../packages/appearance/src/contracts.ts).
 The runtime boundary is

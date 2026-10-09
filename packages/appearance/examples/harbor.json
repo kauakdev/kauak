@@ -16,14 +16,8 @@
         "accent": "#e8cb8c",
         "focus": "#a5cae0",
         "light": "#b5e6ff",
-        "rugs": [
-          "#87cddd",
-          "#7ca5ce"
-        ],
-        "wings": [
-          "#476962",
-          "#54716b"
-        ]
+        "rugs": ["#87cddd", "#7ca5ce"],
+        "wings": ["#476962", "#54716b"]
       },
       "materials": {
         "wood": "#89aaba",

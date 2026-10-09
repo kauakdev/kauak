@@ -65,8 +65,8 @@ two calls to it:
 1. `resolveConfig(env, flags)` (`packages/bridge/src/config.ts`) makes the
    bridge's settings, one frozen `BridgeConfig`, from the environment (the
    variables in [configuration.md](configuration.md)) and from what the entry
-   point knows itself: the `--port` option and where the built page is. No
-   other module reads `process.env`.
+   point knows itself: the `--port` and `--appearance` options and where the
+   built page is. No other module reads `process.env`.
 2. `createBridge(config)` (`packages/bridge/src/server.ts`) makes the bridge
    and its floors, starting nothing, and returns `{ listen(), close(), floors }`.
    `listen()` starts the floors and opens the port, and resolves with the
@@ -204,6 +204,17 @@ port, which accepts only pages from the allowed origins (this computer's, plus
 page only as a `Connection`. Making it opens nothing: the core's `listen()` and
 `close()` open and close its port.
 
+Beside the page it serves `/appearances.json` (`transport/appearances.ts`):
+the `.json` files of the appearance folder (`~/.config/kauak/appearances`, or
+`KAUAK_APPEARANCES`) and the files `kauak serve --appearance` names, read on
+each request and passed on as they are, with their paths, or with why one could
+not be read, and only to a page from the allowed origins. The bridge does not
+validate them, the page does
+(`packages/web/src/appearance/installed.ts`, then the appearance registry),
+so a package installed on the machine is held to the same contract as one
+imported in the browser. Under `pnpm dev`, Vite proxies the request to the
+bridge.
+
 ## The page
 
 The page imports the protocol's types from `@kauak/protocol`, so it knows
@@ -220,7 +231,7 @@ floors only through them. Its code is in feature folders under
 | `printers/` | The printers' sheets (`prints.ts`) and the printout you read them on (`printout.ts`). |
 | `hud/` | The top bar, roster, stats and activity feed (`hud.ts`). |
 | `radio/` | The radio (`radio.ts`) and its stations (`stations.ts`). |
-| `appearance/` | The appearance settings (`settings.ts`), the backgrounds (`background.ts`), the banner's image (`banner-image.ts`) and the bundled packages (`catalog.ts`). |
+| `appearance/` | The appearance settings (`settings.ts`), the backgrounds (`background.ts`), the banner's image (`banner-image.ts`), the bundled packages (`catalog.ts`) and the packages installed on the serving machine (`installed.ts`, from `/appearances.json`). |
 
 The stylesheets are bundled in the order `app/main.ts` first reaches them
 through its imports, so keep `./main.css` its first import and the others in
@@ -300,8 +311,12 @@ cannot use, and loads and saves the settings (`loadPreferences`,
 
 The page lists the included packages in
 `packages/web/src/appearance/catalog.ts`, and `settings.ts` there is the
-dialog that chooses them, imports others and sets the company banner. All of
-that is saved in the browser under `kauak.appearance.v1`. See the
+dialog that chooses them, imports others, offers the example
+(`packages/appearance/examples/harbor.json`) and sets the company banner. The
+packages installed on the serving machine come from the bridge
+(`installed.ts`, above) and are registered after the included ones and before
+the imported ones. The selection, the imports and the banner are saved in the
+browser under `kauak.appearance.v1`. See the
 [appearance and banner guide](appearance/README.md).
 
 ## Where a change goes
@@ -320,7 +335,7 @@ that is saved in the browser under `kauak.appearance.v1`. See the
 - **A new office look**: a JSON file in `packages/appearance/packages/`, added
   to `bundledPackages` in `packages/web/src/appearance/catalog.ts`. The scene
   has no switch per package. A look for your own office needs no change at all:
-  import its JSON in the settings.
+  import its JSON in the settings, or put it in `~/.config/kauak/appearances/`.
 
 ## Tests and checks
 

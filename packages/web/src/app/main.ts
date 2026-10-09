@@ -20,6 +20,8 @@ async function main() {
   await scene.init(document.getElementById("app")!);
   const background = new OfficeBackground(document.getElementById("app")!);
   const appearance = new AppearanceSettings(scene, background);
+  // The packages installed on the serving machine first, so the saved appearance is shown once, before the first frame.
+  await appearance.loadInstalled();
   await appearance.restoreBanner();
   const params = new URLSearchParams(location.search);
   // Simulated floors and agents instead of the bridge: `?demo`, or the static demo build (`pnpm build:demo`).

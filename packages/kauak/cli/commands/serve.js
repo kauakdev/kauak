@@ -1,9 +1,11 @@
 // `kauak serve`: start the bridge, which also serves the built office page,
 // and open it in the browser. Settings are the bridge's environment variables
-// (see README); the options below are shortcuts for the common ones.
+// (see README); the options below are shortcuts for the common ones, and
+// --appearance names package files the bridge serves beside the folder's.
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { UsageError } from "../errors.js";
 
@@ -21,28 +23,37 @@ Starts the bridge, which serves the office page and connects it to Herdr,
 and opens the page in the browser. Runs until Ctrl+C.
 
 Options:
-  -p, --port <n>  port for the page and the bridge (default 7788)
-      --demo      open the demo with simulated agents (no Herdr needed)
-      --no-open   do not open the browser
-  -h, --help      show this help
+  -p, --port <n>           port for the page and the bridge (default 7788)
+      --demo               open the demo with simulated agents (no Herdr needed)
+      --no-open            do not open the browser
+      --appearance <file>  an appearance package (JSON) to offer in the page's
+                           settings, besides those in ~/.config/kauak/appearances;
+                           repeat it for several
+  -h, --help               show this help
 
-Environment: HERDR_SOCKET_PATH, KAUAK_PORT, KAUAK_HOST,
-KAUAK_ORIGINS, KAUAK_CONFIG (see the README).
+Environment: HERDR_SOCKET_PATH, KAUAK_PORT, KAUAK_HOST, KAUAK_ORIGINS,
+KAUAK_CONFIG, KAUAK_APPEARANCES (see the README).
 `;
 export const options = {
   port: { type: "string", short: "p" },
   demo: { type: "boolean" },
   "no-open": { type: "boolean" },
+  appearance: { type: "string", multiple: true },
 };
 
 export async function run(values) {
   const port = values.port;
   if (port !== undefined && (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535))
     throw new UsageError(`invalid port '${port}' (use 1-65535)`);
+  const appearanceFiles = (values.appearance ?? []).map((file) => path.resolve(file));
+  for (const file of appearanceFiles) {
+    if (!file.toLowerCase().endsWith(".json")) throw new UsageError(`'${file}' is not a .json file (an appearance package is one)`);
+    if (!fs.statSync(file, { throwIfNoEntry: false })?.isFile()) throw new UsageError(`no such file '${file}'`);
+  }
 
   const { resolveConfig } = await import(PACKED ? "../../bridge/config.js" : "../../../bridge/src/config.ts");
   const { createBridge } = await import(PACKED ? "../../bridge/server.js" : "../../../bridge/src/server.ts");
-  const config = resolveConfig(process.env, { port: port === undefined ? undefined : Number(port), pageDir: PAGE_DIR });
+  const config = resolveConfig(process.env, { port: port === undefined ? undefined : Number(port), pageDir: PAGE_DIR, appearanceFiles });
   const bridge = createBridge(config);
   // SSH tunnels and remote context readers are child processes; take them down with the bridge.
   const shutdown = (code = 0) => {

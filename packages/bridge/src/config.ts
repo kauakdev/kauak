@@ -28,12 +28,17 @@ export interface BridgeConfig {
   readonly codexDir: string;
   /** The built page the bridge serves beside the WebSocket, or null to serve none. */
   readonly pageDir: string | null;
+  /** The folder of appearance packages the bridge serves to the page (KAUAK_APPEARANCES). */
+  readonly appearanceDir: string;
+  /** Appearance package files named on the command line (--appearance), served with the folder's. */
+  readonly appearanceFiles: readonly string[];
 }
 
-/** What the entry point knows itself: the port from its command line, and where the built page is. */
+/** What the entry point knows itself: the port and the appearance files from its command line, and where the built page is. */
 export interface ConfigFlags {
   port?: number;
   pageDir?: string | null;
+  appearanceFiles?: readonly string[];
 }
 
 export function resolveConfig(env: Readonly<Record<string, string | undefined>>, flags: ConfigFlags = {}): BridgeConfig {
@@ -60,6 +65,9 @@ export function resolveConfig(env: Readonly<Record<string, string | undefined>>,
     claudeDir: env.CLAUDE_CONFIG_DIR ?? path.join(home, ".claude"),
     codexDir: env.CODEX_HOME ?? path.join(home, ".codex"),
     pageDir: flags.pageDir ?? null,
+    // Set but blank is unset: path.resolve("") would serve the .json files of the bridge's working folder.
+    appearanceDir: env.KAUAK_APPEARANCES || path.join(home, ".config", "kauak", "appearances"),
+    appearanceFiles: Object.freeze([...(flags.appearanceFiles ?? [])]),
   });
 }
 

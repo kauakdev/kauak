@@ -53,9 +53,17 @@ Whoever controls the bridge can therefore run commands in your terminals.
   one; neither can start with `-`, so they cannot pass options to `ssh` or
   `git`.
 - The page that the bridge serves is static files from `dist/`, and requests
-  cannot leave that folder.
+  cannot leave that folder. The one other thing it serves, `/appearances.json`,
+  is the `.json` files of `~/.config/kauak/appearances` (or `KAUAK_APPEARANCES`)
+  and the files `--appearance` names, each 64 KB at most, with their paths.
+  Since those are this machine's, it answers only a request addressed to a
+  hostname the WebSocket accepts pages from, and from such a page if it says
+  where it comes from, so a site that points its own name at `127.0.0.1` (DNS
+  rebinding) cannot read them.
 - Appearance packages are declarative JSON, validated before use: fields the
-  schema does not know, scripts among them, are refused. A company banner is
+  schema does not know, scripts among them, are refused. The bridge passes the
+  installed ones on without reading them, and the page validates them exactly
+  as it validates a package imported in the browser. A company banner is
   redrawn in the browser and kept only as a PNG data URL.
 
 ## Known limits

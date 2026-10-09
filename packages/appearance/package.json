@@ -6,7 +6,8 @@
   "exports": {
     "./contracts": "./src/contracts.ts",
     "./registry": "./src/registry.ts",
-    "./packages/*": "./packages/*"
+    "./packages/*": "./packages/*",
+    "./examples/*": "./examples/*"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

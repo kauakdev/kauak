@@ -11,6 +11,7 @@ import { createHook } from "node:async_hooks";
 import { spawn } from "node:child_process";
 import { EventEmitter, once } from "node:events";
 import fs from "node:fs";
+import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -451,4 +452,64 @@ test("pnpm bridge (main.ts) serves pages, and stops with exit 0 on SIGINT and SI
     child.kill(signal);
     assert.deepEqual(await exit, [0, null], log);
   }
+});
+
+test("the appearance packages installed on this machine are served as /appearances.json, with or without a page", async (t) => {
+  const herdr = await fakeHerdr();
+  t.after(() => herdr.close());
+  const { home, env, url } = await testEnv(t, herdr.socketPath);
+  const dir = path.join(home, "appearances");
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, "harbor.json"), '{ "id": "example.harbor" }');
+  fs.writeFileSync(path.join(dir, "broken.json"), "{");
+  const named = path.join(home, "mine.json");
+  fs.writeFileSync(named, '{ "id": "example.mine" }');
+  // No page to serve (pageDir null), as under `pnpm dev`, where Vite proxies the request here.
+  const bridge = createBridge(resolveConfig({ ...env, KAUAK_APPEARANCES: dir }, { appearanceFiles: [named] }));
+  t.after(() => bridge.close());
+  await bridge.listen();
+  const base = url.replace("ws://", "http://");
+
+  const res = await fetch(`${base}/appearances.json`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "application/json");
+  assert.equal(res.headers.get("cache-control"), "no-cache");
+  const body = await res.json();
+  assert.equal(body.dir, dir);
+  assert.deepEqual(
+    body.packages.map((p) => [p.file, "package" in p ? p.package : "error"]),
+    [
+      [path.join(dir, "broken.json"), "error"],
+      [path.join(dir, "harbor.json"), { id: "example.harbor" }],
+      [named, { id: "example.mine" }],
+    ],
+  );
+  assert.match(body.packages[0].error, /not valid JSON/);
+
+  // Edited and reloaded: the file is read again.
+  fs.writeFileSync(path.join(dir, "broken.json"), '{ "id": "example.fixed" }');
+  const again = await (await fetch(`${base}/appearances.json`)).json();
+  assert.deepEqual(again.packages[0], { file: path.join(dir, "broken.json"), package: { id: "example.fixed" } });
+
+  // Only GET and HEAD, like the page's files; everything else is still not found.
+  assert.equal((await fetch(`${base}/appearances.json`, { method: "POST" })).status, 405);
+  const head = await fetch(`${base}/appearances.json`, { method: "HEAD" });
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), "");
+  assert.equal((await fetch(`${base}/appearances`)).status, 404);
+
+  // They carry this machine's paths and files: only our own pages get them. A site that points its
+  // own name at 127.0.0.1 (DNS rebinding) is refused, as is a page from another origin.
+  const { port } = new URL(base);
+  const status = (headers) =>
+    new Promise((resolve, reject) => {
+      http
+        .get({ host: "127.0.0.1", port, path: "/appearances.json", headers }, (res) => resolve(res.resume().statusCode))
+        .on("error", reject);
+    });
+  assert.equal(await status({ host: `localhost:${port}` }), 200);
+  assert.equal(await status({ host: `[::1]:${port}` }), 200);
+  assert.equal(await status({ host: `evil.example:${port}` }), 403);
+  assert.equal(await status({ host: `localhost:${port}`, origin: "https://evil.example" }), 403);
+  assert.equal(await status({ host: `localhost:${port}`, origin: `http://localhost:5178` }), 200);
 });

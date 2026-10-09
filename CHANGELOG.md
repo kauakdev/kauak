@@ -11,6 +11,20 @@ turns Unreleased into the new version's section, as
 
 ## [Unreleased]
 
+### Added
+
+- Appearance packages can be installed on the machine that serves the office,
+  with no checkout of the repository: put the JSON in
+  `~/.config/kauak/appearances/` (or the folder `KAUAK_APPEARANCES` names), or
+  run `kauak serve --appearance <file>`. The bridge serves them as
+  `/appearances.json`, and every browser that opens the office loads them with
+  the included packages. The settings list them under **Installed on this
+  machine**, and say what is wrong with a file that does not load. Edit a file
+  and reload the page.
+- **Download harbor.json** in the appearance settings saves the example
+  package to start one's own from. The example moves from
+  `docs/appearance/harbor.json` to `packages/appearance/examples/harbor.json`.
+
 ### Changed
 
 - The included appearance packages' ids are `kauak.classic`, `kauak.orbital`

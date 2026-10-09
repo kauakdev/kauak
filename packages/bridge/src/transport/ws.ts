@@ -1,7 +1,9 @@
 // How pages reach the bridge: one HTTP server that serves the built office
 // page (config.pageDir, `pnpm build`), so `npx kauak serve` is one process and
 // one URL, and the WebSocket the pages connect to, on the same port. `pnpm
-// dev` serves the page from Vite instead.
+// dev` serves the page from Vite instead. Beside the page it serves the
+// appearance packages installed on this machine, as /appearances.json
+// (appearances.ts), to a page from Vite too.
 //
 // Of the Kauak protocol it knows only that what goes to a page is a
 // BridgeMessage, sent as JSON. What a page says is the core's to read
@@ -15,6 +17,7 @@ import path from "node:path";
 import type { BridgeMessage } from "@kauak/protocol";
 import { WebSocketServer } from "ws";
 import type { BridgeConfig } from "../config.ts";
+import { readAppearances } from "./appearances.ts";
 
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -27,8 +30,11 @@ const CONTENT_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
-/** What the transport uses of the bridge's config: where it listens, which pages may connect, the page. */
-export type TransportSettings = Pick<BridgeConfig, "port" | "host" | "origins" | "pageDir">;
+/** What the transport uses of the bridge's config: where it listens, which pages may connect, the page, the appearance packages. */
+export type TransportSettings = Pick<BridgeConfig, "port" | "host" | "origins" | "pageDir" | "appearanceDir" | "appearanceFiles">;
+
+/** Where the page asks for the appearance packages installed on this machine. */
+export const APPEARANCES_PATH = "/appearances.json";
 
 /** A page, as the core sees it: what it may be sent is a BridgeMessage, so the compiler checks every message against the protocol. */
 export interface Connection {
@@ -57,14 +63,7 @@ export class WsServer {
     this.wss = new WebSocketServer({
       server: this.server,
       // Browsers let any web page open a WebSocket to 127.0.0.1; only accept our own page.
-      verifyClient: ({ origin }: { origin: string }) => {
-        if (!origin) return true; // not a browser
-        try {
-          return this.allowedOrigins.has(new URL(origin).hostname);
-        } catch {
-          return false;
-        }
-      },
+      verifyClient: ({ origin }: { origin: string }) => !origin || this.ours(origin), // no origin: not a browser
     });
     this.wss.on("connection", (ws) => {
       console.log(`[bridge] client connected (${this.wss.clients.size})`);
@@ -73,7 +72,16 @@ export class WsServer {
     });
   }
 
-  /** Static files from the built page. Nothing here is secret; the WebSocket is what needs guarding. */
+  /** Whether a page at this URL is ours: its hostname is this computer's, or one KAUAK_ORIGINS adds. */
+  ours(url: string) {
+    try {
+      return this.allowedOrigins.has(new URL(url).hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Static files from the built page, which are not secret, and the installed appearances, which only our own pages get. */
   servePage(req: http.IncomingMessage, res: http.ServerResponse) {
     if (req.method !== "GET" && req.method !== "HEAD") return res.writeHead(405).end();
     let rel: string;
@@ -83,6 +91,10 @@ export class WsServer {
       return res.writeHead(400).end();
     }
     if (rel.endsWith("/")) rel += "index.html";
+    if (rel === APPEARANCES_PATH) {
+      this.serveAppearances(req, res).catch(() => res.headersSent || res.writeHead(500).end());
+      return;
+    }
     const notFound = () => {
       res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
       res.end(this.hasPage ? "Not found\n" : "The office page is not built. Run `pnpm build`, or `pnpm dev` for the Vite dev server.\n");
@@ -102,6 +114,22 @@ export class WsServer {
       if (req.method === "HEAD") return res.end();
       fs.createReadStream(file).pipe(res);
     });
+  }
+
+  /**
+   * The appearance packages installed on this machine, read now, so an edited
+   * file shows on reload. They carry this machine's paths and whatever the
+   * files hold, so they are answered only under a name the WebSocket accepts
+   * a page from: a site that points its own name at 127.0.0.1 (DNS rebinding)
+   * is refused. A HEAD reads nothing.
+   */
+  async serveAppearances(req: http.IncomingMessage, res: http.ServerResponse) {
+    const { host, origin } = req.headers;
+    if (!host || !this.ours(`http://${host}`) || (origin !== undefined && !this.ours(origin))) return res.writeHead(403).end();
+    const headers = { "content-type": "application/json", "cache-control": "no-cache", "x-content-type-options": "nosniff" };
+    if (req.method === "HEAD") return res.writeHead(200, headers).end();
+    const body = JSON.stringify(await readAppearances(this.settings));
+    res.writeHead(200, { ...headers, "content-length": Buffer.byteLength(body) }).end(body);
   }
 
   /** To every page connected, encoded once. */

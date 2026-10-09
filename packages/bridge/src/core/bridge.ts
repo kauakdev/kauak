@@ -29,8 +29,11 @@ import { type Connection, WsServer } from "../transport/ws.ts";
 import { handle } from "./handlers.ts";
 import { InputQueue } from "./input.ts";
 
-/** What the core uses of the bridge's config: the saved floors, and for its transport where it listens, which pages may connect, the page. */
-export type CoreSettings = Pick<BridgeConfig, "port" | "host" | "origins" | "machinesFile" | "pageDir">;
+/** What the core uses of the bridge's config: the saved floors, and for its transport where it listens, which pages may connect, the page and the appearance packages. */
+export type CoreSettings = Pick<
+  BridgeConfig,
+  "port" | "host" | "origins" | "machinesFile" | "pageDir" | "appearanceDir" | "appearanceFiles"
+>;
 
 /**
  * What the core is given (server.ts): how to make a floor's runtime and what

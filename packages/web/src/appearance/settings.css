@@ -183,6 +183,39 @@
   justify-content: space-between;
   margin-top: 10px;
 }
+#appearance .appearance-example {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  line-height: 1.4;
+}
+#appearance .appearance-example button {
+  align-self: start;
+}
+#appearance h4 {
+  margin: 20px 0 6px;
+  font-size: 14px;
+  font-weight: 650;
+}
+#appearance #installed p {
+  margin-bottom: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+#appearance #installed-packages {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+#appearance #installed-packages li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 10px;
+}
+#appearance #installed-packages small {
+  overflow-wrap: anywhere;
+}
 @media (max-width: 600px) {
   #appearance .appearance-pair {
     grid-template-columns: 1fr;

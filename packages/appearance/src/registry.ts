@@ -191,6 +191,13 @@ export class AppearanceRegistry {
     for (const [cap, meta] of Object.entries(CAPABILITIES))
       if (!this.entries.get(meta.defaultId)?.capabilities[cap as Capability]) throw new Error(`Missing default for ${cap}`);
   }
+  /** A registry with this one's packages, to register more in while this one stays as it is. */
+  copy(): AppearanceRegistry {
+    return Object.assign(Object.create(AppearanceRegistry.prototype) as AppearanceRegistry, {
+      entries: new Map(this.entries),
+      warnings: [...this.warnings],
+    });
+  }
   register(value: unknown, trusted = false): AppearancePackage {
     const p = validateManifest(value, trusted);
     if (this.entries.has(p.id)) throw new Error(`Package ${p.id} is already installed. Remove the custom package before replacing it.`);

@@ -13,6 +13,8 @@ packages/kauak/LICENSE
 .env.*
 *.log
 .DS_Store
+# Editors' settings are each contributor's own.
+.idea/
 # Agent tooling is each contributor's own: skills and their lockfile, Claude
 # Code's local settings and worktrees.
 .agents/

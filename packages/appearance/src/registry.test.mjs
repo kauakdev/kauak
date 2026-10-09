@@ -42,7 +42,7 @@ const {
 } = createRequire(import.meta.url)(path.join(temp, "registry.js"));
 const read = (name) => JSON.parse(fs.readFileSync(new URL(name, import.meta.url), "utf8"));
 const builtins = ["classic", "orbital", "basecamp"].map((n) => read(`../packages/${n}.json`));
-const custom = () => read("../../../docs/appearance/harbor.json");
+const custom = () => read("../examples/harbor.json");
 test.after(() => fs.rmSync(temp, { recursive: true }));
 
 test("included and imported packages share one registry, while each capability is listed and resolved on its own", () => {
@@ -102,6 +102,16 @@ test("registry rejects collisions and preserves the default when saved packages 
   assert.equal(r.resolve("office.theme", bad.id).package.id, "kauak.classic");
   r.register(custom());
   assert.throws(() => r.register(custom()), /already installed/);
+});
+test("a copy has the packages, and what is registered in it stays out of the original", () => {
+  const r = new AppearanceRegistry(builtins);
+  const copy = r.copy();
+  copy.register(custom());
+  assert.equal(copy.resolve("office.theme", "example.harbor").fallback, false);
+  assert.equal(r.resolve("office.theme", "example.harbor").fallback, true);
+  assert.throws(() => copy.register(custom()), /already installed/);
+  assert.doesNotThrow(() => r.copy().register(custom()));
+  assert.equal(copy.list("office.characters").length, r.list("office.characters").length);
 });
 test("preferences round-trip custom packages and banner independently; a saved terminal.provider selection is dropped", () => {
   let raw = null;

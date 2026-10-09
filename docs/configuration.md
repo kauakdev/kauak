@@ -5,8 +5,10 @@ Kauak needs a running Herdr server (0.9.x, protocol 22) and Node 22+.
 ## Command-line options
 
 `kauak serve` starts the bridge and opens the office at http://127.0.0.1:7788,
-and runs until Ctrl+C. Options: `-p, --port <n>`, `--no-open`, and `--demo`
-(simulated agents, no Herdr needed). `kauak` on its own runs `kauak serve`,
+and runs until Ctrl+C. Options: `-p, --port <n>`, `--no-open`, `--demo`
+(simulated agents, no Herdr needed) and `--appearance <file>` (an appearance
+package to offer in the page's settings, besides those in the appearance
+folder below; repeat it for several). `kauak` on its own runs `kauak serve`,
 and takes the same options: `kauak --demo`, `kauak -p 8080`.
 
 `kauak help` (or `kauak --help`) lists the commands, `kauak help serve` (or
@@ -21,6 +23,7 @@ when the command line is wrong.
 - `KAUAK_HOST`: interface the bridge listens on (default `127.0.0.1`, this computer only)
 - `KAUAK_ORIGINS`: extra page hostnames allowed to connect, comma separated (default: only `localhost`/`127.0.0.1`)
 - `KAUAK_CONFIG`: saved floors (default `~/.config/kauak/machines.json`)
+- `KAUAK_APPEARANCES`: folder of appearance packages the bridge serves to the page (default `~/.config/kauak/appearances`; see the [appearance guide](appearance/README.md))
 - `KAUAK_SSH`: SSH executable (default `ssh`)
 - `VITE_BRIDGE_PORT`: port the page connects to (default: `7788` under `pnpm dev`, else the port the page was served from)
 

@@ -19,7 +19,9 @@ import { assemble } from "../../scripts/assemble.js";
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const BIN = path.join(ROOT, "bin", "kauak.js");
 const BUILT = fs.existsSync(path.join(ROOT, "dist", "index.html"));
+// Its real path too: `kauak serve` resolves a relative --appearance file against its cwd, as the OS reports it (on macOS, /var is /private/var).
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "kauak-serve-tests-"));
+const realTemp = fs.realpathSync.native(temp);
 test.after(() => fs.rmSync(temp, { recursive: true }));
 const PATH_DIR = path.join(temp, "path");
 fs.mkdirSync(PATH_DIR);
@@ -121,6 +123,27 @@ test("`kauak --demo` points at the demo and skips the Herdr hint", { skip: notBu
   assert.doesNotMatch(s.stdout, /Herdr is not running/);
   assert.equal(await s.stop(), 0);
 });
+test("--appearance files are served with the folder's as /appearances.json", { skip: notBuilt, timeout: 20_000 }, async (t) => {
+  const port = await freePort();
+  const dir = path.join(temp, "appearances");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "harbor.json"), '{ "id": "example.harbor" }');
+  fs.writeFileSync(path.join(temp, "Mine.JSON"), '{ "id": "example.mine" }');
+  const s = start(t, ["serve", "--no-open", "--port", String(port), "--appearance", "Mine.JSON"], {
+    extraEnv: { KAUAK_APPEARANCES: dir },
+  });
+  assert.ok(await s.until("Press Ctrl+C to stop."), s.stdout + s.stderr);
+  const res = await fetch(`http://127.0.0.1:${port}/appearances.json`);
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), {
+    dir,
+    packages: [
+      { file: path.join(dir, "harbor.json"), package: { id: "example.harbor" } },
+      { file: path.join(realTemp, "Mine.JSON"), package: { id: "example.mine" } },
+    ],
+  });
+  assert.equal(await s.stop(), 0);
+});
 test("exits 1 with a clear message when the office page is not built", { timeout: 20_000 }, async (t) => {
   // An install without dist/: the package's files except the page, plus its dependencies. The
   // bridge is bundled in and README and LICENSE copied, as packing does.
@@ -161,6 +184,9 @@ test("bad options exit 2 with the usage, before the bridge starts", () => {
     [["--bogus"], "unknown option '--bogus'"],
     [["--demo=yes"], "does not take an argument"],
     [["extra"], "unexpected argument 'extra'"],
+    [["--appearance"], "argument missing"],
+    [["--appearance", "missing.json"], `no such file '${path.join(realTemp, "missing.json")}'`],
+    [["--appearance", "notes.txt"], `'${path.join(realTemp, "notes.txt")}' is not a .json file`],
   ]) {
     const r = spawnSync(process.execPath, [BIN, "serve", "--no-open", ...args], { cwd: temp, env, encoding: "utf8", timeout: 10_000 });
     assert.equal(r.status, 2, args.join(" "));

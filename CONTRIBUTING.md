@@ -120,7 +120,8 @@ helpers. Packing writes that bundle and copies README and LICENSE into
 behind by an interrupted pack is safe to delete.
 
 CI (`.github/workflows/ci.yml`) runs all of them on Node 22 and 24, for every
-pull request and push to `main`.
+pull request and push to `main`, and `pnpm verify:pack` on Node 22.0.0 too,
+the oldest Node the package supports, since its "Node 22" is the latest 22.x.
 
 Then check the change in the browser: against Herdr if it touches the bridge,
 and in the demo.

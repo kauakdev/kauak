@@ -1,8 +1,9 @@
 # Checks every pull request and push to main: formatting and lint (Biome),
 # the boundaries between the bridge, Herdr and the page
 # (scripts/check-boundaries.mjs), types, both builds, the tests, and the npm
-# package as people will install it (scripts/verify-pack.js), on the oldest
-# Node that package.json's engines allow and on the current LTS.
+# package as people will install it (scripts/verify-pack.js), on the latest
+# Node 22 and on the current LTS; and the package alone on Node 22.0.0, the
+# oldest Node it supports.
 name: CI
 
 on:
@@ -42,4 +43,25 @@ jobs:
       - run: pnpm build
       - run: pnpm build:demo
       - run: pnpm test
+      - run: pnpm verify:pack
+
+  # The package promises Node >=22 (packages/kauak/package.json's engines),
+  # but the jobs above get the latest 22.x, and development needs 22.18. This
+  # one packs, installs and runs the package on 22.0.0, the oldest Node it
+  # supports. pnpm, TypeScript and Vite run on 22.0.0, so verify:pack runs as
+  # it is; lint, types and tests stay above (the tests need 22.18).
+  package-oldest-node:
+    name: Package on Node 22.0.0
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.0.0
+          cache: pnpm
+      - run: node --version
+      - run: pnpm install --frozen-lockfile
       - run: pnpm verify:pack

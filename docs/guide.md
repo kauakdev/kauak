@@ -48,8 +48,9 @@ in the roster row and the terminal panel's header; hover a desk for the token
 counts ("184k of 1M tokens"). Neither Herdr nor the agents report this over
 an API, so the bridge reads it from the transcripts the agents write to disk
 (`~/.claude/projects`, `~/.codex/sessions`). On a remote floor it does that
-over SSH with a small Python script (`packages/bridge/src/context_remote.py`,
-run with the machine's `python3`; nothing is installed there). To match a pane
+over SSH with a small Python script
+(`packages/bridge/src/enrichers/context/context_remote.py`, run with the
+machine's `python3`; nothing is installed there). To match a pane
 with its transcript, the bridge uses the session that Herdr's agent integrations
 report (`herdr integration install claude`, or `codex`). Without them, nothing
 needs installing: a Claude Code pane is matched through the Claude process
@@ -81,8 +82,8 @@ lock), and compares each changed file with the last version it saw, the first
 time the one in `HEAD`. Changes already there when the bridge starts print no
 sheets, rooms in one checkout share its sheets, and the last 50 are kept. On a
 remote floor the bridge runs git and reads the files over SSH with a small
-Python script (`packages/bridge/src/diffs_remote.py`, run with the machine's
-`python3`, like the context meters; nothing is installed there).
+Python script (`packages/bridge/src/enrichers/diffs/diffs_remote.py`, run with
+the machine's `python3`, like the context meters; nothing is installed there).
 
 ## Around the canvas
 

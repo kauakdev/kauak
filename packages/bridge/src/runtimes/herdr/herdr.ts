@@ -4,6 +4,7 @@
 // error. Verified against Herdr 0.9.x, protocol 22 (`herdr api schema`).
 
 import { AGENT_STATUSES, type AgentStatus, type PaneInfo, type RepoInfo, type Snapshot } from "@kauak/protocol";
+import type { AgentSession } from "../../ports/runtime.ts";
 
 export const RUNTIME = "Herdr";
 
@@ -81,18 +82,12 @@ export type HerdrMethod = keyof HerdrResults;
 /** A failed request: Herdr's error message with its `code` and the `method` asked, or the socket's error. */
 export type HerdrError = Error & { code?: string; method?: string };
 
-/** The agent session of a pane, as the trackers get it. */
-export interface AgentSession {
-  kind: "id" | "path";
-  value: string;
-}
-
 // ---------------------------------------------------------------- Herdr → Kauak
 
 /**
  * Herdr's `session.snapshot` as a Kauak Snapshot. Only what the office shows
  * is kept: tabs, layouts, terminal ids and revisions stay here. `context`
- * and `git_root` start out null; the bridge's trackers fill them in.
+ * and `git_root` start out null; the bridge's enrichers fill them in.
  */
 export function toSnapshot(raw: HerdrSnapshot | null): Snapshot {
   const rects = new Map<string, HerdrRect | undefined>();

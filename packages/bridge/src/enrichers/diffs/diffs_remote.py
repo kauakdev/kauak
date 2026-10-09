@@ -1,6 +1,6 @@
 # Printers for a remote floor: what bridge/diffs.ts needs from the checkouts
 # on that machine, which is git and the files themselves. The bridge starts it
-# over SSH like context_remote.py (bridge/remote.ts); all the deciding (what
+# over SSH like context_remote.py (ssh/remote.ts); all the deciding (what
 # changed, the diffs) stays in diffs.ts.
 #
 # Protocol, one JSON object per line (b64: base64 of the bytes):

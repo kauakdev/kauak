@@ -1,12 +1,20 @@
 // A helper script on a remote floor, for the parts of the bridge that have to
-// run where the files are (context_remote.py, diffs_remote.py). The bridge
-// starts it over SSH with the machine's python3 (`python3 -c ...`, so nothing
-// is installed there), keeps it running, and talks to it in JSON lines:
-// {"id", ...request} in, {"id", "result"} out, answered in order.
+// run where the files are (the enrichers' context_remote.py and
+// diffs_remote.py). The bridge starts it over SSH with the machine's python3
+// (`python3 -c ...`, so nothing is installed there), keeps it running, and
+// talks to it in JSON lines: {"id", ...request} in, {"id", "result"} out,
+// answered in order.
+//
+// Reaching a machine over SSH belongs to no runtime: the enrichers run their
+// helpers with this file, and the Herdr adapter takes its ssh options for its
+// tunnel. It imports neither of them.
 
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import fs from "node:fs";
-import { SSH_OPTS, lastLine } from "./machine.ts";
+import type { Runtime } from "../ports/runtime.ts";
+
+// BatchMode: never prompt for a password or host key; fail instead.
+export const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"];
 
 // The first answer waits for the SSH connection.
 const TIMEOUT_MS = 20_000;
@@ -14,12 +22,8 @@ const TIMEOUT_MS = 20_000;
 const RETRY_MS = 30_000;
 const NO_PYTHON_RETRY_MS = 5 * 60_000;
 
-/** The floor a script runs on: the part of its Machine this file uses, which the trackers hand on as they got it. */
-interface Floor {
-  readonly label: string;
-  /** Set here: only a remote floor runs a script. */
-  readonly ssh: string | null;
-}
+/** The floor a script runs on, as the enrichers hand it on; its `ssh` is set, since only a remote floor runs one. */
+type Floor = Pick<Runtime, "label" | "ssh">;
 
 export class RemoteScript {
   m: Floor;
@@ -36,14 +40,15 @@ export class RemoteScript {
   stopped: boolean;
 
   /**
-   * `sshCommand`: the ssh executable (config.ts); `file`: the script, beside
-   * this one; `what`: what stops working when it dies, for the log.
+   * `sshCommand`: the ssh executable (config.ts); `file`: the script, which
+   * its caller keeps beside itself; `what`: what stops working when it dies,
+   * for the log.
    */
-  constructor(machine: Floor, sshCommand: string, file: string, what: string) {
+  constructor(machine: Floor, sshCommand: string, file: URL, what: string) {
     this.m = machine;
     this.sshCommand = sshCommand;
     this.what = what;
-    const script = fs.readFileSync(new URL(file, import.meta.url)).toString("base64");
+    const script = fs.readFileSync(file).toString("base64");
     this.command = `python3 -u -c "import base64; exec(base64.b64decode('${script}'))"`;
     this.child = null;
     this.buf = "";
@@ -129,4 +134,16 @@ export class RemoteScript {
       gone(null, null);
     });
   }
+}
+
+/** Last line ssh printed, without its own "ssh: " prefix. */
+export function lastLine(s: string): string {
+  return (
+    s
+      .trim()
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .pop() ?? ""
+  ).replace(/^ssh: /, "");
 }

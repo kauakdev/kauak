@@ -4,7 +4,7 @@
   "files": {
     // JavaScript, TypeScript, JSON and CSS only. Markdown, the Python helpers and packages/web/index.html
     // (whose inline CSS moves out later) keep their hand formatting; the Herdr snapshot in
-    // packages/bridge/src/fixtures/ is a scrubbed real one, kept as Herdr wrote it.
+    // packages/bridge/src/runtimes/herdr/fixtures/ is a scrubbed real one, kept as Herdr wrote it.
     "includes": [
       "**/*.js",
       "**/*.mjs",
@@ -13,7 +13,7 @@
       "**/*.css",
       "!**/dist",
       "!**/dist-demo",
-      "!packages/bridge/src/fixtures/**/*.json"
+      "!packages/bridge/src/runtimes/herdr/fixtures/**/*.json"
     ]
   },
   "formatter": {

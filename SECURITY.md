@@ -23,11 +23,11 @@ rights. On every Herdr server it is connected to, it can:
 
 - read what is on screen in any pane, and type text and keys into it
 - create tabs, workspaces and git worktrees, and start agents in them
-- open SSH connections to the machines saved as floors (with `BatchMode=yes`,
-  so it never prompts), and run two small Python scripts there with `python3`
-  (`packages/bridge/src/context_remote.py`,
-  `packages/bridge/src/diffs_remote.py`) that read agent transcripts, git status
-  and file contents
+- open SSH connections to the machines saved as floors (with `BatchMode=yes`, so
+  it never prompts), and run two small Python scripts there with `python3`
+  (`packages/bridge/src/enrichers/context/context_remote.py`,
+  `packages/bridge/src/enrichers/diffs/diffs_remote.py`) that read agent
+  transcripts, git status and file contents
 
 On this machine it also reads agent transcripts (`~/.claude/projects`,
 `~/.codex/sessions`), agent command, skill and plugin files, and git status

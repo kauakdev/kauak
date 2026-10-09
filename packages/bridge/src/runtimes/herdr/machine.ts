@@ -1,9 +1,10 @@
 // One Herdr server, shown in the office as one floor: the bridge's Herdr
-// adapter. server.ts asks a Machine for what it needs in Kauak terms (its
-// `info`, its `snapshot`, and operations like `readPane` or `createRoom`); this
-// file turns those into Herdr requests, and herdr.ts turns Herdr's answers
-// into the Kauak protocol (@kauak/protocol). Herdr's methods, fields and errors
-// go no further.
+// adapter, which implements the Runtime port (ports/runtime.ts). The core and
+// the enrichers ask a Machine for what they need in Kauak terms (its `info`,
+// its `snapshot`, and operations like `readPane` or `createRoom`); this file
+// turns those into Herdr requests, and herdr.ts turns Herdr's answers into the
+// Kauak protocol (@kauak/protocol). Herdr's methods, fields and errors go no
+// further.
 //
 // Herdr only listens on a local unix socket, so a remote machine is reached
 // through an SSH tunnel that forwards a local unix socket to the remote one
@@ -23,9 +24,10 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import type { MachineInfo, RoomSpec, Snapshot } from "@kauak/protocol";
-import type { BridgeConfig } from "./config.ts";
+import type { BridgeConfig } from "../../config.ts";
+import type { AgentSession, MachineConfig, Runtime } from "../../ports/runtime.ts";
+import { SSH_OPTS, lastLine } from "../../ssh/remote.ts";
 import {
-  type AgentSession,
   type HerdrError,
   type HerdrMethod,
   type HerdrResults,
@@ -36,8 +38,6 @@ import {
   toSnapshot,
 } from "./herdr.ts";
 
-// BatchMode: never prompt for a password or host key; fail instead.
-export const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"];
 const TUNNEL_READY_MS = 20_000;
 const RETRY_MS = [2000, 4000, 8000, 15_000, 30_000];
 const SNAPSHOT_DEBOUNCE_MS = 80;
@@ -119,15 +119,6 @@ function herdrRequest<M extends HerdrMethod>(socketPath: string, method: M, para
   });
 }
 
-/** A floor's settings: its id and label, and the SSH target or local socket of its Herdr. */
-export interface MachineConfig {
-  id: string;
-  label: string;
-  ssh?: string | null;
-  socket?: string | null;
-  remoteSocket?: string | null;
-}
-
 /** The bridge-wide settings a Machine uses (config.ts): this machine's Herdr socket, the ssh executable, and where tunnels go. */
 export type MachineSettings = Pick<BridgeConfig, "herdrSocket" | "sshCommand" | "tunnelDir">;
 
@@ -136,7 +127,7 @@ export type MachineSettings = Pick<BridgeConfig, "herdrSocket" | "sshCommand" | 
  * Kauak snapshot after every Herdr event.
  * `state`: "connecting" → "live" ⇄ "down" (retries with backoff while down).
  */
-export class Machine extends EventEmitter {
+export class Machine extends EventEmitter implements Runtime {
   settings: MachineSettings;
   id: string;
   label: string;
@@ -215,11 +206,12 @@ export class Machine extends EventEmitter {
 
   // ------------------------------------------------------------ Kauak operations
   //
-  // What server.ts and the trackers ask of a floor. Each is a Herdr request or
-  // two; a failure rejects with a message fit to show (herdr.ts).
+  // What the core and the enrichers ask of a floor (the Runtime port). Each is
+  // a Herdr request or two; a failure rejects with a message fit to show
+  // (herdr.ts).
 
-  focusPane(paneId: string) {
-    return this.call("pane.focus", { pane_id: paneId });
+  async focusPane(paneId: string) {
+    await this.call("pane.focus", { pane_id: paneId });
   }
 
   /** The pane's screen as ANSI text; with `lines`, the last `lines` rows of its history and screen. */
@@ -234,8 +226,8 @@ export class Machine extends EventEmitter {
     return res.read.text;
   }
 
-  sendText(paneId: string, text: string) {
-    return this.call("pane.send_text", { pane_id: paneId, text });
+  async sendText(paneId: string, text: string) {
+    await this.call("pane.send_text", { pane_id: paneId, text });
   }
 
   /** Kauak's key names (KEY in @kauak/protocol) are Herdr's own, so they go as they are. */
@@ -263,7 +255,7 @@ export class Machine extends EventEmitter {
   }
 
   /**
-   * A new room (a Kauak RoomSpec, its folder already checked by server.ts): a
+   * A new room (a Kauak RoomSpec, its folder already checked by the core): a
    * git worktree on a new branch, or a workspace in a folder. Returns its
    * first pane's id.
    */
@@ -287,7 +279,8 @@ export class Machine extends EventEmitter {
     const name = `${kind}-${Math.random().toString(36).slice(2, 6)}`.slice(0, 32);
     for (const started = Date.now(); ; await new Promise((r) => setTimeout(r, AGENT_RETRY_MS))) {
       try {
-        return await this.request("agent.start", { name, kind, pane_id: paneId });
+        await this.request("agent.start", { name, kind, pane_id: paneId });
+        return;
       } catch (err) {
         if ((err as HerdrError).code !== "agent_pane_busy" || Date.now() - started > AGENT_WAIT_MS)
           throw new Error(errorMessage(err as HerdrError));
@@ -502,16 +495,4 @@ export class Machine extends EventEmitter {
       );
     });
   }
-}
-
-/** Last line ssh printed, without its own "ssh: " prefix. */
-export function lastLine(s: string): string {
-  return (
-    s
-      .trim()
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .pop() ?? ""
-  ).replace(/^ssh: /, "");
 }

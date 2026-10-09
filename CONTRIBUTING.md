@@ -41,8 +41,13 @@ A pnpm workspace of five packages, each with its own `package.json` and README:
 - `packages/bridge/` (`@kauak/bridge`): the Node bridge, in `src/`,
   TypeScript that Node 22.18 or newer runs as it is, with no build step; `tsc`
   only type-checks it. Its runtime dependencies are `ws` and the protocol.
-  `machine.ts` and `herdr.ts` are the Herdr adapter, the only files that speak
-  Herdr's API. `scripts/bundle.js` bundles it for the npm package.
+  `src/core/` is the bridge in Kauak terms, which knows a floor only through
+  the ports in `src/ports/` (`Runtime`, `Enricher`). `src/runtimes/herdr/` is
+  the Herdr adapter, the only code that speaks Herdr's API, and
+  `src/enrichers/` what the bridge adds to a floor (context meters, printers,
+  slash commands); `src/ssh/` runs their helpers on remote floors.
+  `src/server.ts` puts them together. `scripts/bundle.js` bundles it for the
+  npm package.
 - `packages/kauak/` (`kauak`, the npm package): `bin/kauak.js` and `cli/`, the
   `kauak` command. A new command is one module in `cli/commands/` and one entry
   in `COMMANDS` in `cli/main.js`, whose opening comment says what the module
@@ -66,10 +71,10 @@ checks are in `packages/protocol/src/index.ts` (`@kauak/protocol`), and its
 reference in [docs/protocol.md](docs/protocol.md). The bridge drops any message
 from a page that the checks do not know, so a new or changed message starts in
 `packages/protocol` (a message from the page does not compile until
-`parseClientMessage` has a parser for it), then the bridge
-(`packages/bridge/src/server.ts`), then `packages/web/src/demo.ts`, so the demo
-keeps working, and the reference. Herdr's own fields and methods stay in the
-adapter.
+`parseClientMessage` has a parser for it), then the bridge's core
+(`packages/bridge/src/core/bridge.ts`), then `packages/web/src/demo.ts`, so the
+demo keeps working, and the reference. Herdr's own fields and methods stay in
+the adapter.
 
 ## Before you open a pull request
 
@@ -93,14 +98,17 @@ without changing anything; `pnpm format` rewrites files to its style, and
 formatted by hand.
 
 `pnpm check:boundaries` (`scripts/check-boundaries.mjs`) keeps the pieces
-apart: only the Herdr adapter (`packages/bridge/src/machine.ts`,
-`packages/bridge/src/herdr.ts`, `packages/bridge/src/remote.ts`) imports
-`herdr.ts` or names Herdr's methods, the trackers do not import the adapter,
-`packages/protocol` imports nothing (no other package, no Node or DOM) and the
-others import it by its name, `packages/appearance/src/registry.ts` imports
-nothing but its contracts and uses no DOM, the page imports the protocol and
-the appearance packages but nothing of the bridge or the CLI, the bridge and
-the CLI import nothing from the page, and only the bridge's entry points
+apart: only the Herdr adapter (`packages/bridge/src/runtimes/herdr/`) imports
+`herdr.ts` or names Herdr's methods, the bridge's core
+(`packages/bridge/src/core/`) imports the ports and never a runtime or an
+enricher, the ports and `src/ssh/` import none of the core, the runtimes or the
+enrichers, an enricher imports no runtime and nothing of the core, a runtime
+nothing of the core or the enrichers, `packages/protocol` imports nothing (no
+other package, no Node or DOM) and the others import it by its name,
+`packages/appearance/src/registry.ts` imports nothing but its contracts and
+uses no DOM, the page imports the protocol and the appearance packages but
+nothing of the bridge or the CLI, the bridge and the CLI import nothing from
+the page, and only the bridge's entry points
 (`packages/bridge/src/main.ts`, `packages/kauak/cli/commands/serve.js`) read
 `process.env`, which they hand to `resolveConfig`. When a file moves, update
 the rules at the top of the script.
@@ -109,8 +117,8 @@ the rules at the top of the script.
 every `*.test.mjs`. Tests use Node's built-in runner (`node:test` with
 `node:assert/strict`) and sit next to the code they test. The bridge's tests
 run against a stand-in Herdr
-(`packages/bridge/src/fixtures/fake-herdr.mjs`), so they need no Herdr
-installed.
+(`packages/bridge/src/runtimes/herdr/fixtures/fake-herdr.mjs`), so they need
+no Herdr installed.
 
 `pnpm verify:pack` builds the npm package, installs it with `npm install`,
 `npm install -g` and `npx` in a temporary folder, and runs `kauak serve` from
@@ -118,9 +126,10 @@ each. It needs the npm registry, and matters most when you change what the
 package ships: a new folder that the CLI loads at runtime has to be added to
 `files` in `packages/kauak/package.json`. The bridge goes in as a bundle of
 `src/server.ts` and `src/config.ts` with the protocol inlined, plus the Python
-helpers. Packing writes that bundle and copies README and LICENSE into
-`packages/kauak/`, and removes them afterwards; a `packages/kauak/bridge/` left
-behind by an interrupted pack is safe to delete.
+helpers, copied flat beside it from their enrichers' folders. Packing writes
+that bundle and copies README and LICENSE into `packages/kauak/`, and removes
+them afterwards; a `packages/kauak/bridge/` left behind by an interrupted pack
+is safe to delete.
 
 CI (`.github/workflows/ci.yml`) runs all of them on Node 22 and 24, for every
 pull request and push to `main`, and `pnpm verify:pack` on Node 22.0.0 too,

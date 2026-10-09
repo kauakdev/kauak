@@ -5,9 +5,10 @@
 // @kauak/protocol is TypeScript and is not on npm. `ws` and Node's own modules
 // stay imports, which the install provides.
 //
-// The two Python helpers are copied beside the bundle, because remote.ts reads
-// them from its own folder (`new URL(file, import.meta.url)`), so every chunk
-// is written to that one folder, and the script fails if one is not.
+// The two Python helpers are copied beside the bundle, because each enricher
+// reads its own from its folder (`new URL("./context_remote.py",
+// import.meta.url)`), so every chunk is written to that one folder, and the
+// script fails if one is not.
 //
 // The kauak package's `prepack` runs it (`pnpm --filter @kauak/bridge bundle`)
 // and `postpack` removes the bundle, so a checkout runs the bridge from its
@@ -46,14 +47,20 @@ export async function bundle(outDir = OUT, { logLevel = "info" } = {}) {
       },
     },
   });
-  // Which chunk holds remote.ts is Rollup's choice, so every chunk has to be beside the helpers.
+  // Which chunks hold the enrichers is Rollup's choice, so every chunk has to be beside the helpers.
   for (const { output } of [result].flat()) {
     for (const file of output) {
       if (file.type === "chunk" && path.dirname(file.fileName) !== ".")
-        throw new Error(`bundle: ${file.fileName} is not beside the Python helpers, which remote.ts reads from its own folder`);
+        throw new Error(`bundle: ${file.fileName} is not beside the Python helpers, which the enrichers read from their own folder`);
     }
   }
-  for (const file of fs.readdirSync(SRC)) if (file.endsWith(".py")) fs.copyFileSync(path.join(SRC, file), path.join(outDir, file));
+  // Each helper sits beside its enricher in src/, and they all land in outDir: no two may share a name.
+  const helpers = fs.readdirSync(SRC, { recursive: true, encoding: "utf8" }).filter((file) => file.endsWith(".py"));
+  for (const file of helpers) {
+    const name = path.basename(file);
+    if (fs.existsSync(path.join(outDir, name))) throw new Error(`bundle: two Python helpers are named ${name}`);
+    fs.copyFileSync(path.join(SRC, file), path.join(outDir, name));
+  }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) await bundle();

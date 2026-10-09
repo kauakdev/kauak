@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { resolveConfig } from "./config.ts";
+import { resolveConfig } from "../../config.ts";
 import { FIXTURE, fakeHerdr, herdrError } from "./fixtures/fake-herdr.mjs";
 import { errorMessage, paneSession, toSnapshot } from "./herdr.ts";
 import { Machine } from "./machine.ts";

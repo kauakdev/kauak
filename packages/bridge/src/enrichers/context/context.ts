@@ -17,8 +17,9 @@
 //   nothing on disk ties a pane's process to its session; when two Codex
 //   panes share a folder there is no telling which is which, and neither gets
 //   a meter.
-// The pane's processes come from Herdr (`paneProcesses`). The floor's Machine
-// (machine.ts) asks Herdr for both; this file only sees its Kauak snapshot.
+// The pane's processes come from Herdr (`paneProcesses`). The floor's runtime
+// (the Runtime port; runtimes/herdr/machine.ts) asks Herdr for both; this file
+// only sees its Kauak snapshot.
 //
 // Transcripts only grow, so each one is read incrementally from where the
 // last read stopped.
@@ -27,9 +28,11 @@ import { execFile } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
-import type { ContextUsage, MachineInfo, PaneInfo, Snapshot } from "@kauak/protocol";
-import type { BridgeConfig } from "./config.ts";
-import { RemoteScript } from "./remote.ts";
+import type { ContextUsage, PaneInfo, Snapshot } from "@kauak/protocol";
+import type { BridgeConfig } from "../../config.ts";
+import type { Enricher } from "../../ports/enricher.ts";
+import type { AgentSession, Runtime } from "../../ports/runtime.ts";
+import { RemoteScript } from "../../ssh/remote.ts";
 
 const KINDS: ReadonlySet<string | null> = new Set(["claude", "codex"]);
 const POLL_MS = 2000;
@@ -47,39 +50,18 @@ const CLAUDE_WINDOW_SMALL = 200_000;
 const CLAUDE_SMALL_MODEL = /^claude-(?:3|haiku)|^claude-(?:opus|sonnet)-4(?:-[015])?(?:-\d{8})?$/;
 const SESSION_ID = /^[A-Za-z0-9-]{1,64}$/;
 
-/**
- * What the tracker uses of its floor's Machine, which it is handed: it reads
- * the Kauak snapshot and asks for a pane's agent session and processes, and
- * never imports the Herdr adapter.
- */
-interface Floor {
-  readonly label: string;
-  readonly ssh: string | null;
-  readonly state: MachineInfo["state"];
-  readonly snapshot: Snapshot | null;
-  on(event: "snapshot", listener: () => void): unknown;
-  paneSession(paneId: string): AgentSession | null;
-  paneProcesses(paneId: string): Promise<number[]>;
-}
-
-/** The agent session Herdr's integration reported for a pane: a transcript path or a session id. */
-interface AgentSession {
-  kind: "id" | "path";
-  value: string;
-}
-
 /** What the tracker uses of the bridge's config: this machine's agent folders, and the ssh executable for a remote floor. */
 type ContextSettings = Pick<BridgeConfig, "claudeDir" | "codexDir" | "sshCommand">;
 /** Where this machine's agents keep their transcripts. */
 type AgentDirs = Pick<BridgeConfig, "claudeDir" | "codexDir">;
 
 /**
- * Emits "change" when any pane's context use changes. The tracker decides
- * which panes to read and how to find their sessions (through Herdr); a
- * reader turns that into token counts, here or over SSH.
+ * An Enricher: emits "change" when any pane's context use changes. The
+ * tracker decides which panes to read and how to find their sessions (through
+ * Herdr); a reader turns that into token counts, here or over SSH.
  */
-export class ContextTracker extends EventEmitter {
-  m: Floor;
+export class ContextTracker extends EventEmitter implements Enricher {
+  m: Runtime;
   reader: LocalReader | RemoteReader;
   /** pane_id → { used, max } */
   usage: Map<string, ContextUsage>;
@@ -90,9 +72,10 @@ export class ContextTracker extends EventEmitter {
   running: boolean;
   again: boolean;
   kickTimer: NodeJS.Timeout | null;
-  timer: NodeJS.Timeout;
+  timer: NodeJS.Timeout | null;
 
-  constructor(machine: Floor, settings: ContextSettings) {
+  /** Makes the tracker for `machine`'s floor; `start()` begins reading. */
+  constructor(machine: Runtime, settings: ContextSettings) {
     super();
     this.m = machine;
     this.reader = machine.ssh ? new RemoteReader(machine, settings.sshCommand) : new LocalReader(settings);
@@ -102,20 +85,24 @@ export class ContextTracker extends EventEmitter {
     this.running = false;
     this.again = false;
     this.kickTimer = null;
+    this.timer = null;
+  }
+
+  start() {
     this.timer = setInterval(() => this.refresh(), POLL_MS);
     this.timer.unref();
-    machine.on("snapshot", () => this.kick());
+    this.m.on("snapshot", () => this.kick());
   }
 
   stop() {
-    clearInterval(this.timer);
+    clearInterval(this.timer as NodeJS.Timeout);
     clearTimeout(this.kickTimer as NodeJS.Timeout);
     this.reader.stop();
   }
 
   /** The Kauak snapshot with `context` on every pane whose use is known. */
-  annotate(snapshot: Snapshot | null): Snapshot | null {
-    if (!snapshot || this.usage.size === 0) return snapshot;
+  decorate(snapshot: Snapshot): Snapshot {
+    if (this.usage.size === 0) return snapshot;
     return {
       ...snapshot,
       panes: snapshot.panes.map((p) => (this.usage.has(p.pane_id) ? { ...p, context: this.usage.get(p.pane_id)! } : p)),
@@ -344,8 +331,8 @@ class LocalReader {
 class RemoteReader {
   script: RemoteScript;
 
-  constructor(machine: Floor, sshCommand: string) {
-    this.script = new RemoteScript(machine, sshCommand, "./context_remote.py", "context meters");
+  constructor(machine: Runtime, sshCommand: string) {
+    this.script = new RemoteScript(machine, sshCommand, new URL("./context_remote.py", import.meta.url), "context meters");
   }
 
   stop() {

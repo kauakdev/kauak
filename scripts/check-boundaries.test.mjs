@@ -10,19 +10,27 @@ const SCRIPT = fileURLToPath(new URL("./check-boundaries.mjs", import.meta.url))
 
 // A small tree that keeps every boundary, with a file for each rule to check.
 const CLEAN = {
-  "packages/bridge/src/machine.ts":
-    'import { toSnapshot } from "./herdr.ts";\nexport const snapshot = (request) => request("session.snapshot");\n',
-  "packages/bridge/src/herdr.ts": 'import { AGENT_STATUSES } from "@kauak/protocol";\n// Herdr\'s `pane.read` answers in rows.\n',
-  "packages/bridge/src/remote.ts": 'import { SSH } from "./machine.ts";\n',
-  "packages/bridge/src/context.ts":
-    '// Herdr reports no token counts, so read them from the transcript.\nimport { RemoteScript } from "./remote.ts";\n',
-  "packages/bridge/src/diffs.ts": 'import { RemoteScript } from "./remote.ts";\nconst env = { ...process.env, GIT_OPTIONAL_LOCKS: "0" };\n',
-  "packages/bridge/src/commands.ts": 'import fs from "node:fs";\n',
-  "packages/bridge/src/server.ts": 'import { Machine } from "./machine.ts";\nimport { parseClientMessage } from "@kauak/protocol";\n',
+  "packages/bridge/src/runtimes/herdr/machine.ts":
+    'import { toSnapshot } from "./herdr.ts";\nimport type { Runtime } from "../../ports/runtime.ts";\nimport { SSH_OPTS } from "../../ssh/remote.ts";\nexport const snapshot = (request) => request("session.snapshot");\n',
+  "packages/bridge/src/runtimes/herdr/herdr.ts":
+    'import { AGENT_STATUSES } from "@kauak/protocol";\n// Herdr\'s `pane.read` answers in rows.\n',
+  "packages/bridge/src/ssh/remote.ts": 'import type { Runtime } from "../ports/runtime.ts";\n',
+  "packages/bridge/src/ports/runtime.ts": 'import type { MachineInfo, Snapshot } from "@kauak/protocol";\n',
+  "packages/bridge/src/ports/enricher.ts": 'import type { Snapshot } from "@kauak/protocol";\n',
+  "packages/bridge/src/core/bridge.ts":
+    'import type { Enricher } from "../ports/enricher.ts";\nimport type { Runtime } from "../ports/runtime.ts";\nimport { parseClientMessage } from "@kauak/protocol";\n',
+  "packages/bridge/src/enrichers/context/context.ts":
+    '// Herdr reports no token counts, so read them from the transcript.\nimport type { Runtime } from "../../ports/runtime.ts";\nimport { RemoteScript } from "../../ssh/remote.ts";\n',
+  "packages/bridge/src/enrichers/diffs/diffs.ts":
+    'import { RemoteScript } from "../../ssh/remote.ts";\nconst env = { ...process.env, GIT_OPTIONAL_LOCKS: "0" };\n',
+  "packages/bridge/src/enrichers/commands/commands.ts": 'import fs from "node:fs";\n',
+  "packages/bridge/src/server.ts":
+    'import { Bridge } from "./core/bridge.ts";\nimport { ContextTracker } from "./enrichers/context/context.ts";\nimport { Machine } from "./runtimes/herdr/machine.ts";\n',
   "packages/bridge/src/config.ts": "export const resolveConfig = (env) => ({ port: Number(env.KAUAK_PORT ?? 7788) });\n",
   "packages/bridge/src/main.ts": 'import { resolveConfig } from "./config.ts";\nconst config = resolveConfig(process.env);\n',
-  "packages/bridge/src/server.test.mjs": 'import { toSnapshot } from "./herdr.ts";\nconst calls = ["pane.read", "tab.create"];\n',
-  "packages/bridge/src/fixtures/fake-herdr.mjs": 'export const METHOD = "session.snapshot";\n',
+  "packages/bridge/src/server.test.mjs":
+    'import { toSnapshot } from "./runtimes/herdr/herdr.ts";\nconst calls = ["pane.read", "tab.create"];\n',
+  "packages/bridge/src/runtimes/herdr/fixtures/fake-herdr.mjs": 'export const METHOD = "session.snapshot";\n',
   "packages/protocol/src/index.ts":
     'export type AgentStatus = "idle" | "working";\nexport const AGENT_STATUSES: readonly AgentStatus[] = ["idle", "working"];\n',
   "packages/protocol/src/protocol.test.mjs": 'import test from "node:test";\nimport { parseClientMessage } from "./index.ts";\n',
@@ -75,41 +83,90 @@ test("the repository passes", () => {
 test("only the Herdr adapter imports herdr.ts, however it is imported", () => {
   const rule = /only the Herdr adapter/;
   assertViolation(
-    { "packages/bridge/src/server.ts": 'import { Machine } from "./machine.ts";\nimport { toSnapshot } from "./herdr.ts";\n' },
-    /^packages\/bridge\/src\/server\.ts:2: imports "\.\/herdr\.ts" \(packages\/bridge\/src\/herdr\.ts\): only the Herdr adapter/,
+    {
+      "packages/bridge/src/server.ts":
+        'import { Machine } from "./runtimes/herdr/machine.ts";\nimport { toSnapshot } from "./runtimes/herdr/herdr.ts";\n',
+    },
+    /^packages\/bridge\/src\/server\.ts:2: imports "\.\/runtimes\/herdr\/herdr\.ts" \(packages\/bridge\/src\/runtimes\/herdr\/herdr\.ts\): only the Herdr adapter/,
   );
-  assertViolation({ "packages/bridge/src/server.ts": 'export * from "./herdr.ts";\n' }, rule);
-  assertViolation({ "packages/bridge/src/server.ts": 'export { toSnapshot as snap } from "./herdr.ts";\n' }, rule);
-  assertViolation({ "packages/bridge/src/server.ts": 'const herdr = await import("./herdr.ts");\n' }, rule);
-  assertViolation({ "packages/kauak/cli/main.js": "const { toSnapshot } = await import(`../../bridge/src/herdr.ts`);\n" }, rule);
-  assertViolation({ "packages/kauak/cli/main.js": 'const { toSnapshot } = await import("@kauak/bridge/herdr.ts");\n' }, rule);
+  assertViolation({ "packages/bridge/src/server.ts": 'export * from "./runtimes/herdr/herdr.ts";\n' }, rule);
+  assertViolation({ "packages/bridge/src/server.ts": 'export { toSnapshot as snap } from "./runtimes/herdr/herdr.ts";\n' }, rule);
+  assertViolation({ "packages/bridge/src/server.ts": 'const herdr = await import("./runtimes/herdr/herdr.ts");\n' }, rule);
+  assertViolation(
+    { "packages/kauak/cli/main.js": "const { toSnapshot } = await import(`../../bridge/src/runtimes/herdr/herdr.ts`);\n" },
+    rule,
+  );
+  assertViolation(
+    { "packages/kauak/cli/main.js": 'const { toSnapshot } = await import("@kauak/bridge/runtimes/herdr/herdr.ts");\n' },
+    rule,
+  );
   assertViolation({ "packages/kauak/cli/main.js": 'const { toSnapshot } = await import("../bridge/herdr.js");\n' }, rule);
-  assertViolation({ "packages/bridge/src/server.ts": 'const { toSnapshot } = require("./herdr");\n' }, rule);
+  assertViolation({ "packages/bridge/src/server.ts": 'const { toSnapshot } = require("./runtimes/herdr/herdr");\n' }, rule);
 });
 
 test("imports in comments, strings and template literals are not imports", () => {
   const { status, lines } = check({
     "packages/bridge/src/server.ts": [
-      '// import { toSnapshot } from "./herdr.ts";',
-      '/* export * from "./herdr.ts"; */',
-      "const example = 'import { toSnapshot } from \"./herdr.ts\"';",
+      '// import { toSnapshot } from "./runtimes/herdr/herdr.ts";',
+      '/* export * from "./runtimes/herdr/herdr.ts"; */',
+      "const example = 'import { toSnapshot } from \"./runtimes/herdr/herdr.ts\"';",
       // biome-ignore lint/suspicious/noTemplateCurlyInString: this line of the file is a template literal
-      'const later = `${"x"} import("./herdr.ts")`;',
-      'const re = /import\\("\\.\\/herdr\\.js"\\)/;',
+      'const later = `${"x"} import("./runtimes/herdr/herdr.ts")`;',
+      'const re = /import\\("\\.\\/runtimes\\/herdr\\/herdr\\.js"\\)/;',
       "",
     ].join("\n"),
   });
   assert.equal(status, 0, lines.join("\n"));
 });
 
-test("the trackers do not import the Herdr adapter", () => {
+test("an enricher imports no runtime and nothing of the core", () => {
+  const rule = /an enricher reaches its floor through the Runtime port/;
   assertViolation(
-    { "packages/bridge/src/context.ts": 'import { RemoteScript } from "./remote.ts";\nimport { LOCAL_SOCKET } from "./machine.ts";\n' },
-    /^packages\/bridge\/src\/context\.ts:2: imports "\.\/machine\.ts" \(packages\/bridge\/src\/machine\.ts\): the trackers reach a floor/,
+    {
+      "packages/bridge/src/enrichers/context/context.ts":
+        'import { RemoteScript } from "../../ssh/remote.ts";\nimport { LOCAL_SOCKET } from "../../runtimes/herdr/machine.ts";\n',
+    },
+    /^packages\/bridge\/src\/enrichers\/context\/context\.ts:2: imports "\.\.\/\.\.\/runtimes\/herdr\/machine\.ts" \(packages\/bridge\/src\/runtimes\/herdr\/machine\.ts\): an enricher reaches its floor/,
   );
   assertViolation(
-    { "packages/bridge/src/commands.ts": 'import { Machine } from "@kauak/bridge/machine.ts";\n' },
-    /^packages\/bridge\/src\/commands\.ts:1: .*the trackers/,
+    { "packages/bridge/src/enrichers/commands/commands.ts": 'import { Machine } from "@kauak/bridge/runtimes/herdr/machine.ts";\n' },
+    /^packages\/bridge\/src\/enrichers\/commands\/commands\.ts:1: .*an enricher reaches its floor/,
+  );
+  assertViolation({ "packages/bridge/src/enrichers/diffs/diffs.ts": 'import type { Bridge } from "../../core/bridge.ts";\n' }, rule);
+});
+
+test("the core imports the ports, and the ports, ssh/ and the runtimes do not reach back", () => {
+  assertViolation(
+    {
+      "packages/bridge/src/core/bridge.ts":
+        'import type { Runtime } from "../ports/runtime.ts";\nimport { Machine } from "../runtimes/herdr/machine.ts";\n',
+    },
+    /^packages\/bridge\/src\/core\/bridge\.ts:2: imports "\.\.\/runtimes\/herdr\/machine\.ts" \(packages\/bridge\/src\/runtimes\/herdr\/machine\.ts\): the bridge's core imports the ports/,
+  );
+  // Types are no exception: the core knows an enricher by what the port says it does.
+  assertViolation(
+    { "packages/bridge/src/core/bridge.ts": 'import type { DiffTracker } from "../enrichers/diffs/diffs.ts";\n' },
+    /^packages\/bridge\/src\/core\/bridge\.ts:1: .*the bridge's core imports the ports/,
+  );
+  assertViolation(
+    { "packages/bridge/src/core/bridge.ts": 'const { slashCommands } = await import("@kauak/bridge/enrichers/commands/commands.ts");\n' },
+    /the bridge's core imports the ports/,
+  );
+  const sides = /the ports and ssh\/ import nothing of the core, the runtimes or the enrichers/;
+  assertViolation(
+    { "packages/bridge/src/ports/runtime.ts": 'import type { HerdrSnapshot } from "../runtimes/herdr/herdr.ts";\n' },
+    /^packages\/bridge\/src\/ports\/runtime\.ts:1: .*the ports and ssh\//,
+  );
+  assertViolation({ "packages/bridge/src/ports/enricher.ts": 'import type { BridgeDeps } from "../core/bridge.ts";\n' }, sides);
+  // An enricher imports ssh/, so ssh/ reaching a runtime would hand the enricher one.
+  assertViolation({ "packages/bridge/src/ssh/remote.ts": 'import { SSH } from "../runtimes/herdr/machine.ts";\n' }, sides);
+  assertViolation(
+    { "packages/bridge/src/runtimes/herdr/machine.ts": 'import { ContextTracker } from "../../enrichers/context/context.ts";\n' },
+    /^packages\/bridge\/src\/runtimes\/herdr\/machine\.ts:1: .*a runtime implements the Runtime port/,
+  );
+  assertViolation(
+    { "packages/bridge/src/runtimes/herdr/machine.ts": 'import type { Bridge } from "../../core/bridge.ts";\n' },
+    /a runtime implements the Runtime port/,
   );
 });
 
@@ -119,7 +176,7 @@ test("the protocol imports nothing, and uses neither Node nor the DOM", () => {
     { "packages/protocol/src/index.ts": 'import fs from "node:fs";\n' },
     /^packages\/protocol\/src\/index\.ts:1: imports "node:fs": the protocol imports nothing/,
   );
-  assertViolation({ "packages/protocol/src/index.ts": 'import { RUNTIME } from "../../bridge/src/herdr.ts";\n' }, rule);
+  assertViolation({ "packages/protocol/src/index.ts": 'import { RUNTIME } from "../../bridge/src/runtimes/herdr/herdr.ts";\n' }, rule);
   assertViolation({ "packages/protocol/src/index.ts": 'import type { Theme } from "@kauak/appearance/contracts";\n' }, rule);
   assertViolation({ "packages/protocol/src/index.ts": 'import { WebSocket } from "ws";\n' }, rule);
   assertViolation(
@@ -141,17 +198,17 @@ test("the bridge and the page import the protocol by its name, not by its path",
 test("Herdr's method names are flagged outside the adapter, but not in comments, tests or the demo", () => {
   assertViolation(
     {
-      "packages/bridge/src/diffs.ts":
-        'import { RemoteScript } from "./remote.ts";\nexport const read = (m) => m.request("pane.read", {});\n',
+      "packages/bridge/src/enrichers/diffs/diffs.ts":
+        'import { RemoteScript } from "../../ssh/remote.ts";\nexport const read = (m) => m.request("pane.read", {});\n',
     },
-    /^packages\/bridge\/src\/diffs\.ts:2: names "pane\.read": Herdr's method and event names/,
+    /^packages\/bridge\/src\/enrichers\/diffs\/diffs\.ts:2: names "pane\.read": Herdr's method and event names/,
   );
   assertViolation(
     { "packages/web/src/ws.ts": 'export const EVENT = "workspace.created";\n' },
     /^packages\/web\/src\/ws\.ts:1: names "workspace\.created"/,
   );
   const { status, lines } = check({
-    "packages/bridge/src/diffs.ts":
+    "packages/bridge/src/enrichers/diffs/diffs.ts":
       '// Herdr\'s pane.read and "tab.create" are the adapter\'s business.\nexport const label = "pane read";\n',
   });
   assert.equal(status, 0, lines.join("\n"));
@@ -164,7 +221,10 @@ test("the appearance registry imports nothing but its contracts and uses no DOM"
     /^packages\/appearance\/src\/registry\.ts:2: imports "pixi\.js": the appearance registry/,
   );
   assertViolation({ "packages/appearance/src/registry.ts": 'import { Terminal } from "@xterm/xterm";\n' }, rule);
-  assertViolation({ "packages/appearance/src/registry.ts": 'import { Machine } from "../../bridge/src/machine.ts";\n' }, rule);
+  assertViolation(
+    { "packages/appearance/src/registry.ts": 'import { Machine } from "../../bridge/src/runtimes/herdr/machine.ts";\n' },
+    rule,
+  );
   assertViolation({ "packages/appearance/src/registry.ts": 'import { parseClientMessage } from "@kauak/protocol";\n' }, rule);
   assertViolation({ "packages/appearance/src/registry.ts": 'import { keyOf } from "../../web/src/floors";\n' }, rule);
   assertViolation(
@@ -176,11 +236,11 @@ test("the appearance registry imports nothing but its contracts and uses no DOM"
 
 test("packages/appearance imports nothing from the bridge, the CLI or the page", () => {
   assertViolation(
-    { "packages/appearance/src/contracts.ts": 'import type { Machine } from "../../bridge/src/machine.ts";\n' },
+    { "packages/appearance/src/contracts.ts": 'import type { Machine } from "../../bridge/src/runtimes/herdr/machine.ts";\n' },
     /^packages\/appearance\/src\/contracts\.ts:1: .*appearance contracts/,
   );
   assertViolation(
-    { "packages/appearance/src/contracts.ts": 'import type { Machine } from "@kauak/bridge/machine.ts";\n' },
+    { "packages/appearance/src/contracts.ts": 'import type { Machine } from "@kauak/bridge/runtimes/herdr/machine.ts";\n' },
     /^packages\/appearance\/src\/contracts\.ts:1: .*appearance contracts/,
   );
 });
@@ -193,8 +253,8 @@ test("the page imports the protocol and the appearance packages, and nothing of 
   );
   assertViolation({ "packages/web/src/main.ts": 'import { ready } from "@kauak/bridge/server.ts";\n' }, rule);
   // Types are no exception: what the page knows of the bridge is the protocol.
-  assertViolation({ "packages/web/src/main.ts": 'import type { Machine } from "../../bridge/src/machine.ts";\n' }, rule);
-  assertViolation({ "packages/web/src/main.ts": 'export type * from "@kauak/bridge/machine.ts";\n' }, rule);
+  assertViolation({ "packages/web/src/main.ts": 'import type { Machine } from "../../bridge/src/runtimes/herdr/machine.ts";\n' }, rule);
+  assertViolation({ "packages/web/src/main.ts": 'export type * from "@kauak/bridge/runtimes/herdr/machine.ts";\n' }, rule);
   assertViolation({ "packages/web/src/main.ts": 'import { main } from "../../kauak/cli/main.js";\n' }, rule);
   // The protocol's rules may cross as well as its types.
   const { status, lines } = check({
@@ -239,12 +299,12 @@ test("only the entry points read process.env; passing it whole to a child proces
     /^packages\/bridge\/src\/server\.ts:1: reads process\.env: only the entry points/,
   );
   assertViolation({ "packages/bridge/src/config.ts": "export const config = resolve(process.env);\n" }, rule);
-  assertViolation({ "packages/bridge/src/context.ts": 'const dir = process.env["CLAUDE_CONFIG_DIR"];\n' }, rule);
-  assertViolation({ "packages/bridge/src/machine.ts": "const ssh = process?.env.KAUAK_SSH;\n" }, rule);
-  assertViolation({ "packages/bridge/src/diffs.ts": "const env = { ...process.env.GIT_DIR };\n" }, rule);
+  assertViolation({ "packages/bridge/src/enrichers/context/context.ts": 'const dir = process.env["CLAUDE_CONFIG_DIR"];\n' }, rule);
+  assertViolation({ "packages/bridge/src/runtimes/herdr/machine.ts": "const ssh = process?.env.KAUAK_SSH;\n" }, rule);
+  assertViolation({ "packages/bridge/src/enrichers/diffs/diffs.ts": "const env = { ...process.env.GIT_DIR };\n" }, rule);
   assertViolation({ "packages/kauak/cli/main.js": "export const port = () => process.env.KAUAK_PORT;\n" }, rule);
   const { status, lines } = check({
-    "packages/bridge/src/context.ts":
+    "packages/bridge/src/enrichers/context/context.ts":
       'execFile("ps", [], { env: { ...process.env, LC_ALL: "C" } });\n// process.env.HOME is the entry point\'s to read.\n',
   });
   assert.equal(status, 0, lines.join("\n"));

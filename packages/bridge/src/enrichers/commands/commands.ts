@@ -10,7 +10,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { SlashCommand } from "@kauak/protocol";
-import type { BridgeConfig } from "./config.ts";
+import type { BridgeConfig } from "../../config.ts";
 
 /** Where this machine's agents keep their user-wide commands, from the bridge's config. */
 type AgentDirs = Pick<BridgeConfig, "claudeDir" | "codexDir">;

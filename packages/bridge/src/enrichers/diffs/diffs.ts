@@ -14,7 +14,7 @@
 // untracked files), one page per file.
 //
 // On this machine the bridge runs git and reads the files itself. On a
-// remote floor diffs_remote.py does just that part, over SSH (remote.ts), and
+// remote floor diffs_remote.py does just that part, over SSH (ssh/remote.ts), and
 // everything else still happens here.
 
 import { execFile } from "node:child_process";
@@ -22,8 +22,10 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import type { DiffSheet, FileDiff, Snapshot, Uncommitted } from "@kauak/protocol";
-import type { BridgeConfig } from "./config.ts";
-import { RemoteScript } from "./remote.ts";
+import type { BridgeConfig } from "../../config.ts";
+import type { Enricher, Printers } from "../../ports/enricher.ts";
+import type { Runtime } from "../../ports/runtime.ts";
+import { RemoteScript } from "../../ssh/remote.ts";
 
 const POLL_MS = 2000;
 // A folder outside git is asked again after this long (it may become a repository).
@@ -75,26 +77,16 @@ class HostDown extends Error {
   }
 }
 
-/**
- * What the tracker uses of its floor's Machine, which it is handed: it reads
- * the Kauak snapshot, and never imports the Herdr adapter.
- */
-interface Floor {
-  readonly label: string;
-  readonly ssh: string | null;
-  readonly snapshot: Snapshot | null;
-  on(event: "snapshot", listener: () => void): unknown;
-}
-
 /** What the tracker uses of the bridge's config: the ssh executable, for a remote floor. */
 type DiffSettings = Pick<BridgeConfig, "sshCommand">;
 
 /**
- * Emits "print" with each new sheet and "change" when rooms move to another
- * checkout (`annotate` then gives the snapshot each room's `git_root`).
+ * An Enricher, and the floor's Printers: emits "print" with each new sheet and
+ * "change" when rooms move to another checkout (`decorate` then gives the
+ * snapshot each room's `git_root`).
  */
-export class DiffTracker extends EventEmitter {
-  m: Floor;
+export class DiffTracker extends EventEmitter implements Enricher, Printers {
+  m: Runtime;
   host: Host;
   /** folder → { root, at } */
   folders: Map<string, { root: string | null; at: number }>;
@@ -107,9 +99,10 @@ export class DiffTracker extends EventEmitter {
   updating: boolean;
   again: boolean;
   stopped: boolean;
-  timer: NodeJS.Timeout;
+  timer: NodeJS.Timeout | null;
 
-  constructor(machine: Floor, settings: DiffSettings) {
+  /** Makes the printers for `machine`'s floor; `start()` begins following its rooms. */
+  constructor(machine: Runtime, settings: DiffSettings) {
     super();
     this.m = machine;
     this.host = machine.ssh ? new RemoteHost(machine, settings.sshCommand) : new LocalHost();
@@ -120,19 +113,23 @@ export class DiffTracker extends EventEmitter {
     this.updating = false;
     this.again = false;
     this.stopped = false;
-    machine.on("snapshot", () => this.update());
+    this.timer = null;
+  }
+
+  start() {
+    this.m.on("snapshot", () => this.update());
     this.timer = setTimeout(() => this.poll(), POLL_MS);
   }
 
   stop() {
     this.stopped = true;
-    clearTimeout(this.timer);
+    clearTimeout(this.timer as NodeJS.Timeout);
     this.host.stop();
   }
 
   /** The Kauak snapshot with each room's `git_root`. */
-  annotate(snapshot: Snapshot | null): Snapshot | null {
-    if (!snapshot || this.roots.size === 0) return snapshot;
+  decorate(snapshot: Snapshot): Snapshot {
+    if (this.roots.size === 0) return snapshot;
     return { ...snapshot, workspaces: snapshot.workspaces.map((w) => ({ ...w, git_root: this.roots.get(w.workspace_id) ?? null })) };
   }
 
@@ -456,8 +453,8 @@ class LocalHost {
 class RemoteHost {
   script: RemoteScript;
 
-  constructor(machine: Floor, sshCommand: string) {
-    this.script = new RemoteScript(machine, sshCommand, "./diffs_remote.py", "printers");
+  constructor(machine: Runtime, sshCommand: string) {
+    this.script = new RemoteScript(machine, sshCommand, new URL("./diffs_remote.py", import.meta.url), "printers");
   }
 
   stop() {

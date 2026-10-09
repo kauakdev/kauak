@@ -1,10 +1,12 @@
 // Checks the boundaries docs/architecture.md and docs/protocol.md state in
 // prose, so a change cannot quietly cross them: Herdr's API is spoken only in
-// the bridge's Herdr adapter, the trackers reach a floor only through the
-// Machine they are given, the protocol imports nothing (the bridge and the
-// page both load it), the appearance registry is data with no DOM, Pixi or
-// bridge in it, the page and the bridge meet only in the protocol, and the
-// bridge's settings come from the environment in one place.
+// the bridge's Herdr adapter, the bridge's core knows a runtime and the
+// enrichers only through the ports they implement (and the ports, the
+// runtimes and the enrichers know nothing of each other but the ports), the
+// protocol imports nothing (the bridge and the page both load it), the
+// appearance registry is data with no DOM, Pixi or bridge in it, the page and
+// the bridge meet only in the protocol, and the bridge's settings come from
+// the environment in one place.
 //
 // It reads every JavaScript and TypeScript file under the repository (or the
 // folder given as the first argument), finds what each one imports (`import`,
@@ -21,10 +23,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// The bridge's layers: the core runs the floors through the ports, which the
+// runtimes and the enrichers implement; server.ts puts them together. ssh/ is
+// how a runtime or an enricher reaches a remote machine.
+const CORE = ["packages/bridge/src/core/**", "@kauak/bridge/core/**"];
+const RUNTIMES = ["packages/bridge/src/runtimes/**", "@kauak/bridge/runtimes/**"];
+const ENRICHERS = ["packages/bridge/src/enrichers/**", "@kauak/bridge/enrichers/**"];
 // The Herdr adapter: the only code that speaks Herdr's API.
-const HERDR_ADAPTER = ["packages/bridge/src/machine.ts", "packages/bridge/src/herdr.ts", "packages/bridge/src/remote.ts"];
+const HERDR_ADAPTER = ["packages/bridge/src/runtimes/herdr/**"];
 // Tests drive a stand-in Herdr and check that nothing of it leaks, so they name it.
-const TESTS = ["**/*.test.mjs", "packages/bridge/src/fixtures/**"];
+const TESTS = ["**/*.test.mjs", "packages/bridge/src/runtimes/herdr/fixtures/**"];
 // Workspace packages are imported by relative path or by name, and a name is checked as written.
 const BRIDGE = ["packages/bridge/**", "@kauak/bridge", "@kauak/bridge/**"];
 // The CLI, bin/kauak.js, and the bundle of the bridge the npm package carries.
@@ -42,15 +50,31 @@ const ENTRY_POINTS = ["packages/bridge/src/main.ts", "packages/kauak/cli/command
 //            (`{ ...process.env, LC_ALL: "C" }` for a child process) passes it on whole and is allowed
 const RULES = [
   {
-    rule: "only the Herdr adapter (machine.ts, herdr.ts, remote.ts) imports herdr.ts",
+    rule: "only the Herdr adapter (runtimes/herdr/) imports herdr.ts",
     files: ["**"],
     except: [...HERDR_ADAPTER, ...TESTS],
-    forbid: ["packages/bridge/src/herdr.ts", "packages/kauak/bridge/herdr.js", "@kauak/bridge/herdr.ts"],
+    forbid: ["packages/bridge/src/runtimes/herdr/herdr.ts", "packages/kauak/bridge/herdr.js", "@kauak/bridge/runtimes/herdr/herdr.ts"],
   },
   {
-    rule: "the trackers reach a floor through the Machine they are given, not the Herdr adapter",
-    files: ["packages/bridge/src/context.ts", "packages/bridge/src/diffs.ts", "packages/bridge/src/commands.ts"],
-    forbid: ["packages/bridge/src/machine.ts", "packages/bridge/src/herdr.ts", "@kauak/bridge/machine.ts", "@kauak/bridge/herdr.ts"],
+    rule: "the bridge's core imports the ports, never a runtime or an enricher (server.ts puts them together)",
+    files: ["packages/bridge/src/core/**"],
+    forbid: [...RUNTIMES, ...ENRICHERS],
+  },
+  {
+    // Checked one file at a time, the core's rule alone would let it reach a runtime through a port or ssh/.
+    rule: "the ports and ssh/ import nothing of the core, the runtimes or the enrichers, which all import them",
+    files: ["packages/bridge/src/ports/**", "packages/bridge/src/ssh/**"],
+    forbid: [...CORE, ...RUNTIMES, ...ENRICHERS],
+  },
+  {
+    rule: "an enricher reaches its floor through the Runtime port, and imports no runtime and nothing of the core",
+    files: ["packages/bridge/src/enrichers/**"],
+    forbid: [...RUNTIMES, ...CORE],
+  },
+  {
+    rule: "a runtime implements the Runtime port, and imports nothing of the core or the enrichers",
+    files: ["packages/bridge/src/runtimes/**"],
+    forbid: [...CORE, ...ENRICHERS],
   },
   {
     rule: "Herdr's method and event names stay in the Herdr adapter",

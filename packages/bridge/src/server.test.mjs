@@ -1,13 +1,15 @@
 // The bridge as a page sees it: the real server.ts, started in this process
-// with createBridge against a fake Herdr (fixtures/fake-herdr.mjs), with a
-// WebSocket client in the page's place. What crosses the WebSocket must be
-// the Kauak protocol and nothing of Herdr's. main.ts, which runs the bridge as
-// a process of its own, is started as one.
+// with createBridge against a fake Herdr (runtimes/herdr/fixtures/fake-herdr.mjs),
+// with a WebSocket client in the page's place. What crosses the WebSocket must
+// be the Kauak protocol and nothing of Herdr's. The core is also run with a
+// stand-in runtime and stand-in enrichers, as a second runtime would be.
+// main.ts, which runs the bridge as a process of its own, is started as one.
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHook } from "node:async_hooks";
 import { spawn } from "node:child_process";
-import { once } from "node:events";
+import { EventEmitter, once } from "node:events";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -15,8 +17,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { resolveConfig } from "./config.ts";
-import { FIXTURE, fakeHerdr, herdrError } from "./fixtures/fake-herdr.mjs";
-import { toSnapshot } from "./herdr.ts";
+import { FIXTURE, fakeHerdr, herdrError } from "./runtimes/herdr/fixtures/fake-herdr.mjs";
+import { toSnapshot } from "./runtimes/herdr/herdr.ts";
 import { createBridge } from "./server.ts";
 
 // Every message type the bridge may send (BridgeMessage in @kauak/protocol).
@@ -218,6 +220,161 @@ test("a page's requests reach Herdr as Herdr requests, and only Kauak comes back
   );
   assert.equal(herdr.calls("pane.send_text").length, 1);
   for (const msg of page.got) assertKauak(msg);
+});
+
+// A floor with no Herdr behind it: the Runtime port as a second runtime would
+// implement it, as much of it as the next test uses.
+const ROOM = { workspace_id: "r1", number: 1, label: "room", focused: true, repo: null, git_root: null };
+const DESK = {
+  pane_id: "r1:d1",
+  workspace_id: "r1",
+  focused: true,
+  cwd: "/srv/app",
+  title: "shell",
+  agent: "claude",
+  agent_status: "idle",
+  screen: null,
+  scrollback: false,
+  context: null,
+};
+
+class StandInRuntime extends EventEmitter {
+  constructor({ id, label, ssh = null }) {
+    super();
+    Object.assign(this, { id, label, ssh, state: "connecting", snapshot: null, started: false, stopped: false });
+  }
+  get config() {
+    return { id: this.id, label: this.label };
+  }
+  get info() {
+    return { id: this.id, label: this.label, ssh: this.ssh, state: this.state, message: "", runtime: { name: "Stand-in", version: null } };
+  }
+  start() {
+    this.started = true;
+    setImmediate(() => {
+      this.state = "live";
+      this.emit("status", this.info);
+      this.snapshot = { workspaces: [ROOM], panes: [DESK] };
+      this.emit("snapshot", this.snapshot);
+    });
+  }
+  stop() {
+    this.stopped = true;
+  }
+  async readPane(paneId, lines) {
+    return `${lines} rows of ${paneId}`;
+  }
+}
+
+/** An enricher that adds its name to every pane's title, so the order the enrichers ran in shows. */
+function standInEnricher(name, log) {
+  return Object.assign(new EventEmitter(), {
+    start: () => log.push(`${name} started`),
+    stop: () => log.push(`${name} stopped`),
+    decorate: (s) => ({ ...s, panes: s.panes.map((p) => ({ ...p, title: `${p.title} +${name}` })) }),
+  });
+}
+
+test("the core runs the runtime and the enrichers it is given, in order, with no Herdr", async (t) => {
+  const { env, url } = await testEnv(t, "/nonexistent/kauak-test/herdr.sock");
+  const sheet = {
+    id: "s1",
+    root: "/srv/app",
+    at: 1,
+    path: "a.txt",
+    change: "modified",
+    added: 1,
+    removed: 0,
+    diff: "+a",
+    truncated: false,
+  };
+  const log = [];
+  const runtimes = [];
+  const enrichers = [standInEnricher("first", log), standInEnricher("second", log)];
+  const printers = Object.assign(new EventEmitter(), {
+    history: () => [sheet],
+    uncommitted: async (root) => ({ files: [], incomplete: false, error: `nothing in ${root}` }),
+  });
+  const bridge = createBridge(resolveConfig(env), {
+    runtime: (floor) => runtimes[runtimes.push(new StandInRuntime(floor)) - 1],
+    enrichers: () => ({ enrichers, printers }),
+    commands: async (agent, cwd, local) => [
+      { name: "hello", description: `${agent} in ${cwd}${local ? " here" : ""}`, source: "built-in" },
+    ],
+  });
+  t.after(() => bridge.close());
+
+  // The floors are made with the bridge; nothing starts until it listens.
+  assert.deepEqual([...bridge.floors.entries()], [["local", runtimes[0]]]);
+  assert.equal(runtimes[0].started, false);
+  assert.deepEqual(log, []);
+  await bridge.listen();
+  assert.equal(runtimes[0].started, true);
+  assert.deepEqual(log, ["first started", "second started"]);
+
+  const page = await connect(t, url);
+  const snapshot = await page.next((m) => m.type === "snapshot");
+  assert.deepEqual(snapshot.snapshot, { workspaces: [ROOM], panes: [{ ...DESK, title: "shell +first +second" }] });
+  assert.deepEqual(
+    page.got.find((m) => m.type === "prints"),
+    { type: "prints", machine: "local", sheets: [sheet] },
+  );
+  enrichers[1].emit("change");
+  await waitFor(
+    () => page.got.filter((m) => m.type === "snapshot").length === 2,
+    () => "no snapshot after a change",
+  );
+  printers.emit("print", sheet);
+  assert.deepEqual(await page.next((m) => m.type === "print"), { type: "print", machine: "local", sheet });
+
+  page.send({ type: "read", machine: "local", pane_id: "r1:d1", lines: 5, seq: 1 });
+  assert.deepEqual(await page.next((m) => m.type === "pane_output"), {
+    type: "pane_output",
+    machine: "local",
+    pane_id: "r1:d1",
+    text: "5 rows of r1:d1",
+    seq: 1,
+  });
+  page.send({ type: "commands", machine: "local", pane_id: "r1:d1" });
+  assert.deepEqual((await page.next((m) => m.type === "commands")).commands, [
+    { name: "hello", description: "claude in /srv/app here", source: "built-in" },
+  ]);
+  page.send({ type: "uncommitted", machine: "local", root: "/srv/app", id: 4 });
+  assert.deepEqual(await page.next((m) => m.type === "uncommitted"), {
+    type: "uncommitted",
+    machine: "local",
+    root: "/srv/app",
+    id: 4,
+    files: [],
+    incomplete: false,
+    error: "nothing in /srv/app",
+  });
+
+  await bridge.close();
+  assert.equal(runtimes[0].stopped, true);
+  assert.deepEqual(log.slice(2), ["first stopped", "second stopped"]);
+});
+
+test("a bridge that never listens starts nothing, and closes with nothing left running", { timeout: 5000 }, async (t) => {
+  const { home, env } = await testEnv(t, "/nonexistent/kauak-test/herdr.sock");
+  // A remote floor too, so its enrichers make their SSH helpers; none of them may run.
+  fs.writeFileSync(env.KAUAK_CONFIG, JSON.stringify({ machines: [{ id: "gpu", label: "gpu", ssh: "me@gpu" }] }));
+  const config = { ...resolveConfig({ ...env, KAUAK_SSH: "/nonexistent/kauak-test/ssh" }), tunnelDir: path.join(home, "tunnels") };
+  // Every timer, socket, child process and watcher, even one that does not keep the process alive.
+  const made = [];
+  const hook = createHook({ init: (_id, type) => type !== "PROMISE" && made.push(type) });
+  const running = process.getActiveResourcesInfo();
+  hook.enable();
+  let bridge;
+  try {
+    bridge = createBridge(config);
+  } finally {
+    hook.disable();
+  }
+  assert.deepEqual([...bridge.floors.keys()], ["local", "gpu"]);
+  assert.deepEqual(made, []);
+  await bridge.close();
+  assert.deepEqual(process.getActiveResourcesInfo(), running);
 });
 
 test("pnpm bridge (main.ts) serves pages, and stops with exit 0 on SIGINT and SIGTERM", { timeout: 20_000 }, async (t) => {

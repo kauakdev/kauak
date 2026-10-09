@@ -3,10 +3,10 @@
 // the bridge's Herdr adapter, the bridge's core knows a runtime and the
 // enrichers only through the ports they implement (and the ports, the
 // runtimes and the enrichers know nothing of each other but the ports), the
-// protocol imports nothing (the bridge and the page both load it), the
-// appearance registry is data with no DOM, Pixi or bridge in it, the page and
-// the bridge meet only in the protocol, and the bridge's settings come from
-// the environment in one place.
+// bridge's transport knows neither, the protocol imports nothing (the bridge
+// and the page both load it), the appearance registry is data with no DOM,
+// Pixi or bridge in it, the page and the bridge meet only in the protocol, and
+// the bridge's settings come from the environment in one place.
 //
 // It reads every JavaScript and TypeScript file under the repository (or the
 // folder given as the first argument), finds what each one imports (`import`,
@@ -25,7 +25,8 @@ import { fileURLToPath } from "node:url";
 
 // The bridge's layers: the core runs the floors through the ports, which the
 // runtimes and the enrichers implement; server.ts puts them together. ssh/ is
-// how a runtime or an enricher reaches a remote machine.
+// how a runtime or an enricher reaches a remote machine, and transport/ how the
+// pages reach the core.
 const CORE = ["packages/bridge/src/core/**", "@kauak/bridge/core/**"];
 const RUNTIMES = ["packages/bridge/src/runtimes/**", "@kauak/bridge/runtimes/**"];
 const ENRICHERS = ["packages/bridge/src/enrichers/**", "@kauak/bridge/enrichers/**"];
@@ -58,6 +59,12 @@ const RULES = [
   {
     rule: "the bridge's core imports the ports, never a runtime or an enricher (server.ts puts them together)",
     files: ["packages/bridge/src/core/**"],
+    forbid: [...RUNTIMES, ...ENRICHERS],
+  },
+  {
+    // The core imports it, so a transport that reached a runtime or an enricher would hand the core one.
+    rule: "the transport speaks Kauak only, like the core: it imports no runtime and no enricher",
+    files: ["packages/bridge/src/transport/**"],
     forbid: [...RUNTIMES, ...ENRICHERS],
   },
   {

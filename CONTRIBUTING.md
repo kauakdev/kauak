@@ -42,10 +42,11 @@ A pnpm workspace of five packages, each with its own `package.json` and README:
   TypeScript that Node 22.18 or newer runs as it is, with no build step; `tsc`
   only type-checks it. Its runtime dependencies are `ws` and the protocol.
   `src/core/` is the bridge in Kauak terms, which knows a floor only through
-  the ports in `src/ports/` (`Runtime`, `Enricher`). `src/runtimes/herdr/` is
-  the Herdr adapter, the only code that speaks Herdr's API, and
-  `src/enrichers/` what the bridge adds to a floor (context meters, printers,
-  slash commands); `src/ssh/` runs their helpers on remote floors.
+  the ports in `src/ports/` (`Runtime`, `Enricher`), and `src/transport/` the
+  WebSocket and the page it serves. `src/runtimes/herdr/` is the Herdr
+  adapter, the only code that speaks Herdr's API, and `src/enrichers/` what
+  the bridge adds to a floor (context meters, printers, slash commands);
+  `src/ssh/` runs their helpers on remote floors.
   `src/server.ts` puts them together. `scripts/bundle.js` bundles it for the
   npm package.
 - `packages/kauak/` (`kauak`, the npm package): `bin/kauak.js` and `cli/`, the
@@ -69,12 +70,13 @@ check and the page's license list.
 The page and the bridge talk only in the Kauak protocol: its types and its
 checks are in `packages/protocol/src/index.ts` (`@kauak/protocol`), and its
 reference in [docs/protocol.md](docs/protocol.md). The bridge drops any message
-from a page that the checks do not know, so a new or changed message starts in
-`packages/protocol` (a message from the page does not compile until
-`parseClientMessage` has a parser for it), then the bridge's core
-(`packages/bridge/src/core/bridge.ts`), then `packages/web/src/demo.ts`, so the
-demo keeps working, and the reference. Herdr's own fields and methods stay in
-the adapter.
+from a page that the checks do not know, so a new or changed message is first
+a variant and a parser in `packages/protocol` (a message from the page does
+not compile until `parseClientMessage` has a parser for it), then a handler in
+`packages/bridge/src/core/handlers.ts` (nor until `HANDLERS` has one for it;
+what the bridge sends back is a `BridgeMessage`, checked as it compiles), then
+the page and `packages/web/src/demo.ts`, so the demo keeps working, and the
+reference. Herdr's own fields and methods stay in the adapter.
 
 ## Before you open a pull request
 
@@ -101,10 +103,11 @@ formatted by hand.
 apart: only the Herdr adapter (`packages/bridge/src/runtimes/herdr/`) imports
 `herdr.ts` or names Herdr's methods, the bridge's core
 (`packages/bridge/src/core/`) imports the ports and never a runtime or an
-enricher, the ports and `src/ssh/` import none of the core, the runtimes or the
-enrichers, an enricher imports no runtime and nothing of the core, a runtime
-nothing of the core or the enrichers, `packages/protocol` imports nothing (no
-other package, no Node or DOM) and the others import it by its name,
+enricher, its transport (`src/transport/`) no runtime or enricher either, the
+ports and `src/ssh/` import none of the core, the runtimes or the enrichers, an
+enricher imports no runtime and nothing of the core, a runtime nothing of the
+core or the enrichers, `packages/protocol` imports nothing (no other package,
+no Node or DOM) and the others import it by its name,
 `packages/appearance/src/registry.ts` imports nothing but its contracts and
 uses no DOM, the page imports the protocol and the appearance packages but
 nothing of the bridge or the CLI, the bridge and the CLI import nothing from

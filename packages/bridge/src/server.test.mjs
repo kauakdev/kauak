@@ -223,7 +223,7 @@ test("a page's requests reach Herdr as Herdr requests, and only Kauak comes back
 });
 
 // A floor with no Herdr behind it: the Runtime port as a second runtime would
-// implement it, as much of it as the next test uses.
+// implement it, as much of it as the next tests use.
 const ROOM = { workspace_id: "r1", number: 1, label: "room", focused: true, repo: null, git_root: null };
 const DESK = {
   pane_id: "r1:d1",
@@ -239,12 +239,10 @@ const DESK = {
 };
 
 class StandInRuntime extends EventEmitter {
-  constructor({ id, label, ssh = null }) {
+  constructor(config) {
     super();
-    Object.assign(this, { id, label, ssh, state: "connecting", snapshot: null, started: false, stopped: false });
-  }
-  get config() {
-    return { id: this.id, label: this.label };
+    const { id, label, ssh = null } = config;
+    Object.assign(this, { id, label, ssh, config, state: "connecting", snapshot: null, started: false, stopped: false });
   }
   get info() {
     return { id: this.id, label: this.label, ssh: this.ssh, state: this.state, message: "", runtime: { name: "Stand-in", version: null } };
@@ -353,6 +351,53 @@ test("the core runs the runtime and the enrichers it is given, in order, with no
   await bridge.close();
   assert.equal(runtimes[0].stopped, true);
   assert.deepEqual(log.slice(2), ["first stopped", "second stopped"]);
+});
+
+test("a page adds a floor and removes it, but never this machine's, and a message about no floor is dropped", async (t) => {
+  const { env, url } = await testEnv(t, "/nonexistent/kauak-test/herdr.sock");
+  const runtimes = [];
+  const printers = Object.assign(new EventEmitter(), { history: () => [], uncommitted: async () => ({ files: [], incomplete: false }) });
+  const bridge = createBridge(resolveConfig(env), {
+    runtime: (floor) => runtimes[runtimes.push(new StandInRuntime(floor)) - 1],
+    enrichers: () => ({ enrichers: [], printers }),
+    commands: async () => [],
+  });
+  t.after(() => bridge.close());
+  await bridge.listen();
+  const page = await connect(t, url);
+  await page.next((m) => m.type === "snapshot");
+  const saved = () => JSON.parse(fs.readFileSync(env.KAUAK_CONFIG, "utf8"));
+
+  page.send({ type: "add_machine", ssh: "me@gpu", label: "" });
+  assert.deepEqual(await page.next((m) => m.type === "machine_added"), { type: "machine_added", machine: "gpu" });
+  assert.deepEqual([...bridge.floors.keys()], ["local", "gpu"]);
+  assert.equal(runtimes[1].started, true);
+  assert.deepEqual(saved(), { machines: [{ id: "gpu", label: "gpu", ssh: "me@gpu" }] });
+  page.send({ type: "add_machine", ssh: "me@gpu", label: "again" });
+  assert.deepEqual(await page.next((m) => m.type === "machine_error"), { type: "machine_error", message: "me@gpu already has a floor." });
+
+  // Neither of the first two is acted on or answered; the third, sent after them, is.
+  page.send({ type: "remove_machine", machine: "local" });
+  page.send({ type: "read", machine: "nope", pane_id: "r1:d1", lines: null, seq: 1 });
+  page.send({ type: "remove_machine", machine: "gpu" });
+  await waitFor(
+    () => !bridge.floors.has("gpu"),
+    () => "the floor was not removed",
+  );
+  assert.deepEqual([...bridge.floors.keys()], ["local"]);
+  assert.deepEqual([runtimes[0].stopped, runtimes[1].stopped], [false, true]);
+  assert.deepEqual(saved(), { machines: [] });
+  const machines = await page.next(
+    (m) => m.type === "machines" && page.got.indexOf(m) > page.got.findIndex((a) => a.type === "machine_error"),
+  );
+  assert.deepEqual(
+    machines.machines.map((m) => m.id),
+    ["local"],
+  );
+  assert.deepEqual(
+    page.got.filter((m) => m.type === "error" || m.type === "pane_output"),
+    [],
+  );
 });
 
 test("a bridge that never listens starts nothing, and closes with nothing left running", { timeout: 5000 }, async (t) => {

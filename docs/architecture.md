@@ -15,8 +15,8 @@ Herdr on this machine (unix socket)     Herdr on another machine (through an SSH
 Herdr adapter    packages/bridge/src/runtimes/herdr/ (machine.ts + herdr.ts), one Machine per floor
    │  Kauak terms, the Runtime port: info, snapshot, readPane, createRoom…
    ▼
-Bridge core      packages/bridge/src/core/bridge.ts, with enrichers/ through the Enricher port
-   │  the Kauak protocol (packages/protocol), over a WebSocket
+Bridge core      packages/bridge/src/core/, with enrichers/ through the Enricher port
+   │  the Kauak protocol (packages/protocol), over a WebSocket (packages/bridge/src/transport/ws.ts)
    ▼
 Page             packages/web/src/ws.ts → the office      (packages/web/src/demo.ts speaks it too, with no bridge)
 ```
@@ -82,10 +82,20 @@ speaks only the Kauak protocol. It broadcasts each floor's state and snapshot
 to every page, and every message about a floor names its machine. Each message
 from a page goes through `parseClientMessage` (`@kauak/protocol`,
 `packages/protocol/src/index.ts`), which checks and trims it or drops it; the
-protocol's types are in the same file. Input is queued per pane and run in
-order, and acknowledged with `input_ack`, after which the page reads the pane
-again. Build mode's requests become `createDesk` and `createRoom` on the
-floor's runtime, and its agent starts once the new shell is up.
+protocol's types are in the same file. Then its handler acts on it:
+`HANDLERS` in `packages/bridge/src/core/handlers.ts` has one for each message
+type, given that type's message, and a type without one does not compile. A
+message about a floor that does not exist is dropped. Input is queued per pane
+and run in order (`core/input.ts`), and acknowledged with `input_ack`, after
+which the page reads the pane again. Build mode's requests (`core/build.ts`)
+become `createDesk` and `createRoom` on the floor's runtime, and its agent
+starts once the new shell is up.
+
+Pages reach the core through `packages/bridge/src/transport/ws.ts`: one HTTP
+server that serves the built page, and the WebSocket on the same port, which
+accepts only pages from the allowed origins. The core sees a page only as a
+`Connection`, whose `send` takes a `BridgeMessage`, so every message the
+bridge sends is checked against the protocol when it compiles.
 
 The core knows a floor only through two ports, in `packages/bridge/src/ports/`.
 `Runtime` (`runtime.ts`) is what it asks of a floor, above. `Enricher`
@@ -95,7 +105,8 @@ narrower faces for what also answers a page: `Printers` (the sheets, the ones a
 page gets when it connects, the uncommitted view) and `SlashCommands`.
 `packages/bridge/src/server.ts` is the one module that names what implements
 them: Herdr's `Machine` for every floor, the two enrichers, and the slash
-commands. The core imports none of them, which `pnpm check:boundaries` checks.
+commands. The core and the transport import none of them, which
+`pnpm check:boundaries` checks.
 
 What Herdr does not report, the bridge adds itself, in
 `packages/bridge/src/enrichers/`:

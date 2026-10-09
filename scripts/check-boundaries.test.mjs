@@ -18,7 +18,9 @@ const CLEAN = {
   "packages/bridge/src/ports/runtime.ts": 'import type { MachineInfo, Snapshot } from "@kauak/protocol";\n',
   "packages/bridge/src/ports/enricher.ts": 'import type { Snapshot } from "@kauak/protocol";\n',
   "packages/bridge/src/core/bridge.ts":
-    'import type { Enricher } from "../ports/enricher.ts";\nimport type { Runtime } from "../ports/runtime.ts";\nimport { parseClientMessage } from "@kauak/protocol";\n',
+    'import type { Enricher } from "../ports/enricher.ts";\nimport type { Runtime } from "../ports/runtime.ts";\nimport { parseClientMessage } from "@kauak/protocol";\nimport { WsServer } from "../transport/ws.ts";\n',
+  "packages/bridge/src/transport/ws.ts":
+    'import http from "node:http";\nimport type { BridgeMessage } from "@kauak/protocol";\nimport { WebSocketServer } from "ws";\nimport type { BridgeConfig } from "../config.ts";\n',
   "packages/bridge/src/enrichers/context/context.ts":
     '// Herdr reports no token counts, so read them from the transcript.\nimport type { Runtime } from "../../ports/runtime.ts";\nimport { RemoteScript } from "../../ssh/remote.ts";\n',
   "packages/bridge/src/enrichers/diffs/diffs.ts":
@@ -167,6 +169,21 @@ test("the core imports the ports, and the ports, ssh/ and the runtimes do not re
   assertViolation(
     { "packages/bridge/src/runtimes/herdr/machine.ts": 'import type { Bridge } from "../../core/bridge.ts";\n' },
     /a runtime implements the Runtime port/,
+  );
+});
+
+test("the transport imports no runtime and no enricher", () => {
+  const rule = /the transport speaks Kauak only, like the core/;
+  assertViolation(
+    {
+      "packages/bridge/src/transport/ws.ts":
+        'import { WebSocketServer } from "ws";\nimport type { Machine } from "../runtimes/herdr/machine.ts";\n',
+    },
+    /^packages\/bridge\/src\/transport\/ws\.ts:2: imports "\.\.\/runtimes\/herdr\/machine\.ts" \(packages\/bridge\/src\/runtimes\/herdr\/machine\.ts\): the transport speaks Kauak only/,
+  );
+  assertViolation(
+    { "packages/bridge/src/transport/ws.ts": 'import { DiffTracker } from "@kauak/bridge/enrichers/diffs/diffs.ts";\n' },
+    rule,
   );
 });
 

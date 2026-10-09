@@ -13,8 +13,8 @@ Herdr (a unix socket on each machine; over an SSH tunnel for a remote floor)
 packages/bridge/src/runtimes/herdr/ (machine.ts + herdr.ts)    the Herdr adapter, one Machine per floor
   │   Kauak terms, the Runtime port: machine.info, machine.snapshot, readPane, createRoom…
   ▼
-packages/bridge/src/core/bridge.ts (with the enrichers in enrichers/)
-  │   the Kauak protocol (packages/protocol) over the WebSocket
+packages/bridge/src/core/ (with the enrichers in enrichers/)
+  │   the Kauak protocol (packages/protocol) over the WebSocket (transport/ws.ts)
   ▼
 packages/web/src/ws.ts → the office    packages/web/src/demo.ts speaks it too, with no bridge at all
 ```
@@ -27,7 +27,8 @@ packages/web/src/ws.ts → the office    packages/web/src/demo.ts speaks it too,
 | `packages/bridge/src/runtimes/herdr/herdr.ts` | Herdr → Kauak, as pure functions: a `session.snapshot` becomes a Kauak snapshot, Herdr's errors become messages fit to show, the agent session Herdr's hooks reported for a pane. |
 | `packages/bridge/src/runtimes/herdr/machine.ts` | One Herdr server: its socket protocol, the SSH tunnel, the event subscription, and the Kauak-level operations below, each made of Herdr requests. It implements the `Runtime` port. |
 | `packages/bridge/src/ports/runtime.ts`, `packages/bridge/src/ports/enricher.ts` | The two ports: `Runtime`, what the bridge asks of a floor, and `Enricher` (with `Printers` and `SlashCommands`), what it adds to one. Kauak terms only. |
-| `packages/bridge/src/core/bridge.ts` | The WebSocket, the floors, the input queue and build mode, in Kauak terms only. It knows a floor and its enrichers only through the ports. |
+| `packages/bridge/src/core/` | The floors (`bridge.ts`) and what the bridge does with each message from a page: one handler per message type in `handlers.ts` (a page message type without a handler does not compile), the input queue (`input.ts`) and build mode (`build.ts`). In Kauak terms only: it knows a floor and its enrichers only through the ports. |
+| `packages/bridge/src/transport/ws.ts` | The WebSocket and the built page, on one port, and the check of a page's origin. What it sends a page is a `BridgeMessage`, so every message the bridge sends is checked against the protocol when it compiles. |
 | `packages/bridge/src/enrichers/context/context.ts`, `packages/bridge/src/enrichers/diffs/diffs.ts` | Context meters and printers. They read the Kauak snapshot, and ask the floor's `Runtime` for a pane's agent session and processes. |
 | `packages/bridge/src/server.ts` | `createBridge`: the core with Herdr as every floor's runtime and the enrichers above. The only module that names them. |
 

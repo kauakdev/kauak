@@ -1,5 +1,5 @@
-// The Runtime port: what the core (core/bridge.ts) and the enrichers ask of
-// one floor, in Kauak terms. A runtime adapter implements it for the program
+// The Runtime port: what the core (core/) and the enrichers ask of one
+// floor, in Kauak terms. A runtime adapter implements it for the program
 // that runs the floor's terminals and agents (runtimes/herdr/ for Herdr), and
 // server.ts makes one per floor. Nothing here names a runtime's methods,
 // fields or errors, so a second runtime is another adapter and the core does

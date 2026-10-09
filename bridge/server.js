@@ -33,13 +33,22 @@ const WS_PORT = Number(process.env.KAUAK_PORT ?? process.env.AGENT_OFFICE_PORT ?
 // connections, so by default only this computer may connect, and only pages
 // served from it.
 const WS_HOST = process.env.KAUAK_HOST ?? process.env.AGENT_OFFICE_HOST ?? "127.0.0.1";
-const ALLOWED_ORIGIN_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]",
-  ...(process.env.KAUAK_ORIGINS ?? process.env.AGENT_OFFICE_ORIGINS ?? "").split(",").map((h) => h.trim()).filter(Boolean)]);
+const ALLOWED_ORIGIN_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "[::1]",
+  ...(process.env.KAUAK_ORIGINS ?? process.env.AGENT_OFFICE_ORIGINS ?? "")
+    .split(",")
+    .map((h) => h.trim())
+    .filter(Boolean),
+]);
 const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config", "kauak", "machines.json");
 const LEGACY_CONFIG_PATH = path.join(os.homedir(), ".config", "agent-office", "machines.json");
 // Reuse existing floors after the rename; fresh installs use the kauak directory.
-const CONFIG_PATH = process.env.KAUAK_CONFIG ?? process.env.AGENT_OFFICE_CONFIG
-  ?? (!fs.existsSync(DEFAULT_CONFIG_PATH) && fs.existsSync(LEGACY_CONFIG_PATH) ? LEGACY_CONFIG_PATH : DEFAULT_CONFIG_PATH);
+const CONFIG_PATH =
+  process.env.KAUAK_CONFIG ??
+  process.env.AGENT_OFFICE_CONFIG ??
+  (!fs.existsSync(DEFAULT_CONFIG_PATH) && fs.existsSync(LEGACY_CONFIG_PATH) ? LEGACY_CONFIG_PATH : DEFAULT_CONFIG_PATH);
 
 // ---------------------------------------------------------------- machines
 
@@ -63,7 +72,7 @@ function loadConfig() {
 function saveConfig() {
   const list = [...machines.values()].filter((m) => m.id !== "local").map((m) => m.config);
   fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify({ machines: list }, null, 2) + "\n");
+  fs.writeFileSync(CONFIG_PATH, `${JSON.stringify({ machines: list }, null, 2)}\n`);
 }
 
 function addMachine(cfg) {
@@ -83,8 +92,13 @@ function addMachine(cfg) {
 }
 
 function uniqueId(base) {
-  const slug = base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "machine";
-  let id = slug, n = 2;
+  const slug =
+    base
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "machine";
+  let id = slug,
+    n = 2;
   while (machines.has(id)) id = `${slug}-${n++}`;
   return id;
 }
@@ -112,17 +126,27 @@ function snapshotMessage(m) {
 const DIST_DIR = fileURLToPath(new URL("../dist/", import.meta.url));
 const HAS_PAGE = fs.existsSync(path.join(DIST_DIR, "index.html"));
 const CONTENT_TYPES = {
-  ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-  ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".json": "application/json", ".woff2": "font/woff2",
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".json": "application/json",
+  ".woff2": "font/woff2",
 };
 
 /** Static files from dist/. Nothing here is secret; the WebSocket is what needs guarding. */
 function servePage(req, res) {
   if (req.method !== "GET" && req.method !== "HEAD") return res.writeHead(405).end();
   let rel;
-  try { rel = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname); } catch { return res.writeHead(400).end(); }
+  try {
+    rel = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+  } catch {
+    return res.writeHead(400).end();
+  }
   if (rel.endsWith("/")) rel += "index.html";
-  const file = path.resolve(DIST_DIR, "." + rel);
+  const file = path.resolve(DIST_DIR, `.${rel}`);
   if (!file.startsWith(DIST_DIR)) return res.writeHead(404).end();
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) {
@@ -150,7 +174,11 @@ const wss = new WebSocketServer({
   // Browsers let any web page open a WebSocket to 127.0.0.1; only accept our own page.
   verifyClient: ({ origin }) => {
     if (!origin) return true; // not a browser
-    try { return ALLOWED_ORIGIN_HOSTS.has(new URL(origin).hostname); } catch { return false; }
+    try {
+      return ALLOWED_ORIGIN_HOSTS.has(new URL(origin).hostname);
+    } catch {
+      return false;
+    }
   },
 });
 
@@ -173,7 +201,11 @@ wss.on("connection", (ws) => {
 
   ws.on("message", async (raw) => {
     let msg;
-    try { msg = parseClientMessage(JSON.parse(raw.toString())); } catch { return; }
+    try {
+      msg = parseClientMessage(JSON.parse(raw.toString()));
+    } catch {
+      return;
+    }
     if (!msg) return;
 
     if (msg.type === "add_machine") {
@@ -311,12 +343,14 @@ function roomPath(m, raw) {
 // while a batch is in flight are merged into the next one ("hello" typed fast
 // becomes one send_text). `input_ack` carries the id of the last message sent.
 // The ops come checked and trimmed from parseClientMessage.
-const inputQueues = new Map();  // "machine/pane" → promise chain
-const openBatches = new Map();  // "machine/pane" → batch still waiting for its turn
+const inputQueues = new Map(); // "machine/pane" → promise chain
+const openBatches = new Map(); // "machine/pane" → batch still waiting for its turn
 
 function enqueueInput(key, job) {
   const prev = inputQueues.get(key) ?? Promise.resolve();
-  const next = prev.then(job, job).finally(() => { if (inputQueues.get(key) === next) inputQueues.delete(key); });
+  const next = prev.then(job, job).finally(() => {
+    if (inputQueues.get(key) === next) inputQueues.delete(key);
+  });
   inputQueues.set(key, next);
 }
 
@@ -373,9 +407,11 @@ process.on("exit", stopAll);
 export const ready = new Promise((resolve) => {
   // ws re-emits the HTTP server's errors (EADDRINUSE…) on the WebSocket server.
   wss.once("error", (err) => {
-    console.error(err.code === "EADDRINUSE"
-      ? `[bridge] port ${WS_PORT} is already in use. Is the office already running? Pick another port with --port or KAUAK_PORT.`
-      : `[bridge] cannot listen on ${WS_HOST}:${WS_PORT}: ${err.message}`);
+    console.error(
+      err.code === "EADDRINUSE"
+        ? `[bridge] port ${WS_PORT} is already in use. Is the office already running? Pick another port with --port or KAUAK_PORT.`
+        : `[bridge] cannot listen on ${WS_HOST}:${WS_PORT}: ${err.message}`,
+    );
     shutdown(1);
   });
   server.listen(WS_PORT, WS_HOST, () => {

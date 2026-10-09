@@ -1,0 +1,54 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    // JavaScript, TypeScript, JSON and CSS only. Markdown, the Python helpers and web/index.html
+    // (whose inline CSS moves out later) keep their hand formatting; the Herdr snapshot in
+    // bridge/fixtures/ is a scrubbed real one, kept as Herdr wrote it.
+    "includes": ["**/*.js", "**/*.mjs", "**/*.ts", "**/*.json", "**/*.css", "!**/dist", "!**/dist-demo", "!bridge/fixtures/**/*.json"]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 140
+  },
+  "javascript": {
+    "formatter": { "quoteStyle": "double", "semicolons": "always" }
+  },
+  "json": {
+    // Keep short arrays and objects on one line, as package.json and tsconfig.json have them.
+    "formatter": { "expand": "auto" }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        // tsconfig's noUncheckedIndexedAccess makes `list[i]!` how the page says an index is in range.
+        "noNonNullAssertion": "off"
+      },
+      "suspicious": {
+        // The bridge and the page read terminal output: escape characters are what the patterns match.
+        "noControlCharactersInRegex": "off",
+        // Line splitters (`while ((nl = buf.indexOf("\n")) !== -1)`) and caches filled on first use.
+        "noAssignInExpressions": "off"
+      },
+      "complexity": {
+        // `[hidden]` has to beat the display rules, and reduced motion every animation.
+        "noImportantStyles": "off"
+      }
+    }
+  },
+  "assist": {
+    // Imports are ordered by hand (node:test first in tests), and reordering local modules would
+    // change the order they run in.
+    "actions": { "source": { "organizeImports": "off" } }
+  },
+  "overrides": [
+    {
+      // Appearance packages are written out one value per line, as JSON.stringify(value, null, 2) does.
+      "includes": ["plugins/*.json", "docs/plugins/*.json"],
+      "json": { "formatter": { "expand": "always" } }
+    }
+  ]
+}

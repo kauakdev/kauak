@@ -9,8 +9,26 @@ import type { RoomSpec } from "./types";
 
 // Herdr's agent kinds (`herdr agent`, 0.9.1), the usual ones first.
 const COMMON_AGENTS = ["claude", "codex", "gemini", "cursor", "copilot", "opencode"];
-const MORE_AGENTS = ["amp", "agy", "cline", "devin", "droid", "grok", "hermes", "kilo", "kimi", "kiro", "letta", "maki",
-  "mastracode", "muse", "omp", "pi", "qodercli", "qwen"];
+const MORE_AGENTS = [
+  "amp",
+  "agy",
+  "cline",
+  "devin",
+  "droid",
+  "grok",
+  "hermes",
+  "kilo",
+  "kimi",
+  "kiro",
+  "letta",
+  "maki",
+  "mastracode",
+  "muse",
+  "omp",
+  "pi",
+  "qodercli",
+  "qwen",
+];
 const AGENT_KEY = "agent-office.build.agent";
 // Creating a worktree runs git checkout, which can take a while on a big repo.
 const REPLY_TIMEOUT_MS = 60_000;
@@ -48,16 +66,23 @@ export class BuildMode {
   isTyping: () => boolean = () => false;
 
   constructor(private h: BuildHandlers) {
-    this.agent.innerHTML = `<option value="">None (just a shell)</option>` +
+    this.agent.innerHTML =
+      `<option value="">None (just a shell)</option>` +
       COMMON_AGENTS.map((k) => `<option>${k}</option>`).join("") +
       `<optgroup label="More agents">${MORE_AGENTS.map((k) => `<option>${k}</option>`).join("")}</optgroup>`;
     this.agent.value = load(AGENT_KEY) ?? "";
     if (this.agent.selectedIndex < 0) this.agent.value = "";
     this.btn.addEventListener("click", () => this.toggle(!this.on));
     for (const b of this.form.querySelectorAll("[data-cancel]")) b.addEventListener("click", () => this.close());
-    for (const r of this.form.querySelectorAll<HTMLInputElement>("input[name=kind]")) r.addEventListener("change", () => this.setMode(r.value as Mode));
-    this.form.addEventListener("submit", (e) => { e.preventDefault(); this.send(); });
-    this.toast.addEventListener("click", () => { this.toast.hidden = true; });
+    for (const r of this.form.querySelectorAll<HTMLInputElement>("input[name=kind]"))
+      r.addEventListener("change", () => this.setMode(r.value as Mode));
+    this.form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      this.send();
+    });
+    this.toast.addEventListener("click", () => {
+      this.toast.hidden = true;
+    });
     addEventListener("keydown", (e) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       if (this.isTyping() || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -65,17 +90,30 @@ export class BuildMode {
     });
     // Capture phase, so Esc closes the form (or leaves build mode) before the
     // terminal panel sees it. With the panel open, Esc closes the panel first.
-    addEventListener("keydown", (e) => {
-      if (e.key !== "Escape" || this.isTyping()) return;
-      if (!this.form.hidden) { e.stopPropagation(); this.close(); }
-      else if (this.on && !document.body.classList.contains("panel-open")) { e.stopPropagation(); this.toggle(false); }
-    }, true);
+    addEventListener(
+      "keydown",
+      (e) => {
+        if (e.key !== "Escape" || this.isTyping()) return;
+        if (!this.form.hidden) {
+          e.stopPropagation();
+          this.close();
+        } else if (this.on && !document.body.classList.contains("panel-open")) {
+          e.stopPropagation();
+          this.toggle(false);
+        }
+      },
+      true,
+    );
   }
 
-  isOn(): boolean { return this.on; }
+  isOn(): boolean {
+    return this.on;
+  }
 
   /** True while keyboard focus is in the form, so global shortcuts stay out of the way. */
-  hasFocus(): boolean { return this.form.contains(document.activeElement); }
+  hasFocus(): boolean {
+    return this.form.contains(document.activeElement);
+  }
 
   toggle(on: boolean) {
     if (on === this.on) return;
@@ -129,7 +167,10 @@ export class BuildMode {
 
   /** Request `id` failed; with `pane`, the desk exists but its agent did not start. */
   failed(message: string, id: number | undefined, pane?: string) {
-    if (pane) { this.showToast(message); return; }
+    if (pane) {
+      this.showToast(message);
+      return;
+    }
     if (id !== this.pending) return;
     this.settle();
     this.showError(message);
@@ -148,11 +189,12 @@ export class BuildMode {
     for (const r of this.form.querySelectorAll<HTMLInputElement>("input[name=kind]")) r.checked = r.value === mode;
     this.field("cwd").previousElementSibling!.textContent = mode === "worktree" ? "Repository" : "Folder";
     this.field("cwd").placeholder = this.floor.remote ? "/home/you/code/project" : "~/code/project";
-    this.note.textContent = mode === "desk"
-      ? `Opens a new tab in this room in Herdr. An agent must be installed on ${this.floor.label} to start.`
-      : mode === "worktree"
-        ? "Creates a git worktree on a new branch (in ~/.herdr/worktrees) and opens it as a room."
-        : `Opens a Herdr workspace in that folder${this.floor.remote ? ` on ${this.floor.label} (absolute path)` : ""}.`;
+    this.note.textContent =
+      mode === "desk"
+        ? `Opens a new tab in this room in Herdr. An agent must be installed on ${this.floor.label} to start.`
+        : mode === "worktree"
+          ? "Creates a git worktree on a new branch (in ~/.herdr/worktrees) and opens it as a room."
+          : `Opens a Herdr workspace in that folder${this.floor.remote ? ` on ${this.floor.label} (absolute path)` : ""}.`;
   }
 
   private send() {
@@ -167,12 +209,16 @@ export class BuildMode {
       ok = this.h.createDesk(target.room.workspace.workspace_id, agent, id);
     } else {
       const label = value("label") || undefined;
-      const room: RoomSpec = this.mode === "worktree"
-        ? { kind: "worktree", cwd: value("cwd"), branch: value("branch"), base: value("base") || undefined, label }
-        : { kind: "folder", cwd: value("cwd"), label };
+      const room: RoomSpec =
+        this.mode === "worktree"
+          ? { kind: "worktree", cwd: value("cwd"), branch: value("branch"), base: value("base") || undefined, label }
+          : { kind: "folder", cwd: value("cwd"), label };
       ok = this.h.createRoom(this.floor.id, room, agent, id);
     }
-    if (!ok) { this.showError("The bridge is offline. Try again once it reconnects."); return; }
+    if (!ok) {
+      this.showError("The bridge is offline. Try again once it reconnects.");
+      return;
+    }
     this.pending = id;
     this.submit.disabled = true;
     this.submit.textContent = "Creating…";
@@ -183,7 +229,10 @@ export class BuildMode {
   /** No request in flight any more. */
   private settle() {
     this.pending = null;
-    if (this.timer !== null) { clearTimeout(this.timer); this.timer = null; }
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
     this.submit.disabled = false;
     this.submit.textContent = "Create";
   }
@@ -195,7 +244,9 @@ export class BuildMode {
 
   /** Next to the click, kept on screen; centered under the top bar on narrow screens. */
   private place(x: number, y: number) {
-    const w = this.form.offsetWidth, h = this.form.offsetHeight, pad = 12;
+    const w = this.form.offsetWidth,
+      h = this.form.offsetHeight,
+      pad = 12;
     const narrow = innerWidth < 600;
     this.form.style.left = `${narrow ? (innerWidth - w) / 2 : Math.max(pad, Math.min(x + 16, innerWidth - w - pad))}px`;
     this.form.style.top = `${narrow ? 64 : Math.max(64, Math.min(y - 24, innerHeight - h - pad))}px`;
@@ -205,14 +256,22 @@ export class BuildMode {
     this.toast.textContent = message;
     this.toast.hidden = false;
     if (this.toastTimer !== null) clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => { this.toast.hidden = true; }, TOAST_MS);
+    this.toastTimer = window.setTimeout(() => {
+      this.toast.hidden = true;
+    }, TOAST_MS);
   }
 }
 
 // localStorage can be missing or throw (private windows, blocked site data).
 function load(key: string): string | null {
-  try { return localStorage.getItem(key); } catch { return null; }
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 function save(key: string, value: string) {
-  try { localStorage.setItem(key, value); } catch {}
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
 }

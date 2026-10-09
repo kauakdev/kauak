@@ -18,7 +18,11 @@ import type { Prints } from "./prints";
 import type { DiffSheet, FileDiff, Uncommitted } from "./types";
 
 /** Where a printer's top sheet is on screen, and the office's zoom. */
-export interface Tray { x: number; y: number; scale: number }
+export interface Tray {
+  x: number;
+  y: number;
+  scale: number;
+}
 
 type Mode = "edits" | "uncommitted";
 
@@ -33,7 +37,13 @@ const PERSPECTIVE = "perspective(1800px)";
 // Sheets that land while the page is up join the count (and refresh the uncommitted view).
 const SYNC_MS = 500;
 
-interface Pose { x: number; y: number; tilt: number; turn: number; scale: number }
+interface Pose {
+  x: number;
+  y: number;
+  tilt: number;
+  turn: number;
+  scale: number;
+}
 
 export class Printout {
   private el: HTMLElement;
@@ -101,21 +111,30 @@ export class Printout {
     // The uncommitted printout's file list jumps to a file; scrolling says which file is in view.
     this.sheet.addEventListener("click", (e) => {
       const a = (e.target as HTMLElement).closest<HTMLElement>("[data-jump]");
-      if (a) { e.preventDefault(); this.goToFile(Number(a.dataset.jump)); }
+      if (a) {
+        e.preventDefault();
+        this.goToFile(Number(a.dataset.jump));
+      }
     });
     this.sheet.addEventListener("scroll", () => this.fileInView(), true);
     // Capture: while the page is up, these keys are its own, and nothing else sees them.
-    addEventListener("keydown", (e) => {
-      if (!this.isOpen() || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "Escape") this.close();
-      else if (e.key === "ArrowLeft") this.step(-1);
-      else if (e.key === "ArrowRight") this.step(1);
-      else if (e.key === "u" || e.key === "U") this.setMode(this.mode === "edits" ? "uncommitted" : "edits");
-      else return;
-      e.preventDefault();
-      e.stopPropagation();
-    }, true);
-    addEventListener("resize", () => { if (this.isOpen() && !this.busy) this.place(this.rest()); });
+    addEventListener(
+      "keydown",
+      (e) => {
+        if (!this.isOpen() || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (e.key === "Escape") this.close();
+        else if (e.key === "ArrowLeft") this.step(-1);
+        else if (e.key === "ArrowRight") this.step(1);
+        else if (e.key === "u" || e.key === "U") this.setMode(this.mode === "edits" ? "uncommitted" : "edits");
+        else return;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+      true,
+    );
+    addEventListener("resize", () => {
+      if (this.isOpen() && !this.busy) this.place(this.rest());
+    });
   }
 
   isOpen(): boolean {
@@ -146,12 +165,28 @@ export class Printout {
     const to = this.rest();
     this.busy = true;
     this.animate(this.backdrop, [{ opacity: 0 }, { opacity: 1 }], LIFT_MS * 0.7, "ease-out");
-    this.animate(this.nav, [{ opacity: 0, transform: "translate(-50%, 12px)" }, { opacity: 0, offset: 0.55 }, { opacity: 1, transform: "translate(-50%, 0)" }], LIFT_MS, "ease-out");
-    this.animate(this.sheet, [
-      { transform: this.transform(from), boxShadow: "0 1px 2px #0000", opacity: 1 },
-      { transform: this.transform(this.lifted(from, to)), boxShadow: "0 40px 70px #0007", opacity: 1, offset: 0.42 },
-      { transform: this.transform(to), boxShadow: "0 30px 80px #000a", opacity: 1 },
-    ], LIFT_MS, "cubic-bezier(.25,.75,.25,1)").then(() => { if (!this.closing) this.busy = false; });
+    this.animate(
+      this.nav,
+      [
+        { opacity: 0, transform: "translate(-50%, 12px)" },
+        { opacity: 0, offset: 0.55 },
+        { opacity: 1, transform: "translate(-50%, 0)" },
+      ],
+      LIFT_MS,
+      "ease-out",
+    );
+    this.animate(
+      this.sheet,
+      [
+        { transform: this.transform(from), boxShadow: "0 1px 2px #0000", opacity: 1 },
+        { transform: this.transform(this.lifted(from, to)), boxShadow: "0 40px 70px #0007", opacity: 1, offset: 0.42 },
+        { transform: this.transform(to), boxShadow: "0 30px 80px #000a", opacity: 1 },
+      ],
+      LIFT_MS,
+      "cubic-bezier(.25,.75,.25,1)",
+    ).then(() => {
+      if (!this.closing) this.busy = false;
+    });
   }
 
   /** Put the page back on the tray. */
@@ -166,11 +201,16 @@ export class Printout {
     this.busy = true;
     this.animate(this.backdrop, [{ opacity: 1 }, { opacity: 0 }], DROP_MS, "ease-in");
     this.animate(this.nav, [{ opacity: 1 }, { opacity: 0 }], DROP_MS * 0.4, "ease-in");
-    this.animate(this.sheet, [
-      { transform: at, opacity: 1 },
-      { transform: this.transform(this.lifted(to, this.rest())), opacity: 1, offset: 0.45 },
-      { transform: this.transform(to), opacity: offscreen ? 0 : 1 },
-    ], DROP_MS, "cubic-bezier(.5,0,.75,.4)").then(() => {
+    this.animate(
+      this.sheet,
+      [
+        { transform: at, opacity: 1 },
+        { transform: this.transform(this.lifted(to, this.rest())), opacity: 1, offset: 0.45 },
+        { transform: this.transform(to), opacity: offscreen ? 0 : 1 },
+      ],
+      DROP_MS,
+      "cubic-bezier(.5,0,.75,.4)",
+    ).then(() => {
       this.el.hidden = true;
       document.body.classList.remove("printout-open");
       this.key = null;
@@ -202,22 +242,30 @@ export class Printout {
   private ask() {
     if (!this.key) return;
     this.askedAt = this.sheets().length;
-    if (!this.request(this.key, ++this.asked)) this.work = { files: [], incomplete: false, error: "The bridge is not connected.", at: Date.now() };
+    if (!this.request(this.key, ++this.asked))
+      this.work = { files: [], incomplete: false, error: "The bridge is not connected.", at: Date.now() };
   }
 
   /** Switch tabs: the page slides aside and comes back with the other one. */
   private setMode(mode: Mode) {
     if (mode === this.mode || this.busy || this.closing) return;
     if (mode === "uncommitted") this.ask();
-    this.swap(mode === "uncommitted" ? 1 : -1, () => { this.mode = mode; });
+    this.swap(mode === "uncommitted" ? 1 : -1, () => {
+      this.mode = mode;
+    });
   }
 
   /** ←/→: the previous or next sheet, or file. */
   private step(dir: -1 | 1) {
-    if (this.mode === "uncommitted") { this.goToFile(this.file + dir); return; }
+    if (this.mode === "uncommitted") {
+      this.goToFile(this.file + dir);
+      return;
+    }
     const next = this.index + dir;
     if (next < 0 || next >= this.sheets().length) return;
-    this.swap(dir, () => { this.index = next; });
+    this.swap(dir, () => {
+      this.index = next;
+    });
   }
 
   /** Slide the page aside (away from `dir`), change what it shows, slide it back. */
@@ -226,15 +274,28 @@ export class Printout {
     this.busy = true;
     const rest = this.rest();
     const aside = (sign: number): Pose => ({ ...rest, x: rest.x + sign * 70, turn: rest.turn + sign * 5, scale: 0.97 });
-    await this.animate(this.sheet, [{ transform: this.transform(rest), opacity: 1 }, { transform: this.transform(aside(-dir)), opacity: 0 }], LEAF_MS, "ease-in");
+    await this.animate(
+      this.sheet,
+      [
+        { transform: this.transform(rest), opacity: 1 },
+        { transform: this.transform(aside(-dir)), opacity: 0 },
+      ],
+      LEAF_MS,
+      "ease-in",
+    );
     if (this.closing) return;
     change();
     this.render();
     const after = this.rest();
-    await this.animate(this.sheet, [
-      { transform: this.transform({ ...aside(dir), y: after.y }), opacity: 0 },
-      { transform: this.transform(after), opacity: 1 },
-    ], LEAF_MS * 1.3, "ease-out");
+    await this.animate(
+      this.sheet,
+      [
+        { transform: this.transform({ ...aside(dir), y: after.y }), opacity: 0 },
+        { transform: this.transform(after), opacity: 1 },
+      ],
+      LEAF_MS * 1.3,
+      "ease-out",
+    );
     if (!this.closing) this.busy = false;
   }
 
@@ -258,7 +319,10 @@ export class Printout {
     for (const f of body.querySelectorAll<HTMLElement>(".po-file")) {
       if (f.offsetTop - body.offsetTop <= body.scrollTop + 24) i = Number(f.dataset.file);
     }
-    if (i !== this.file) { this.file = i; this.syncNav(); }
+    if (i !== this.file) {
+      this.file = i;
+      this.syncNav();
+    }
   }
 
   private syncNav() {
@@ -327,20 +391,32 @@ export class Printout {
       return;
     }
     if (w.error || !w.files.length) {
-      const text = w.error ? `Could not read the checkout: ${esc(w.error)}` : "Nothing uncommitted: the working tree matches the last commit.";
+      const text = w.error
+        ? `Could not read the checkout: ${esc(w.error)}`
+        : "Nothing uncommitted: the working tree matches the last commit.";
       this.sheet.innerHTML = `${head("")}<div class="po-body po-empty">${text}</div><footer class="po-foot">· · ·</footer>`;
       return;
     }
     this.file = Math.min(this.file, w.files.length - 1);
-    const added = w.files.reduce((n, f) => n + f.added, 0), removed = w.files.reduce((n, f) => n + f.removed, 0);
+    const added = w.files.reduce((n, f) => n + f.added, 0),
+      removed = w.files.reduce((n, f) => n + f.removed, 0);
     const sub = `<div class="po-sub"><span class="files">${w.files.length} file${w.files.length === 1 ? "" : "s"}</span>${counts(added, removed)}<span class="ago">against the last commit</span></div>`;
-    const index = w.files.map((f, i) => `<li><a href="#" data-jump="${i}">${tag(f, true)}<span class="p">${esc(f.path)}</span>${counts(f.added, f.removed)}</a></li>`).join("");
-    const pages = w.files.map((f, i) => `
+    const index = w.files
+      .map(
+        (f, i) =>
+          `<li><a href="#" data-jump="${i}">${tag(f, true)}<span class="p">${esc(f.path)}</span>${counts(f.added, f.removed)}</a></li>`,
+      )
+      .join("");
+    const pages = w.files
+      .map(
+        (f, i) => `
       <section class="po-file" data-file="${i}">
         <h3 class="po-file-h">${tag(f)}<span class="p">${pathHtml(f.path)}</span>${counts(f.added, f.removed)}</h3>
         ${f.from ? `<div class="po-from">from ${esc(f.from)}</div>` : ""}
         ${fileBody(f)}
-      </section>`).join("");
+      </section>`,
+      )
+      .join("");
     const end = w.incomplete ? "… there was more than fits in one printout" : "— end of printout —";
     this.sheet.innerHTML = `${head(sub)}<div class="po-body"><ol class="po-index">${index}</ol>${pages}<div class="po-more">${end}</div></div>
       <footer class="po-foot">— uncommitted · ${w.files.length} file${w.files.length === 1 ? "" : "s"} —</footer>`;
@@ -350,14 +426,16 @@ export class Printout {
 
   /** Resting in front of you, a little askew, centered above the buttons. */
   private rest(): Pose {
-    const w = this.sheet.offsetWidth, h = this.sheet.offsetHeight;
+    const w = this.sheet.offsetWidth,
+      h = this.sheet.offsetHeight;
     const below = this.nav.offsetHeight + 36;
     return { x: innerWidth / 2 - w / 2, y: Math.max(12, (innerHeight - below - h) / 2), tilt: 0, turn: -1.2, scale: 1 };
   }
 
   /** Lying on the tray, the office's size; or, with the printer off screen, falling out of view. */
   private trayPose(): Pose {
-    const w = this.sheet.offsetWidth, h = this.sheet.offsetHeight;
+    const w = this.sheet.offsetWidth,
+      h = this.sheet.offsetHeight;
     const t = this.tray();
     if (!t) return { x: innerWidth / 2 - w / 2, y: innerHeight + h * 0.2, tilt: 50, turn: 20, scale: 0.3 };
     const scale = Math.max(0.01, (TRAY_SHEET * TILE_EDGE * t.scale) / w);
@@ -370,7 +448,9 @@ export class Printout {
     return {
       x: low.x + (high.x - low.x) * k,
       y: low.y + (high.y - low.y) * k - Math.min(120, innerHeight * 0.12),
-      tilt: 32, turn: 16, scale: low.scale + (high.scale - low.scale) * 0.35,
+      tilt: 32,
+      turn: 16,
+      scale: low.scale + (high.scale - low.scale) * 0.35,
     };
   }
 
@@ -393,11 +473,22 @@ export class Printout {
   /** Run keyframes to the end, then keep the last one as the element's own style. */
   private animate(el: HTMLElement, frames: Keyframe[], ms: number, easing: string): Promise<void> {
     const { offset: _o, easing: _e, composite: _c, ...last } = frames[frames.length - 1]!;
-    const keep = () => { for (const [k, v] of Object.entries(last)) el.style.setProperty(kebab(k), String(v)); };
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { keep(); return Promise.resolve(); }
+    const keep = () => {
+      for (const [k, v] of Object.entries(last)) el.style.setProperty(kebab(k), String(v));
+    };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      keep();
+      return Promise.resolve();
+    }
     for (const a of el.getAnimations()) a.cancel();
     const a = el.animate(frames, { duration: ms, easing, fill: "forwards" });
-    return a.finished.then(() => { keep(); a.cancel(); }, () => {});
+    return a.finished.then(
+      () => {
+        keep();
+        a.cancel();
+      },
+      () => {},
+    );
   }
 }
 
@@ -409,16 +500,19 @@ function fileBody(f: FileDiff): string {
 
 /** Unified hunks as numbered rows. */
 function rows(diff: string): string {
-  let o = 0, n = 0;
+  let o = 0,
+    n = 0;
   const out: string[] = [];
   for (const line of diff.split("\n")) {
     const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
     if (h) {
-      o = Number(h[1]); n = Number(h[2]);
+      o = Number(h[1]);
+      n = Number(h[2]);
       out.push(`<div class="r hunk"><span></span><span></span><span></span><code>${esc(line)}</code></div>`);
       continue;
     }
-    const k = line[0], text = esc(line.slice(1));
+    const k = line[0],
+      text = esc(line.slice(1));
     if (k === "+") out.push(`<div class="r add"><span></span><span>${n++}</span><span>+</span><code>${text}</code></div>`);
     else if (k === "-") out.push(`<div class="r del"><span>${o++}</span><span></span><span>−</span><code>${text}</code></div>`);
     else out.push(`<div class="r"><span>${o++}</span><span>${n++}</span><span></span><code>${text}</code></div>`);

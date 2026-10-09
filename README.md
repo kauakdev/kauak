@@ -172,8 +172,7 @@ Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
 
 [Apache 2.0](LICENSE). The build writes the licenses of the packages bundled
 into the page to `dist/THIRD_PARTY_LICENSES.txt`, which ships with the npm
-package and the demo. Third-party material kept in this repository is listed
-in [NOTICE](NOTICE).
+package and the demo.
 
 Artwork: the logo (`web/public/kauak.png`) and banner
 (`web/public/kauak-banner.png`) were generated for Kauak with OpenAI's ChatGPT

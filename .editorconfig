@@ -1,0 +1,18 @@
+# What Biome enforces (biome.jsonc), for editors. Markdown and the Python
+# helpers are not formatted by any tool: these only set defaults for new lines.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+max_line_length = 140
+
+[*.md]
+max_line_length = 80
+
+[*.py]
+indent_size = 4

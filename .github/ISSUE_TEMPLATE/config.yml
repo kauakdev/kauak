@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/agustinrbeltran/kauak/blob/main/SECURITY.md
+    about: Not in a public issue. SECURITY.md says how to report it privately.

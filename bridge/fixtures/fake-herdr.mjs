@@ -27,7 +27,7 @@ export async function fakeHerdr({ snapshot = FIXTURE, handlers = {} } = {}) {
     snapshot,
     /** Send an event to every subscriber. */
     emit(event, data = {}) {
-      for (const sock of subscribers) sock.write(JSON.stringify({ event, data }) + "\n");
+      for (const sock of subscribers) sock.write(`${JSON.stringify({ event, data })}\n`);
     },
     /** The requests made for one method, in order. */
     calls(method) {
@@ -52,7 +52,7 @@ export async function fakeHerdr({ snapshot = FIXTURE, handlers = {} } = {}) {
       if (req.method === "events.subscribe") {
         subscribers.add(sock);
         sock.on("close", () => subscribers.delete(sock));
-        sock.write(JSON.stringify({ id: req.id, result: { type: "subscription_started" } }) + "\n");
+        sock.write(`${JSON.stringify({ id: req.id, result: { type: "subscription_started" } })}\n`);
         return;
       }
       requests.push({ method: req.method, params: req.params });
@@ -63,7 +63,7 @@ export async function fakeHerdr({ snapshot = FIXTURE, handlers = {} } = {}) {
       } catch (err) {
         reply = { id: req.id, error: { code: err.code ?? "internal_error", message: err.message } };
       }
-      sock.end(JSON.stringify(reply) + "\n");
+      sock.end(`${JSON.stringify(reply)}\n`);
     });
   });
   await new Promise((resolve) => server.listen(socketPath, resolve));

@@ -11,16 +11,22 @@
 
 import type { PaneInfo, Snapshot, WorkspaceInfo } from "./types";
 
-export const CELL = 3;          // tiles per desk cell
-export const WALL = 1;          // tiles of padding inside a room
-export const ROOM_GAP = 2;      // tiles between rooms
-export const WING_GAP = 3;      // tiles between wings
+export const CELL = 3; // tiles per desk cell
+export const WALL = 1; // tiles of padding inside a room
+export const ROOM_GAP = 2; // tiles between rooms
+export const WING_GAP = 3; // tiles between wings
 
 /** A tile position: a desk's corner. */
-export interface Spot { x: number; y: number }
+export interface Spot {
+  x: number;
+  y: number;
+}
 
 /** A tile rectangle. */
-export interface Plot extends Spot { w: number; h: number }
+export interface Plot extends Spot {
+  w: number;
+  h: number;
+}
 
 /** A pane's desk. Its position is room-relative until the layout places the room. */
 export interface Desk extends Spot {
@@ -45,7 +51,8 @@ export interface Wing extends Plot {
 
 export interface Office {
   wings: Wing[];
-  w: number; h: number;
+  w: number;
+  h: number;
   /** Build mode: a new room in any other folder, below every wing. */
   slot: Plot | null;
 }
@@ -60,7 +67,8 @@ function roomFor(ws: WorkspaceInfo, panes: PaneInfo[], build: boolean): Room {
   const cell = (i: number): Spot => ({ x: WALL + (i % cols) * CELL + 1, y: WALL + Math.floor(i / cols) * CELL + 1 });
   return {
     workspace: ws,
-    x: 0, y: 0,
+    x: 0,
+    y: 0,
     w: cols * CELL + WALL * 2,
     h: rows * CELL + WALL * 2,
     desks: panes.map((pane, i) => ({ pane, ...cell(i) })),
@@ -99,9 +107,16 @@ export function buildOffice(snap: Snapshot, build = false): Office {
     let cursorX = 0;
     let wingH = 0;
     for (const r of rooms) {
-      r.x = cursorX; r.y = cursorY;
-      for (const d of r.desks) { d.x += r.x; d.y += r.y; }
-      if (r.slot) { r.slot.x += r.x; r.slot.y += r.y; }
+      r.x = cursorX;
+      r.y = cursorY;
+      for (const d of r.desks) {
+        d.x += r.x;
+        d.y += r.y;
+      }
+      if (r.slot) {
+        r.slot.x += r.x;
+        r.slot.y += r.y;
+      }
       cursorX += r.w + ROOM_GAP;
       wingH = Math.max(wingH, r.h);
     }
@@ -113,6 +128,9 @@ export function buildOffice(snap: Snapshot, build = false): Office {
     cursorY += wingH + WING_GAP;
   }
   const slot = build ? { x: 0, y: cursorY, w: ROOM_MIN, h: ROOM_MIN } : null;
-  if (slot) { maxW = Math.max(maxW, slot.w); cursorY += slot.h + WING_GAP; }
+  if (slot) {
+    maxW = Math.max(maxW, slot.w);
+    cursorY += slot.h + WING_GAP;
+  }
   return { wings, w: maxW, h: Math.max(0, cursorY - WING_GAP), slot };
 }

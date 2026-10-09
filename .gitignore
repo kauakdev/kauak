@@ -8,4 +8,10 @@ dist-demo
 .env.*
 *.log
 .DS_Store
+# Agent tooling is each contributor's own: skills and their lockfile, Claude
+# Code's local settings and worktrees.
+.agents/
+.claude/skills/
 .claude/settings.local.json
+.claude/worktrees/
+skills-lock.json

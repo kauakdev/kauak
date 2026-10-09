@@ -27,16 +27,26 @@ export class Elevator {
     document.getElementById("floor-add-btn")!.addEventListener("click", () => this.toggleForm(this.form.hidden));
     this.form.querySelector("[data-cancel]")!.addEventListener("click", () => this.toggleForm(false));
     // Capture phase, so Esc closes the form before it can close the terminal panel.
-    addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !this.form.hidden && !this.isTyping()) { e.stopPropagation(); this.toggleForm(false); }
-    }, true);
+    addEventListener(
+      "keydown",
+      (e) => {
+        if (e.key === "Escape" && !this.form.hidden && !this.isTyping()) {
+          e.stopPropagation();
+          this.toggleForm(false);
+        }
+      },
+      true,
+    );
     this.form.addEventListener("submit", (e) => {
       e.preventDefault();
       const data = new FormData(this.form);
       const ssh = String(data.get("ssh") ?? "").trim();
       if (!ssh) return;
       this.input.focus(); // the submit button is about to be disabled and would drop focus
-      if (!this.h.onAdd(ssh, String(data.get("label") ?? "").trim())) { this.showError("The bridge is offline. Try again once it reconnects."); return; }
+      if (!this.h.onAdd(ssh, String(data.get("label") ?? "").trim())) {
+        this.showError("The bridge is offline. Try again once it reconnects.");
+        return;
+      }
       this.submit.disabled = true;
       this.showError("");
     });
@@ -45,14 +55,23 @@ export class Elevator {
       const rm = target.closest<HTMLElement>("[data-rm]");
       if (rm) {
         const f = this.floors.find((x) => x.info.id === rm.dataset.rm);
-        if (f && confirm(`Remove floor ${f.number} (${f.info.label})? The machine and its agents are not touched.`)) this.h.onRemove(f.info.id);
+        if (f && confirm(`Remove floor ${f.number} (${f.info.label})? The machine and its agents are not touched.`))
+          this.h.onRemove(f.info.id);
         return;
       }
       const go = target.closest<HTMLElement>("[data-floor]");
       if (go) this.h.onPick(go.dataset.floor!);
     });
     addEventListener("keydown", (e) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || this.isTyping() || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        this.isTyping() ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.altKey
+      )
+        return;
       if (/^[1-9]$/.test(e.key)) {
         const f = this.floors[Number(e.key) - 1];
         if (f) this.h.onPick(f.info.id);
@@ -68,24 +87,38 @@ export class Elevator {
   render(floors: Floor[], current: string) {
     this.floors = floors;
     this.current = current;
-    this.list.innerHTML = [...floors].reverse().map((f) => {
-      const { info } = f;
-      const counts: Partial<Record<AgentStatus, number>> = {};
-      let agents = 0;
-      for (const p of f.snapshot?.panes ?? []) if (p.agent) { agents++; counts[p.agent_status] = (counts[p.agent_status] ?? 0) + 1; }
-      const sub = info.state === "live"
-        ? `${agents} agent${agents === 1 ? "" : "s"}${info.ssh ? ` · ssh ${info.ssh}` : " · this machine"}`
-        : floorProblem(info);
-      const badges = (["blocked", "done"] as const).filter((s) => counts[s])
-        .map((s) => `<b class="badge st-${s}" title="${counts[s]} ${s}">${counts[s]}</b>`).join("");
-      const tip = `${f.number}F · ${info.label}${info.runtime.version ? ` · ${runtimeOf(info)}` : ""}\n${info.state}${info.message ? `: ${info.message}` : ""}\nkey ${f.number <= 9 ? f.number : "—"}`;
-      return `<div class="floor conn-${info.state} ${info.id === current ? "current" : ""}" role="listitem">` +
-        `<button class="go" data-floor="${esc(info.id)}" title="${esc(tip)}" ${info.id === current ? 'aria-current="true"' : ""}>` +
-        `<span class="fn">${f.number}F</span><span class="txt"><span class="name">${esc(info.label)}</span><span class="sub">${esc(sub)}</span></span>` +
-        `<span class="badges">${badges}<i class="conn-dot"></i></span></button>` +
-        (info.id === "local" ? "" : `<button class="rm" data-rm="${esc(info.id)}" title="Remove this floor" aria-label="Remove floor ${esc(info.label)}">×</button>`) +
-        `</div>`;
-    }).join("");
+    this.list.innerHTML = [...floors]
+      .reverse()
+      .map((f) => {
+        const { info } = f;
+        const counts: Partial<Record<AgentStatus, number>> = {};
+        let agents = 0;
+        for (const p of f.snapshot?.panes ?? [])
+          if (p.agent) {
+            agents++;
+            counts[p.agent_status] = (counts[p.agent_status] ?? 0) + 1;
+          }
+        const sub =
+          info.state === "live"
+            ? `${agents} agent${agents === 1 ? "" : "s"}${info.ssh ? ` · ssh ${info.ssh}` : " · this machine"}`
+            : floorProblem(info);
+        const badges = (["blocked", "done"] as const)
+          .filter((s) => counts[s])
+          .map((s) => `<b class="badge st-${s}" title="${counts[s]} ${s}">${counts[s]}</b>`)
+          .join("");
+        const tip = `${f.number}F · ${info.label}${info.runtime.version ? ` · ${runtimeOf(info)}` : ""}\n${info.state}${info.message ? `: ${info.message}` : ""}\nkey ${f.number <= 9 ? f.number : "—"}`;
+        return (
+          `<div class="floor conn-${info.state} ${info.id === current ? "current" : ""}" role="listitem">` +
+          `<button class="go" data-floor="${esc(info.id)}" title="${esc(tip)}" ${info.id === current ? 'aria-current="true"' : ""}>` +
+          `<span class="fn">${f.number}F</span><span class="txt"><span class="name">${esc(info.label)}</span><span class="sub">${esc(sub)}</span></span>` +
+          `<span class="badges">${badges}<i class="conn-dot"></i></span></button>` +
+          (info.id === "local"
+            ? ""
+            : `<button class="rm" data-rm="${esc(info.id)}" title="Remove this floor" aria-label="Remove floor ${esc(info.label)}">×</button>`) +
+          `</div>`
+        );
+      })
+      .join("");
   }
 
   /** The bridge accepted the new machine. */

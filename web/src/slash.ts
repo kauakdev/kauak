@@ -19,7 +19,10 @@ export class SlashMenu {
   private query: string | null = null;
   private dismissed: string | null = null; // the box text Esc closed the menu on
 
-  constructor(private el: HTMLElement, private box: HTMLTextAreaElement) {
+  constructor(
+    private el: HTMLElement,
+    private box: HTMLTextAreaElement,
+  ) {
     this.box.setAttribute("aria-controls", el.id);
     this.box.setAttribute("aria-autocomplete", "list");
     // Rows must not take focus from the box.
@@ -34,10 +37,14 @@ export class SlashMenu {
     });
   }
 
-  get open(): boolean { return this.shown.length > 0; }
+  get open(): boolean {
+    return this.shown.length > 0;
+  }
 
   /** Whether the agent has commands at all (panes without one have none). */
-  get any(): boolean { return this.commands.length > 0; }
+  get any(): boolean {
+    return this.commands.length > 0;
+  }
 
   /** The agent's commands, from the bridge. */
   setCommands(cmds: SlashCommand[]) {
@@ -47,10 +54,14 @@ export class SlashMenu {
   }
 
   /** A command by name, for the usage hint once it is typed out. */
-  find(name: string): SlashCommand | undefined { return this.commands.find((c) => c.name === name); }
+  find(name: string): SlashCommand | undefined {
+    return this.commands.find((c) => c.name === name);
+  }
 
   /** The highlighted command, while the menu is open. */
-  get current(): SlashCommand | undefined { return this.shown[this.active]; }
+  get current(): SlashCommand | undefined {
+    return this.shown[this.active];
+  }
 
   /** Follow the box's text: open, filter, or close. */
   update(text: string) {
@@ -93,20 +104,26 @@ export class SlashMenu {
   private render() {
     this.el.hidden = !this.open;
     this.box.setAttribute("aria-expanded", String(this.open));
-    if (!this.open) { this.box.removeAttribute("aria-activedescendant"); this.el.replaceChildren(); return; }
-    this.el.replaceChildren(...this.shown.map((c, i) => {
-      const li = document.createElement("li");
-      li.id = `slash-${i}`;
-      li.dataset.i = String(i);
-      li.setAttribute("role", "option");
-      li.setAttribute("aria-selected", String(i === this.active));
-      const name = span("n", `/${c.name}`);
-      if (c.aliases?.length) name.append(span("a", ` (${c.aliases.join(", ")})`));
-      li.append(name, span("d", c.description));
-      if (c.source !== "built-in") li.append(span("s", c.source));
-      li.title = [`/${c.name}${c.hint ? ` ${c.hint}` : ""}`, c.description].filter(Boolean).join("\n");
-      return li;
-    }));
+    if (!this.open) {
+      this.box.removeAttribute("aria-activedescendant");
+      this.el.replaceChildren();
+      return;
+    }
+    this.el.replaceChildren(
+      ...this.shown.map((c, i) => {
+        const li = document.createElement("li");
+        li.id = `slash-${i}`;
+        li.dataset.i = String(i);
+        li.setAttribute("role", "option");
+        li.setAttribute("aria-selected", String(i === this.active));
+        const name = span("n", `/${c.name}`);
+        if (c.aliases?.length) name.append(span("a", ` (${c.aliases.join(", ")})`));
+        li.append(name, span("d", c.description));
+        if (c.source !== "built-in") li.append(span("s", c.source));
+        li.title = [`/${c.name}${c.hint ? ` ${c.hint}` : ""}`, c.description].filter(Boolean).join("\n");
+        return li;
+      }),
+    );
     this.el.scrollTop = 0;
     this.box.setAttribute("aria-activedescendant", "slash-0");
   }

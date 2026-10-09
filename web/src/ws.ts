@@ -50,7 +50,9 @@ const URL = `ws://${HOST}:${PORT}`;
 
 export class Bridge implements BridgeApi {
   private ws: WebSocket | null = null;
-  constructor(private handlers: BridgeHandlers) { this.connect(); }
+  constructor(private handlers: BridgeHandlers) {
+    this.connect();
+  }
 
   private connect() {
     this.handlers.onStatus(false);

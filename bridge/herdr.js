@@ -68,14 +68,21 @@ export function paneSession(raw, paneId) {
   const pane = list(raw?.panes).find((p) => p.pane_id === paneId);
   const s = pane?.agent_session;
   return s && s.agent === pane.agent && (s.kind === "id" || s.kind === "path") && typeof s.value === "string"
-    ? { kind: s.kind, value: s.value } : null;
+    ? { kind: s.kind, value: s.value }
+    : null;
 }
 
 /** A Herdr request's error (or the socket's) as a message fit to show; git's end with the line that says what went wrong. */
 export function errorMessage(err) {
   if (err?.code === "ENOENT" || err?.code === "ECONNREFUSED") return `${RUNTIME} is not running`;
   const text = String(err?.message ?? err);
-  return text.split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? text;
+  return (
+    text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .pop() ?? text
+  );
 }
 
 function list(v) {

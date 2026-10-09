@@ -25,7 +25,13 @@ if (process.platform !== "win32") fs.symlinkSync(process.execPath, path.join(PAT
 for (const opener of ["xdg-open", "open"]) {
   fs.writeFileSync(path.join(PATH_DIR, opener), '#!/bin/sh\necho "$@" >> "$OPENER_LOG"\n', { mode: 0o755 });
 }
-const env = { ...process.env, PATH: PATH_DIR, HERDR_SOCKET_PATH: path.join(temp, "herdr.sock"), KAUAK_CONFIG: path.join(temp, "machines.json"), KAUAK_HOST: "127.0.0.1" };
+const env = {
+  ...process.env,
+  PATH: PATH_DIR,
+  HERDR_SOCKET_PATH: path.join(temp, "herdr.sock"),
+  KAUAK_CONFIG: path.join(temp, "machines.json"),
+  KAUAK_HOST: "127.0.0.1",
+};
 let runs = 0;
 
 /** Runs `kauak <args>`; it is killed when the test ends, if still running. */
@@ -34,19 +40,29 @@ function start(t, args, { bin = BIN, extraEnv = {} } = {}) {
   const child = spawn(process.execPath, [bin, ...args], { cwd: temp, env: { ...env, ...extraEnv, OPENER_LOG: log } });
   t.after(() => child.kill("SIGKILL"));
   const s = { stdout: "", stderr: "", exit: once(child, "close").then(([code]) => code) };
-  child.stdout.setEncoding("utf8").on("data", (d) => { s.stdout += d; });
-  child.stderr.setEncoding("utf8").on("data", (d) => { s.stderr += d; });
-  /** Resolves true once stdout has `text`, false if the process exits first. */
-  s.until = (text) => new Promise((resolve) => {
-    const check = () => { if (s.stdout.includes(text)) resolve(true); };
-    child.stdout.on("data", check);
-    s.exit.then(() => resolve(s.stdout.includes(text)));
-    check();
+  child.stdout.setEncoding("utf8").on("data", (d) => {
+    s.stdout += d;
   });
-  s.stop = () => { child.kill("SIGINT"); return s.exit; };
+  child.stderr.setEncoding("utf8").on("data", (d) => {
+    s.stderr += d;
+  });
+  /** Resolves true once stdout has `text`, false if the process exits first. */
+  s.until = (text) =>
+    new Promise((resolve) => {
+      const check = () => {
+        if (s.stdout.includes(text)) resolve(true);
+      };
+      child.stdout.on("data", check);
+      s.exit.then(() => resolve(s.stdout.includes(text)));
+      check();
+    });
+  s.stop = () => {
+    child.kill("SIGINT");
+    return s.exit;
+  };
   /** What the browser opener was given, or null if it was not called within `ms`. */
   s.opened = async (ms = 5000) => {
-    for (const end = Date.now() + ms; !fs.existsSync(log) && Date.now() < end;) await sleep(25);
+    for (const end = Date.now() + ms; !fs.existsSync(log) && Date.now() < end; ) await sleep(25);
     return fs.existsSync(log) ? fs.readFileSync(log, "utf8") : null;
   };
   return s;
@@ -107,7 +123,8 @@ test("exits 1 with a clear message when the office page is not built", { timeout
   // An install without dist/: the package's files except the page, plus its dependencies.
   const pkg = path.join(temp, "no-page");
   const { files } = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
-  for (const entry of files.filter((f) => !/^(dist\b|!)/.test(f))) fs.cpSync(path.join(ROOT, entry), path.join(pkg, entry), { recursive: true });
+  for (const entry of files.filter((f) => !/^(dist\b|!)/.test(f)))
+    fs.cpSync(path.join(ROOT, entry), path.join(pkg, entry), { recursive: true });
   fs.copyFileSync(path.join(ROOT, "package.json"), path.join(pkg, "package.json"));
   fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(pkg, "node_modules"), "junction");
   const bin = path.join(pkg, "bin", "kauak.js");

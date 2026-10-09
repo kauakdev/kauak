@@ -15,15 +15,48 @@ import { FIXTURE, fakeHerdr, herdrError } from "./fixtures/fake-herdr.mjs";
 import { toSnapshot } from "./herdr.js";
 
 // Every message type the bridge may send (BridgeMessage in protocol.d.ts).
-const BRIDGE_TYPES = new Set(["machines", "machine_added", "machine_error", "snapshot", "prints", "print", "uncommitted",
-  "pane_output", "input_ack", "commands", "created", "create_error", "error"]);
+const BRIDGE_TYPES = new Set([
+  "machines",
+  "machine_added",
+  "machine_error",
+  "snapshot",
+  "prints",
+  "print",
+  "uncommitted",
+  "pane_output",
+  "input_ack",
+  "commands",
+  "created",
+  "create_error",
+  "error",
+]);
 // Herdr's names, which must never reach a page (`truncated` is not one: printer sheets have their own).
-const HERDR_FIELDS = ["terminal_id", "terminal_title", "terminal_title_stripped", "foreground_cwd", "tab_id", "tabs", "layouts", "scroll",
-  "worktree", "repo_key", "checkout_path", "agent_session", "revision", "protocol", "event", "agents", "active_tab_id"];
+const HERDR_FIELDS = [
+  "terminal_id",
+  "terminal_title",
+  "terminal_title_stripped",
+  "foreground_cwd",
+  "tab_id",
+  "tabs",
+  "layouts",
+  "scroll",
+  "worktree",
+  "repo_key",
+  "checkout_path",
+  "agent_session",
+  "revision",
+  "protocol",
+  "event",
+  "agents",
+  "active_tab_id",
+];
 
 function freePort() {
   return new Promise((resolve, reject) => {
-    const srv = net.createServer().listen(0, "127.0.0.1", () => { const { port } = srv.address(); srv.close(() => resolve(port)); });
+    const srv = net.createServer().listen(0, "127.0.0.1", () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
     srv.on("error", reject);
   });
 }
@@ -34,16 +67,32 @@ async function startBridge(t, herdr) {
   const port = await freePort();
   const child = spawn(process.execPath, [fileURLToPath(new URL("./server.js", import.meta.url))], {
     env: {
-      PATH: process.env.PATH, HOME: home, KAUAK_PORT: String(port), KAUAK_HOST: "127.0.0.1", HERDR_SOCKET_PATH: herdr.socketPath,
-      KAUAK_CONFIG: path.join(home, "machines.json"), CLAUDE_CONFIG_DIR: path.join(home, ".claude"), CODEX_HOME: path.join(home, ".codex"),
+      PATH: process.env.PATH,
+      HOME: home,
+      KAUAK_PORT: String(port),
+      KAUAK_HOST: "127.0.0.1",
+      HERDR_SOCKET_PATH: herdr.socketPath,
+      KAUAK_CONFIG: path.join(home, "machines.json"),
+      CLAUDE_CONFIG_DIR: path.join(home, ".claude"),
+      CODEX_HOME: path.join(home, ".codex"),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
-  child.stdout.on("data", (d) => { log += d; });
-  child.stderr.on("data", (d) => { log += d; });
-  t.after(() => { child.kill("SIGTERM"); fs.rmSync(home, { recursive: true, force: true }); });
-  await waitFor(() => log.includes("websocket listening"), () => `the bridge did not start:\n${log}`);
+  child.stdout.on("data", (d) => {
+    log += d;
+  });
+  child.stderr.on("data", (d) => {
+    log += d;
+  });
+  t.after(() => {
+    child.kill("SIGTERM");
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+  await waitFor(
+    () => log.includes("websocket listening"),
+    () => `the bridge did not start:\n${log}`,
+  );
   return `ws://127.0.0.1:${port}`;
 }
 
@@ -52,12 +101,19 @@ async function connect(t, url) {
   const ws = new WebSocket(url);
   const got = [];
   ws.on("message", (data) => got.push(JSON.parse(data.toString())));
-  await new Promise((resolve, reject) => { ws.once("open", resolve); ws.once("error", reject); });
+  await new Promise((resolve, reject) => {
+    ws.once("open", resolve);
+    ws.once("error", reject);
+  });
   t.after(() => ws.close());
   return {
     got,
     send: (msg) => ws.send(JSON.stringify(msg)),
-    next: (match) => waitFor(() => got.find(match), () => `no matching message; got ${JSON.stringify(got.map((m) => m.type))}`),
+    next: (match) =>
+      waitFor(
+        () => got.find(match),
+        () => `no matching message; got ${JSON.stringify(got.map((m) => m.type))}`,
+      ),
   };
 }
 
@@ -72,7 +128,10 @@ async function waitFor(check, why, ms = 5000) {
 function assertKauak(msg) {
   assert.ok(BRIDGE_TYPES.has(msg.type), `unknown message type ${msg.type}`);
   const keys = new Set();
-  JSON.stringify(msg, (k, v) => { keys.add(k); return v; });
+  JSON.stringify(msg, (k, v) => {
+    keys.add(k);
+    return v;
+  });
   for (const f of HERDR_FIELDS) assert.ok(!keys.has(f), `"${f}" reached the page in ${JSON.stringify(msg)}`);
 }
 
@@ -82,7 +141,9 @@ test("a page gets the floors and their snapshots in the Kauak protocol", async (
   const page = await connect(t, await startBridge(t, herdr));
 
   const machines = await page.next((m) => m.type === "machines" && m.machines[0]?.state === "live");
-  assert.deepEqual(machines.machines, [{ id: "local", label: "local", ssh: null, state: "live", message: "", runtime: { name: "Herdr", version: "0.9.3" } }]);
+  assert.deepEqual(machines.machines, [
+    { id: "local", label: "local", ssh: null, state: "live", message: "", runtime: { name: "Herdr", version: "0.9.3" } },
+  ]);
   const snapshot = await page.next((m) => m.type === "snapshot");
   assert.equal(snapshot.machine, "local");
   assert.deepEqual(snapshot.snapshot, toSnapshot(FIXTURE));
@@ -98,10 +159,26 @@ test("a page gets the floors and their snapshots in the Kauak protocol", async (
 test("a page's requests reach Herdr as Herdr requests, and only Kauak comes back", async (t) => {
   const herdr = await fakeHerdr({
     handlers: {
-      "pane.read": (p) => ({ read: { pane_id: p.pane_id, workspace_id: "w1", tab_id: "w1:t1", source: p.source, format: "ansi", text: "$ ls\r\nREADME.md", revision: 3, truncated: false } }),
-      "pane.focus": (p) => { if (p.pane_id !== "w1:p1") throw herdrError("pane_not_found", `pane ${p.pane_id} not found`); return {}; },
+      "pane.read": (p) => ({
+        read: {
+          pane_id: p.pane_id,
+          workspace_id: "w1",
+          tab_id: "w1:t1",
+          source: p.source,
+          format: "ansi",
+          text: "$ ls\r\nREADME.md",
+          revision: 3,
+          truncated: false,
+        },
+      }),
+      "pane.focus": (p) => {
+        if (p.pane_id !== "w1:p1") throw herdrError("pane_not_found", `pane ${p.pane_id} not found`);
+        return {};
+      },
       "tab.create": () => ({ root_pane: { pane_id: "w1:p9" } }),
-      "agent.start": () => { throw herdrError("agent_not_ready", "agent did not become ready"); },
+      "agent.start": () => {
+        throw herdrError("agent_not_ready", "agent did not become ready");
+      },
     },
   });
   t.after(() => herdr.close());
@@ -124,7 +201,13 @@ test("a page's requests reach Herdr as Herdr requests, and only Kauak comes back
   page.send({ type: "create_desk", machine: "local", workspace_id: "w1", agent: "claude", id: 1 });
   assert.deepEqual(await page.next((m) => m.type === "created"), { type: "created", machine: "local", id: 1, pane_id: "w1:p9" });
   const failed = await page.next((m) => m.type === "create_error");
-  assert.deepEqual(failed, { type: "create_error", machine: "local", id: 1, pane_id: "w1:p9", message: "The desk is ready, but claude did not start: agent did not become ready" });
+  assert.deepEqual(failed, {
+    type: "create_error",
+    machine: "local",
+    id: 1,
+    pane_id: "w1:p9",
+    message: "The desk is ready, but claude did not start: agent did not become ready",
+  });
 
   page.send({ type: "create_room", machine: "local", room: { kind: "folder", cwd: "/nonexistent/kauak-test" }, agent: null, id: 2 });
   assert.equal((await page.next((m) => m.type === "create_error" && m.id === 2)).message, "There is no folder at /nonexistent/kauak-test.");
@@ -134,7 +217,10 @@ test("a page's requests reach Herdr as Herdr requests, and only Kauak comes back
   page.send({ method: "pane.send_text", params: { pane_id: "w1:p1", text: "rm -rf /" } });
   page.send({ type: "pane.send_text", machine: "local", pane_id: "w1:p1", text: "rm -rf /" });
   page.send({ type: "refresh", machine: "local" });
-  await waitFor(() => herdr.calls("session.snapshot").length >= 3, () => "no refresh");
+  await waitFor(
+    () => herdr.calls("session.snapshot").length >= 3,
+    () => "no refresh",
+  );
   assert.equal(herdr.calls("pane.send_text").length, 1);
   for (const msg of page.got) assertKauak(msg);
 });

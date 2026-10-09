@@ -19,8 +19,18 @@ test.after(() => fs.rmSync(temp, { recursive: true }));
 const PATH_DIR = path.join(temp, "path");
 fs.mkdirSync(PATH_DIR);
 if (process.platform !== "win32") fs.symlinkSync(process.execPath, path.join(PATH_DIR, "node"));
-const run = (file, args) => spawnSync(file, args, { cwd: temp, encoding: "utf8", timeout: 10_000,
-  env: { ...process.env, PATH: PATH_DIR, HERDR_SOCKET_PATH: path.join(temp, "herdr.sock"), KAUAK_CONFIG: path.join(temp, "machines.json") } });
+const run = (file, args) =>
+  spawnSync(file, args, {
+    cwd: temp,
+    encoding: "utf8",
+    timeout: 10_000,
+    env: {
+      ...process.env,
+      PATH: PATH_DIR,
+      HERDR_SOCKET_PATH: path.join(temp, "herdr.sock"),
+      KAUAK_CONFIG: path.join(temp, "machines.json"),
+    },
+  });
 const kauak = (...args) => run(process.execPath, [BIN, ...args]);
 
 test("--help, -h and `help` list every command and exit 0", () => {
@@ -43,7 +53,12 @@ test("--version and -v print the package version and exit 0", () => {
 });
 test("a command's help comes from `<command> --help`, `-h` or `help <command>`", () => {
   for (const c of COMMANDS) {
-    for (const args of [[c.name, "--help"], [c.name, "-h"], ["help", c.name], ["--help", c.name]]) {
+    for (const args of [
+      [c.name, "--help"],
+      [c.name, "-h"],
+      ["help", c.name],
+      ["--help", c.name],
+    ]) {
       const r = kauak(...args);
       assert.equal(r.status, 0, args.join(" "));
       assert.equal(r.stdout, c.usage);
@@ -65,7 +80,11 @@ test("unknown command words exit 2 with the help and never reach serve", () => {
   }
 });
 test("options before any command go to serve, --help included", () => {
-  for (const args of [["--demo", "--help"], ["--no-open", "-h"], ["-p", "9000", "--help"]]) {
+  for (const args of [
+    ["--demo", "--help"],
+    ["--no-open", "-h"],
+    ["-p", "9000", "--help"],
+  ]) {
     const r = kauak(...args);
     assert.equal(r.status, 0, args.join(" "));
     assert.equal(r.stdout, SERVE.usage);
@@ -92,7 +111,9 @@ test("serve's options leave -h/--help and -v/--version to the global ones", () =
     assert.ok(!["help", "version"].includes(name) && !["h", "v"].includes(short), name);
   }
 });
-test("runs through a symlink to the executable, as a global install links it", { skip: process.platform === "win32" && "symlinks need extra rights on Windows" }, () => {
+test("runs through a symlink to the executable, as a global install links it", {
+  skip: process.platform === "win32" && "symlinks need extra rights on Windows",
+}, () => {
   const link = path.join(temp, "kauak");
   fs.symlinkSync(BIN, link);
   const r = run(link, ["--version"]);

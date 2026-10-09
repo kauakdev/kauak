@@ -28,9 +28,15 @@ export class Prints {
   /** Everything a floor's printers hold, on (re)connecting. */
   reset(machine: string, sheets: DiffSheet[]) {
     for (const key of [...this.sheets.keys()]) {
-      if (floorOf(key) === machine) { this.sheets.delete(key); this.queued.delete(key); }
+      if (floorOf(key) === machine) {
+        this.sheets.delete(key);
+        this.queued.delete(key);
+      }
     }
-    for (const s of sheets) { this.list(keyOf(machine, s.root)).push(s); this.seen.add(s.id); }
+    for (const s of sheets) {
+      this.list(keyOf(machine, s.root)).push(s);
+      this.seen.add(s.id);
+    }
   }
 
   add(machine: string, sheet: DiffSheet) {

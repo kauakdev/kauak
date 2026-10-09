@@ -43,8 +43,9 @@ function licenseEntry(dir) {
   const author = typeof pkg.author === "string" ? pkg.author : pkg.author?.name;
   return {
     title: `${pkg.name} ${pkg.version} (${license})`,
-    text: file ? fs.readFileSync(path.join(dir, file), "utf8").trim()
-      // A few packages publish no license file; their package.json is all there is.
-      : `The package includes no license file. Its package.json gives the license as ${license}${author ? ` and the author as ${author}` : ""}.`,
+    text: file
+      ? fs.readFileSync(path.join(dir, file), "utf8").trim()
+      : // A few packages publish no license file; their package.json is all there is.
+        `The package includes no license file. Its package.json gives the license as ${license}${author ? ` and the author as ${author}` : ""}.`,
   };
 }

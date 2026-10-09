@@ -45,14 +45,18 @@ supports) and Node 24 (the current LTS).
 
 1. On an up-to-date `main` with green CI, run `pnpm install --frozen-lockfile`,
    `pnpm test` and `pnpm verify:pack`.
-2. Set the version: `npm version <patch|minor|major>` (commits and tags
+2. Write the release notes: in `CHANGELOG.md`, the Unreleased section becomes
+   the version's (`## [X.Y.Z] - YYYY-MM-DD`), under a new, empty Unreleased.
+   Commit that.
+3. Set the version: `npm version <patch|minor|major>` (commits and tags
    `vX.Y.Z`).
-3. Look at what will be uploaded: `npm publish --dry-run`.
-4. Publish with `npm publish` (`publishConfig` sends it to the public npm
+4. Look at what will be uploaded: `npm publish --dry-run`.
+5. Publish with `npm publish` (`publishConfig` sends it to the public npm
    registry), from an npm account with two-factor authentication on.
-5. Push the commit and the tag: `git push --follow-tags`, then write the
-   release notes on GitHub.
-6. Check the published package: `npx kauak@latest --version` and
+6. Push the commits and the tag: `git push --follow-tags`, then make a GitHub
+   release for the tag with the version's section of `CHANGELOG.md` as its
+   notes.
+7. Check the published package: `npx kauak@latest --version` and
    `npx kauak@latest serve --demo`.
 
 The first release differs: the version stays at 0.1.0, so skip `npm version`

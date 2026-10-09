@@ -81,16 +81,25 @@ export class ContextTracker extends EventEmitter {
   /** The Kauak snapshot with `context` on every pane whose use is known. */
   annotate(snapshot) {
     if (!snapshot || this.usage.size === 0) return snapshot;
-    return { ...snapshot, panes: snapshot.panes.map((p) => (this.usage.has(p.pane_id) ? { ...p, context: this.usage.get(p.pane_id) } : p)) };
+    return {
+      ...snapshot,
+      panes: snapshot.panes.map((p) => (this.usage.has(p.pane_id) ? { ...p, context: this.usage.get(p.pane_id) } : p)),
+    };
   }
 
   kick() {
     if (this.kickTimer) return;
-    this.kickTimer = setTimeout(() => { this.kickTimer = null; this.refresh(); }, KICK_MS);
+    this.kickTimer = setTimeout(() => {
+      this.kickTimer = null;
+      this.refresh();
+    }, KICK_MS);
   }
 
   async refresh() {
-    if (this.running) { this.again = true; return; }
+    if (this.running) {
+      this.again = true;
+      return;
+    }
     this.running = true;
     try {
       do {
@@ -224,7 +233,8 @@ class LocalReader {
 
   /** The newest terminal Codex rollout for `cwd` written since `since` (when Codex started), from the day it started on. */
   async codexByFolder(cwd, since) {
-    let best = null, bestTime = 0;
+    let best = null,
+      bestTime = 0;
     for (const dir of codexDayDirs(since)) {
       for (const name of await fs.promises.readdir(dir).catch(() => [])) {
         if (!name.startsWith("rollout-") || !name.endsWith(".jsonl")) continue;
@@ -237,7 +247,10 @@ class LocalReader {
           if (meta) this.rollouts.set(file, meta);
         }
         // A subagent's rollout has an object for `source`.
-        if (meta?.cwd === cwd && meta.originator === "codex-tui" && typeof meta.source === "string") { best = file; bestTime = st.mtimeMs; }
+        if (meta?.cwd === cwd && meta.originator === "codex-tui" && typeof meta.source === "string") {
+          best = file;
+          bestTime = st.mtimeMs;
+        }
       }
     }
     return best;
@@ -251,8 +264,10 @@ class LocalReader {
     if (known && fs.existsSync(known)) return known;
     if ((this.misses.get(key) ?? 0) > Date.now()) return null;
     const file = kind === "claude" ? await findClaudeTranscript(id, cwd) : await findCodexRollout(id);
-    if (file) { this.found.set(key, file); this.misses.delete(key); }
-    else this.misses.set(key, Date.now() + MISS_MS);
+    if (file) {
+      this.found.set(key, file);
+      this.misses.delete(key);
+    } else this.misses.set(key, Date.now() + MISS_MS);
     return file;
   }
 }
@@ -320,7 +335,11 @@ async function rolloutMeta(file) {
     const nl = buf.subarray(0, bytesRead).indexOf(10);
     if (nl === -1) return null;
     let e;
-    try { e = JSON.parse(buf.subarray(0, nl).toString("utf8")); } catch { return {}; }
+    try {
+      e = JSON.parse(buf.subarray(0, nl).toString("utf8"));
+    } catch {
+      return {};
+    }
     const p = e?.type === "session_meta" ? e.payload : null;
     return p ? { cwd: p.cwd ?? null, originator: p.originator ?? null, source: p.source ?? null } : {};
   } finally {
@@ -339,7 +358,12 @@ async function readSessionFile(pid) {
 }
 
 function alive(pid) {
-  try { process.kill(pid, 0); return true; } catch (err) { return err.code === "EPERM"; }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === "EPERM";
+  }
 }
 
 /** ~/.claude/projects/<folder, non-alphanumerics as "-">/<id>.jsonl; any project folder if that is not it. */
@@ -360,11 +384,13 @@ async function findClaudeTranscript(id, cwd) {
 async function findCodexRollout(id) {
   const ls = async (dir) => (await fs.promises.readdir(dir).catch(() => [])).sort().reverse();
   const root = path.join(CODEX_DIR, "sessions");
-  for (const y of await ls(root)) for (const m of await ls(path.join(root, y))) for (const d of await ls(path.join(root, y, m))) {
-    const dir = path.join(root, y, m, d);
-    const name = (await ls(dir)).find((f) => f.endsWith(`-${id}.jsonl`));
-    if (name) return path.join(dir, name);
-  }
+  for (const y of await ls(root))
+    for (const m of await ls(path.join(root, y)))
+      for (const d of await ls(path.join(root, y, m))) {
+        const dir = path.join(root, y, m, d);
+        const name = (await ls(dir)).find((f) => f.endsWith(`-${id}.jsonl`));
+        if (name) return path.join(dir, name);
+      }
   return null;
 }
 
@@ -382,7 +408,8 @@ class Transcript {
 
   async usage() {
     const { size } = await fs.promises.stat(this.file);
-    if (size < this.offset) { // rewritten: start over
+    if (size < this.offset) {
+      // rewritten: start over
       this.parser = this.parser.fresh();
       this.offset = 0;
       this.rest = Buffer.alloc(0);
@@ -393,17 +420,26 @@ class Transcript {
 
   async readTo(size) {
     let start = this.offset;
-    if (start === 0 && size > FIRST_READ_MAX) { start = size - FIRST_READ_MAX; this.skipFirst = true; }
+    if (start === 0 && size > FIRST_READ_MAX) {
+      start = size - FIRST_READ_MAX;
+      this.skipFirst = true;
+    }
     const stream = fs.createReadStream(this.file, { start, end: size - 1, highWaterMark: 1 << 20 });
     for await (const buf of stream) {
-      let from = 0, nl;
+      let from = 0,
+        nl;
       while ((nl = buf.indexOf(10, from)) !== -1) {
         const line = this.rest.length ? Buffer.concat([this.rest, buf.subarray(from, nl)]) : buf.subarray(from, nl);
         this.rest = Buffer.alloc(0);
         from = nl + 1;
-        if (this.skipFirst) { this.skipFirst = false; continue; } // started mid-line
+        if (this.skipFirst) {
+          this.skipFirst = false;
+          continue;
+        } // started mid-line
         if (this.parser.wants(line)) {
-          try { this.parser.add(JSON.parse(line.toString("utf8"))); } catch {}
+          try {
+            this.parser.add(JSON.parse(line.toString("utf8")));
+          } catch {}
         }
       }
       this.rest = Buffer.concat([this.rest, buf.subarray(from)]);
@@ -424,7 +460,9 @@ class ClaudeLog {
   /** Claude Code's name for it, which ends in "[1m]" when it asked for the 1M window. */
   modelId = null;
 
-  fresh() { return new ClaudeLog(); }
+  fresh() {
+    return new ClaudeLog();
+  }
 
   wants(line) {
     return line.includes('"usage"') || line.includes('"compact_boundary"') || line.includes('"modelId"');
@@ -449,8 +487,8 @@ class ClaudeLog {
   usage() {
     if (this.used === null) return null;
     // A count past 200k can only be in a 1M window, whatever the model lines say.
-    const small = this.used <= CLAUDE_WINDOW_SMALL && !/\[1m\]/i.test(this.modelId ?? "")
-      && CLAUDE_SMALL_MODEL.test(this.model ?? this.modelId ?? "");
+    const small =
+      this.used <= CLAUDE_WINDOW_SMALL && !/\[1m\]/i.test(this.modelId ?? "") && CLAUDE_SMALL_MODEL.test(this.model ?? this.modelId ?? "");
     return { used: this.used, max: small ? CLAUDE_WINDOW_SMALL : CLAUDE_WINDOW };
   }
 }
@@ -460,9 +498,13 @@ class CodexLog {
   used = null;
   max = null;
 
-  fresh() { return new CodexLog(); }
+  fresh() {
+    return new CodexLog();
+  }
 
-  wants(line) { return line.includes('"token_count"'); }
+  wants(line) {
+    return line.includes('"token_count"');
+  }
 
   add(e) {
     const info = e.type === "event_msg" && e.payload?.type === "token_count" ? e.payload.info : null;

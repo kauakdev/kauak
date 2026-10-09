@@ -56,9 +56,8 @@ export async function run(values) {
 }
 
 function openBrowser(target) {
-  const [cmd, ...rest] = process.platform === "darwin" ? ["open"]
-    : process.platform === "win32" ? ["cmd", "/c", "start", ""]
-    : ["xdg-open"];
+  const [cmd, ...rest] =
+    process.platform === "darwin" ? ["open"] : process.platform === "win32" ? ["cmd", "/c", "start", ""] : ["xdg-open"];
   try {
     const child = spawn(cmd, [...rest, target], { stdio: "ignore", detached: true });
     child.on("error", () => {}); // no opener (headless box, SSH session): the URL above is enough

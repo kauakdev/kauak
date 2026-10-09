@@ -1,6 +1,8 @@
-# Checks every pull request and push to main: types, both builds, the tests,
-# and the npm package as people will install it (scripts/verify-pack.js), on
-# the oldest Node that package.json's engines allow and on the current LTS.
+# Checks every pull request and push to main: formatting and lint (Biome),
+# the boundaries between the bridge, Herdr and the page
+# (scripts/check-boundaries.mjs), types, both builds, the tests, and the npm
+# package as people will install it (scripts/verify-pack.js), on the oldest
+# Node that package.json's engines allow and on the current LTS.
 name: CI
 
 on:
@@ -33,6 +35,8 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm check:boundaries
       - run: pnpm typecheck
       # The page tests skip without the built page, so build first.
       - run: pnpm build

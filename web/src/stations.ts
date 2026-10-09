@@ -7,7 +7,13 @@
 // included, must also send CORS headers and accept a foreign Referer
 // (radio.cliamp.stream did on 2026-10-07).
 
-export interface Station { freq: number; name: string; genre: string; url: string; site: string }
+export interface Station {
+  freq: number;
+  name: string;
+  genre: string;
+  url: string;
+  site: string;
+}
 
 export const STATIONS: Station[] = [
   { freq: 95.5, name: "CLIAMP Lofi", genre: "lofi hip hop", url: "https://radio.cliamp.stream/lofi/stream", site: "https://cliamp.stream" },

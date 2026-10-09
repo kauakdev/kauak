@@ -127,9 +127,14 @@ const CODEX_BUILTINS = [
   ["worktree", "start or continue a conversation in a new worktree"],
 ];
 
-const builtins = (rows) => rows.map(([name, description, hint, aliases]) => ({
-  name, description, ...(hint ? { hint } : {}), ...(aliases ? { aliases } : {}), source: "built-in",
-}));
+const builtins = (rows) =>
+  rows.map(([name, description, hint, aliases]) => ({
+    name,
+    description,
+    ...(hint ? { hint } : {}),
+    ...(aliases ? { aliases } : {}),
+    source: "built-in",
+  }));
 
 // Only the top of a file is read: frontmatter and the first line are all we show.
 const HEAD_BYTES = 4096;
@@ -153,12 +158,12 @@ async function claudeFiles(cwd) {
   const projects = projectDirs(cwd);
   const out = [];
   for (const dir of projects) {
-    out.push(...await commandDir(path.join(dir, ".claude", "commands"), "project"));
-    out.push(...await skillDir(path.join(dir, ".claude", "skills"), "project"));
+    out.push(...(await commandDir(path.join(dir, ".claude", "commands"), "project")));
+    out.push(...(await skillDir(path.join(dir, ".claude", "skills"), "project")));
   }
-  out.push(...await commandDir(path.join(home, "commands"), "user"));
-  out.push(...await skillDir(path.join(home, "skills"), "user"));
-  out.push(...await pluginCommands(home, cwd, projects));
+  out.push(...(await commandDir(path.join(home, "commands"), "user")));
+  out.push(...(await skillDir(path.join(home, "skills"), "user")));
+  out.push(...(await pluginCommands(home, cwd, projects)));
   return out;
 }
 
@@ -214,7 +219,8 @@ async function pluginCommands(home, cwd, projects) {
   if (!installed?.plugins || typeof installed.plugins !== "object") return [];
   const enabled = { ...(await readJson(path.join(home, "settings.json")))?.enabledPlugins };
   for (const dir of [...projects].reverse()) {
-    for (const f of ["settings.json", "settings.local.json"]) Object.assign(enabled, (await readJson(path.join(dir, ".claude", f)))?.enabledPlugins);
+    for (const f of ["settings.json", "settings.local.json"])
+      Object.assign(enabled, (await readJson(path.join(dir, ".claude", f)))?.enabledPlugins);
   }
   const here = cwd ? path.resolve(cwd) : "";
   const out = [];
@@ -224,8 +230,8 @@ async function pluginCommands(home, cwd, projects) {
     if (typeof entry?.installPath !== "string") continue;
     const manifest = await readJson(path.join(entry.installPath, ".claude-plugin", "plugin.json"));
     const name = typeof manifest?.name === "string" ? manifest.name : key.split("@")[0];
-    out.push(...await commandDir(path.join(entry.installPath, "commands"), name, `${name}:`));
-    out.push(...await skillDir(path.join(entry.installPath, "skills"), name, `${name}:`));
+    out.push(...(await commandDir(path.join(entry.installPath, "commands"), name, `${name}:`)));
+    out.push(...(await skillDir(path.join(entry.installPath, "skills"), name, `${name}:`)));
   }
   return out;
 }
@@ -284,12 +290,17 @@ function frontmatter(text) {
 }
 
 function firstLine(body) {
-  return body.split(/\r?\n/).map((l) => l.replace(/^#+\s*/, "").trim()).find(Boolean) ?? "";
+  return (
+    body
+      .split(/\r?\n/)
+      .map((l) => l.replace(/^#+\s*/, "").trim())
+      .find(Boolean) ?? ""
+  );
 }
 
 function clip(s) {
   s = s.replace(/\s+/g, " ").trim();
-  return s.length > MAX_DESCRIPTION ? s.slice(0, MAX_DESCRIPTION - 1) + "…" : s;
+  return s.length > MAX_DESCRIPTION ? `${s.slice(0, MAX_DESCRIPTION - 1)}…` : s;
 }
 
 function inside(dir, root) {
@@ -298,18 +309,26 @@ function inside(dir, root) {
 }
 
 async function list(dir) {
-  try { return (await fs.readdir(dir)).filter((e) => !e.startsWith(".")).sort(); } catch { return []; }
+  try {
+    return (await fs.readdir(dir)).filter((e) => !e.startsWith(".")).sort();
+  } catch {
+    return [];
+  }
 }
 
 /** Files under `dir`, `depth` folders deep at most. */
 async function walk(dir, depth) {
   let entries;
-  try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return []; }
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
   const out = [];
   for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     if (e.name.startsWith(".")) continue;
     const p = path.join(dir, e.name);
-    if (e.isDirectory() && depth > 0) out.push(...await walk(p, depth - 1));
+    if (e.isDirectory() && depth > 0) out.push(...(await walk(p, depth - 1)));
     else if (e.isFile() || e.isSymbolicLink()) out.push(p);
   }
   return out;
@@ -330,5 +349,9 @@ async function readHead(file) {
 }
 
 async function readJson(file) {
-  try { return JSON.parse(await fs.readFile(file, "utf8")); } catch { return null; }
+  try {
+    return JSON.parse(await fs.readFile(file, "utf8"));
+  } catch {
+    return null;
+  }
 }

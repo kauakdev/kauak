@@ -6,13 +6,35 @@ import { errorMessage, paneSession, toSnapshot } from "./herdr.js";
 import { Machine } from "./machine.js";
 
 // Herdr's names, which must never reach a page.
-const HERDR_FIELDS = ["terminal_id", "terminal_title", "foreground_cwd", "tab_id", "tabs", "layouts", "scroll", "viewport_rows",
-  "worktree", "repo_key", "checkout_path", "is_linked_worktree", "agent_session", "revision", "protocol", "version", "agents",
-  "active_tab_id", "pane_count", "focused_pane_id"];
+const HERDR_FIELDS = [
+  "terminal_id",
+  "terminal_title",
+  "foreground_cwd",
+  "tab_id",
+  "tabs",
+  "layouts",
+  "scroll",
+  "viewport_rows",
+  "worktree",
+  "repo_key",
+  "checkout_path",
+  "is_linked_worktree",
+  "agent_session",
+  "revision",
+  "protocol",
+  "version",
+  "agents",
+  "active_tab_id",
+  "pane_count",
+  "focused_pane_id",
+];
 
 function assertNoHerdrFields(value) {
   const keys = new Set();
-  JSON.stringify(value, (k, v) => { keys.add(k); return v; });
+  JSON.stringify(value, (k, v) => {
+    keys.add(k);
+    return v;
+  });
   for (const f of HERDR_FIELDS) assert.ok(!keys.has(f), `"${f}" leaked`);
 }
 
@@ -20,24 +42,88 @@ test("a Herdr session.snapshot becomes a Kauak snapshot", () => {
   const snap = toSnapshot(FIXTURE);
   assert.deepEqual(snap, {
     workspaces: [
-      { workspace_id: "w1", number: 1, label: "billing-api", focused: true, git_root: null,
-        repo: { key: "/home/dev/code/billing-api/.git", name: "billing-api", root: "/home/dev/code/billing-api", checkout: "/home/dev/code/billing-api", linked: false } },
-      { workspace_id: "w2", number: 2, label: "feat/refunds", focused: false, git_root: null,
-        repo: { key: "/home/dev/code/billing-api/.git", name: "billing-api", root: "/home/dev/code/billing-api", checkout: "/home/dev/.herdr/worktrees/billing-api/feat-refunds", linked: true } },
+      {
+        workspace_id: "w1",
+        number: 1,
+        label: "billing-api",
+        focused: true,
+        git_root: null,
+        repo: {
+          key: "/home/dev/code/billing-api/.git",
+          name: "billing-api",
+          root: "/home/dev/code/billing-api",
+          checkout: "/home/dev/code/billing-api",
+          linked: false,
+        },
+      },
+      {
+        workspace_id: "w2",
+        number: 2,
+        label: "feat/refunds",
+        focused: false,
+        git_root: null,
+        repo: {
+          key: "/home/dev/code/billing-api/.git",
+          name: "billing-api",
+          root: "/home/dev/code/billing-api",
+          checkout: "/home/dev/.herdr/worktrees/billing-api/feat-refunds",
+          linked: true,
+        },
+      },
       { workspace_id: "w3", number: 3, label: "notes", focused: false, git_root: null, repo: null },
     ],
     panes: [
-      { pane_id: "w1:p1", workspace_id: "w1", focused: true, cwd: "/home/dev/code/billing-api", title: "Add refunds to the ledger",
-        agent: "claude", agent_status: "idle", screen: { rows: 40, cols: 120, exact: true }, scrollback: false, context: null },
+      {
+        pane_id: "w1:p1",
+        workspace_id: "w1",
+        focused: true,
+        cwd: "/home/dev/code/billing-api",
+        title: "Add refunds to the ledger",
+        agent: "claude",
+        agent_status: "idle",
+        screen: { rows: 40, cols: 120, exact: true },
+        scrollback: false,
+        context: null,
+      },
       // The foreground program's folder wins over the shell's; history above the screen is scrollback.
-      { pane_id: "w1:p2", workspace_id: "w1", focused: false, cwd: "/home/dev/code/billing-api/db", title: "dev@laptop: ~/code/billing-api/db",
-        agent: null, agent_status: "unknown", screen: { rows: 40, cols: 120, exact: true }, scrollback: true, context: null },
+      {
+        pane_id: "w1:p2",
+        workspace_id: "w1",
+        focused: false,
+        cwd: "/home/dev/code/billing-api/db",
+        title: "dev@laptop: ~/code/billing-api/db",
+        agent: null,
+        agent_status: "unknown",
+        screen: { rows: 40, cols: 120, exact: true },
+        scrollback: true,
+        context: null,
+      },
       // The layout rect is not the pane's real size when its height disagrees with the viewport's.
-      { pane_id: "w2:p1", workspace_id: "w2", focused: false, cwd: "/home/dev/.herdr/worktrees/billing-api/feat-refunds", title: "codex",
-        agent: "codex", agent_status: "working", screen: { rows: 52, cols: 120, exact: false }, scrollback: false, context: null },
+      {
+        pane_id: "w2:p1",
+        workspace_id: "w2",
+        focused: false,
+        cwd: "/home/dev/.herdr/worktrees/billing-api/feat-refunds",
+        title: "codex",
+        agent: "codex",
+        agent_status: "working",
+        screen: { rows: 52, cols: 120, exact: false },
+        scrollback: false,
+        context: null,
+      },
       // Herdr may leave the folder, title, scroll state and layout out.
-      { pane_id: "w3:p1", workspace_id: "w3", focused: false, cwd: null, title: "",
-        agent: "claude", agent_status: "blocked", screen: null, scrollback: false, context: null },
+      {
+        pane_id: "w3:p1",
+        workspace_id: "w3",
+        focused: false,
+        cwd: null,
+        title: "",
+        agent: "claude",
+        agent_status: "blocked",
+        screen: null,
+        scrollback: false,
+        context: null,
+      },
     ],
   });
   assertNoHerdrFields(snap);
@@ -71,9 +157,14 @@ test("an agent session counts only while it is the pane's current agent's", () =
 
 test("Herdr's errors become messages fit to show", () => {
   assert.equal(errorMessage(herdrError("pane_not_found", "pane w9:p1 not found")), "pane w9:p1 not found");
-  assert.equal(errorMessage(herdrError("worktree_failed", "git worktree add failed:\nPreparing worktree\nfatal: a branch named 'x' already exists\n")),
-    "fatal: a branch named 'x' already exists");
-  assert.equal(errorMessage(Object.assign(new Error("connect ENOENT /home/dev/.config/herdr/herdr.sock"), { code: "ENOENT" })), "Herdr is not running");
+  assert.equal(
+    errorMessage(herdrError("worktree_failed", "git worktree add failed:\nPreparing worktree\nfatal: a branch named 'x' already exists\n")),
+    "fatal: a branch named 'x' already exists",
+  );
+  assert.equal(
+    errorMessage(Object.assign(new Error("connect ENOENT /home/dev/.config/herdr/herdr.sock"), { code: "ENOENT" })),
+    "Herdr is not running",
+  );
   assert.equal(errorMessage(Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" })), "Herdr is not running");
 });
 
@@ -82,7 +173,10 @@ test("Herdr's errors become messages fit to show", () => {
 async function liveMachine(t, options) {
   const herdr = await fakeHerdr(options);
   const m = new Machine({ id: "local", label: "local", socket: herdr.socketPath });
-  t.after(async () => { m.stop(); await herdr.close(); });
+  t.after(async () => {
+    m.stop();
+    await herdr.close();
+  });
   const first = once(m, "snapshot");
   m.start();
   await first;
@@ -92,7 +186,14 @@ async function liveMachine(t, options) {
 test("a floor subscribes to Herdr and emits Kauak snapshots, another one after each event", async (t) => {
   const { herdr, m } = await liveMachine(t);
   assert.deepEqual(m.snapshot, toSnapshot(FIXTURE));
-  assert.deepEqual(m.info, { id: "local", label: "local", ssh: null, state: "live", message: "", runtime: { name: "Herdr", version: "0.9.3" } });
+  assert.deepEqual(m.info, {
+    id: "local",
+    label: "local",
+    ssh: null,
+    state: "live",
+    message: "",
+    runtime: { name: "Herdr", version: "0.9.3" },
+  });
 
   herdr.snapshot = structuredClone(FIXTURE);
   herdr.snapshot.panes[0].agent_status = "working";
@@ -125,15 +226,22 @@ test("Kauak operations become Herdr requests", async (t) => {
   await m.sendKeys("w1:p1", keys);
   assert.deepEqual(herdr.calls("pane.focus"), [{ pane_id: "w2:p1" }]);
   assert.deepEqual(herdr.calls("pane.send_text"), [{ pane_id: "w1:p1", text: "hello" }]);
-  assert.deepEqual(herdr.calls("pane.send_keys").map((p) => p.keys.length), [64, 6]);
+  assert.deepEqual(
+    herdr.calls("pane.send_keys").map((p) => p.keys.length),
+    [64, 6],
+  );
 
   // A desk opens in its room's checkout; rooms are worktrees or plain workspaces.
   assert.equal(await m.createDesk("w2"), "w1:p7");
-  assert.deepEqual(herdr.calls("tab.create"), [{ workspace_id: "w2", cwd: "/home/dev/.herdr/worktrees/billing-api/feat-refunds", focus: false }]);
+  assert.deepEqual(herdr.calls("tab.create"), [
+    { workspace_id: "w2", cwd: "/home/dev/.herdr/worktrees/billing-api/feat-refunds", focus: false },
+  ]);
   await assert.rejects(m.createDesk("w9"), { message: "That room is gone." });
   assert.equal(await m.createRoom({ kind: "worktree", cwd: "/home/dev/code/billing-api", branch: "feat/export" }), "w4:p1");
   assert.equal(await m.createRoom({ kind: "folder", cwd: "/home/dev/notes", label: "Notes" }), "w5:p1");
-  assert.deepEqual(herdr.calls("worktree.create"), [{ cwd: "/home/dev/code/billing-api", branch: "feat/export", base: null, label: null, focus: false }]);
+  assert.deepEqual(herdr.calls("worktree.create"), [
+    { cwd: "/home/dev/code/billing-api", branch: "feat/export", base: null, label: null, focus: false },
+  ]);
   assert.deepEqual(herdr.calls("workspace.create"), [{ cwd: "/home/dev/notes", label: "Notes", focus: false }]);
 
   assert.deepEqual(await m.paneProcesses("w1:p1"), [4242]);
@@ -142,7 +250,11 @@ test("Kauak operations become Herdr requests", async (t) => {
 
 test("a failed operation rejects with Herdr's message, not its method or code", async (t) => {
   const { m } = await liveMachine(t, {
-    handlers: { "pane.focus": () => { throw herdrError("pane_not_found", "pane w9:p1 not found"); } },
+    handlers: {
+      "pane.focus": () => {
+        throw herdrError("pane_not_found", "pane w9:p1 not found");
+      },
+    },
   });
   await assert.rejects(m.focusPane("w9:p1"), (err) => err.message === "pane w9:p1 not found");
 });
@@ -151,7 +263,10 @@ test("an agent starts once the new pane's shell is ready for it", async (t) => {
   let busy = 2;
   const { herdr, m } = await liveMachine(t, {
     handlers: {
-      "agent.start": () => { if (busy-- > 0) throw herdrError("agent_pane_busy", "pane is busy"); return { agent: { name: "claude-x" } }; },
+      "agent.start": () => {
+        if (busy-- > 0) throw herdrError("agent_pane_busy", "pane is busy");
+        return { agent: { name: "claude-x" } };
+      },
     },
   });
   await m.startAgent("claude", "w1:p7");

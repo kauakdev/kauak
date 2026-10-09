@@ -33,19 +33,52 @@ const GIT_REF = /^[A-Za-z0-9_.][A-Za-z0-9_./-]{0,199}$/;
 type RoomSeed = { repo: string; branch: string; panes: [agent: string | null, status?: AgentStatus][] };
 
 const FLOORS: { id: string; label: string; ssh: string | null; host: string; rooms: RoomSeed[] }[] = [
-  { id: "local", label: "local", ssh: null, host: "laptop", rooms: [
-    { repo: "kauak", branch: "main", panes: [["claude", "working"], [null]] },
-    { repo: "kauak", branch: "feat/elevator", panes: [["codex", "blocked"]] },
-    { repo: "kauak", branch: "fix/panel-scroll", panes: [["claude", "done"], ["gemini", "working"]] },
-    { repo: "billing-api", branch: "main", panes: [["codex", "idle"], [null]] },
-    { repo: "billing-api", branch: "feat/refunds", panes: [["claude", "working"], ["opencode", "working"]] },
-    { repo: "docs-site", branch: "main", panes: [["cursor", "idle"]] },
-  ] },
-  { id: "gpu-box", label: "gpu-box", ssh: "dev@gpu-box", host: "gpu-box", rooms: [
-    { repo: "llm-evals", branch: "main", panes: [["claude", "working"], ["codex", "blocked"], [null]] },
-    { repo: "llm-evals", branch: "exp/long-context", panes: [["aider", "working"]] },
-    { repo: "data-pipeline", branch: "main", panes: [["claude", "idle"], ["gemini", "done"]] },
-  ] },
+  {
+    id: "local",
+    label: "local",
+    ssh: null,
+    host: "laptop",
+    rooms: [
+      { repo: "kauak", branch: "main", panes: [["claude", "working"], [null]] },
+      { repo: "kauak", branch: "feat/elevator", panes: [["codex", "blocked"]] },
+      {
+        repo: "kauak",
+        branch: "fix/panel-scroll",
+        panes: [
+          ["claude", "done"],
+          ["gemini", "working"],
+        ],
+      },
+      { repo: "billing-api", branch: "main", panes: [["codex", "idle"], [null]] },
+      {
+        repo: "billing-api",
+        branch: "feat/refunds",
+        panes: [
+          ["claude", "working"],
+          ["opencode", "working"],
+        ],
+      },
+      { repo: "docs-site", branch: "main", panes: [["cursor", "idle"]] },
+    ],
+  },
+  {
+    id: "gpu-box",
+    label: "gpu-box",
+    ssh: "dev@gpu-box",
+    host: "gpu-box",
+    rooms: [
+      { repo: "llm-evals", branch: "main", panes: [["claude", "working"], ["codex", "blocked"], [null]] },
+      { repo: "llm-evals", branch: "exp/long-context", panes: [["aider", "working"]] },
+      {
+        repo: "data-pipeline",
+        branch: "main",
+        panes: [
+          ["claude", "idle"],
+          ["gemini", "done"],
+        ],
+      },
+    ],
+  },
 ];
 
 const AGENTS = ["claude", "codex", "gemini", "opencode", "aider", "cursor"];
@@ -57,71 +90,137 @@ const EXTRA_REPOS = ["web-app", "mobile", "infra", "search-service", "cli", "des
 const BRANCHES = ["feat/onboarding", "fix/timeouts", "chore/deps", "feat/export", "fix/flaky-ci"];
 
 const TASKS = [
-  "Fix the flaky login test", "Add pagination to /invoices", "Refactor the elevator animation",
-  "Document the SSH floors", "Speed up the snapshot diff", "Add retries to the webhook sender",
-  "Move config to TOML", "Remove unused CSS", "Add a dark mode toggle", "Find the memory leak in the worker",
-  "Bump dependencies and fix what breaks", "Test the message box", "Split scene.ts into modules",
-  "Handle SIGTERM gracefully", "Profile the eval runner", "Cache tokenizer results", "Add refunds to the ledger",
+  "Fix the flaky login test",
+  "Add pagination to /invoices",
+  "Refactor the elevator animation",
+  "Document the SSH floors",
+  "Speed up the snapshot diff",
+  "Add retries to the webhook sender",
+  "Move config to TOML",
+  "Remove unused CSS",
+  "Add a dark mode toggle",
+  "Find the memory leak in the worker",
+  "Bump dependencies and fix what breaks",
+  "Test the message box",
+  "Split scene.ts into modules",
+  "Handle SIGTERM gracefully",
+  "Profile the eval runner",
+  "Cache tokenizer results",
+  "Add refunds to the ledger",
 ];
 const FILES = [
-  "src/server.ts", "src/routes/invoices.ts", "web/src/scene.ts", "web/src/elevator.ts", "web/src/panel.ts",
-  "test/login.test.ts", "README.md", "src/worker/queue.ts", "src/config.ts", "package.json",
-  "db/migrations/0042_refunds.sql", "src/api/client.ts", "evals/runner.py",
+  "src/server.ts",
+  "src/routes/invoices.ts",
+  "web/src/scene.ts",
+  "web/src/elevator.ts",
+  "web/src/panel.ts",
+  "test/login.test.ts",
+  "README.md",
+  "src/worker/queue.ts",
+  "src/config.ts",
+  "package.json",
+  "db/migrations/0042_refunds.sql",
+  "src/api/client.ts",
+  "evals/runner.py",
 ];
 const COMMANDS: [string, string][] = [
-  ["pnpm test", "✓ 214 passed (3.1s)"], ["pnpm typecheck", "No errors"], ["git diff --stat", "4 files changed, 61 insertions(+), 18 deletions(-)"],
-  ["rg \"TODO\" src", "7 matches in 4 files"], ["pnpm lint --fix", "Fixed 3 problems"], ["python -m pytest -q", "58 passed in 4.02s"],
+  ["pnpm test", "✓ 214 passed (3.1s)"],
+  ["pnpm typecheck", "No errors"],
+  ["git diff --stat", "4 files changed, 61 insertions(+), 18 deletions(-)"],
+  ['rg "TODO" src', "7 matches in 4 files"],
+  ["pnpm lint --fix", "Fixed 3 problems"],
+  ["python -m pytest -q", "58 passed in 4.02s"],
   ["cargo check", "Finished dev profile in 2.4s"],
 ];
 const CODE = [
-  "const retries = opts.retries ?? 3;", "await queue.drain();", "if (!session) return null;", "return rows.map(toInvoice);",
-  "timeout: 30_000,", "logger.warn(\"slow snapshot\", { ms });", "export function fit(scene: Scene) {", "clock = options.clock ?? Date;",
+  "const retries = opts.retries ?? 3;",
+  "await queue.drain();",
+  "if (!session) return null;",
+  "return rows.map(toInvoice);",
+  "timeout: 30_000,",
+  'logger.warn("slow snapshot", { ms });',
+  "export function fit(scene: Scene) {",
+  "clock = options.clock ?? Date;",
 ];
 const THOUGHTS = [
-  "I'll start by reading how the snapshot is built.", "The failing test depends on wall-clock time; I'll inject a clock.",
-  "Let me check where this config value is read.", "Running the tests to confirm the fix.",
-  "That covers the happy path; now the error cases.", "The call sites need the new argument too.",
+  "I'll start by reading how the snapshot is built.",
+  "The failing test depends on wall-clock time; I'll inject a clock.",
+  "Let me check where this config value is read.",
+  "Running the tests to confirm the fix.",
+  "That covers the happy path; now the error cases.",
+  "The call sites need the new argument too.",
 ];
 const SEARCHES = ["retries", "session.snapshot", "TODO", "fitToPanel", "webhook", "clock"];
 const ASKS: [what: string, detail: string][] = [
-  ["Bash command", "pnpm test --filter scene"], ["Bash command", "git push origin HEAD"], ["Edit file", "src/config.ts"],
-  ["Bash command", "rm -rf node_modules/.cache"], ["Fetch", "https://registry.npmjs.org/ws"], ["Bash command", "docker compose up -d db"],
+  ["Bash command", "pnpm test --filter scene"],
+  ["Bash command", "git push origin HEAD"],
+  ["Edit file", "src/config.ts"],
+  ["Bash command", "rm -rf node_modules/.cache"],
+  ["Fetch", "https://registry.npmjs.org/ws"],
+  ["Bash command", "docker compose up -d db"],
 ];
 const SUMMARIES = [
-  "Done. All tests pass and the diff is ready for review.", "Finished: 3 files changed, 48 insertions, 12 deletions. Tests are green.",
-  "Done. I left two TODOs where the spec is unclear.", "All set. Typecheck and lint are clean.",
+  "Done. All tests pass and the diff is ready for review.",
+  "Finished: 3 files changed, 48 insertions, 12 deletions. Tests are green.",
+  "Done. I left two TODOs where the spec is unclear.",
+  "All set. Typecheck and lint are clean.",
   "Done. The fix is in, with a regression test for it.",
 ];
 // What a finished Claude pane suggests next (its dim prompt text; Tab takes it).
 const SUGGESTIONS = [
-  "commit this", "run the full test suite", "open a PR for it", "add a test for the error case", "update the README",
-  "yes, go ahead", "now do the same for the other endpoints",
+  "commit this",
+  "run the full test suite",
+  "open a PR for it",
+  "add a test for the error case",
+  "update the README",
+  "yes, go ahead",
+  "now do the same for the other endpoints",
 ];
-const cmd = (source: string) => ([name, description, hint]: [string, string, string?]): SlashCommand =>
-  ({ name, description, ...(hint ? { hint } : {}), source });
+const cmd =
+  (source: string) =>
+  ([name, description, hint]: [string, string, string?]): SlashCommand => ({ name, description, ...(hint ? { hint } : {}), source });
 const SLASH: Record<string, SlashCommand[]> = {
   claude: [
-    ...([
-      ["clear", "Start a new session with empty context"], ["compact", "Free up context by summarizing the conversation so far", "[instructions]"],
-      ["config", "Open settings"], ["context", "Show current context usage"], ["diff", "View uncommitted changes and per-turn diffs"],
-      ["exit", "Exit Claude Code"], ["help", "Show help and available commands"], ["init", "Initialize a new CLAUDE.md file with codebase documentation"],
-      ["mcp", "Manage MCP servers"], ["memory", "Edit CLAUDE.md files and memory settings"], ["model", "Set the AI model for Claude Code", "[model]"],
-      ["permissions", "Manage allow and deny tool permission rules"], ["plan", "Enable plan mode or view the current session plan"],
-      ["resume", "Resume a previous conversation"], ["review", "Review a pull request", "[PR]"], ["status", "Show version, model, account and tool statuses"],
-      ["usage", "Show session cost, plan usage, and activity stats"],
-    ] as [string, string, string?][]).map(cmd("built-in")),
+    ...(
+      [
+        ["clear", "Start a new session with empty context"],
+        ["compact", "Free up context by summarizing the conversation so far", "[instructions]"],
+        ["config", "Open settings"],
+        ["context", "Show current context usage"],
+        ["diff", "View uncommitted changes and per-turn diffs"],
+        ["exit", "Exit Claude Code"],
+        ["help", "Show help and available commands"],
+        ["init", "Initialize a new CLAUDE.md file with codebase documentation"],
+        ["mcp", "Manage MCP servers"],
+        ["memory", "Edit CLAUDE.md files and memory settings"],
+        ["model", "Set the AI model for Claude Code", "[model]"],
+        ["permissions", "Manage allow and deny tool permission rules"],
+        ["plan", "Enable plan mode or view the current session plan"],
+        ["resume", "Resume a previous conversation"],
+        ["review", "Review a pull request", "[PR]"],
+        ["status", "Show version, model, account and tool statuses"],
+        ["usage", "Show session cost, plan usage, and activity stats"],
+      ] as [string, string, string?][]
+    ).map(cmd("built-in")),
     cmd("project")(["deploy-preview", "Deploy this branch to a preview URL"]),
     cmd("user")(["standup", "Summarize yesterday's commits for standup"]),
     cmd("commit-commands")(["commit-commands:commit", "Create a git commit"]),
     cmd("commit-commands")(["commit-commands:commit-push-pr", "Commit, push, and open a PR"]),
   ],
-  codex: ([
-    ["compact", "summarize conversation to prevent hitting the context limit"], ["diff", "show git diff (including untracked files)"],
-    ["init", "create an AGENTS.md file with instructions for Codex"], ["mention", "mention a file"],
-    ["model", "choose what model and reasoning effort to use"], ["new", "start a new chat during a conversation"],
-    ["permissions", "choose what Codex is allowed to do"], ["review", "review my current changes and find issues"],
-    ["status", "show current session configuration and token usage"], ["exit", "exit Codex"],
-  ] as [string, string, string?][]).map(cmd("built-in")),
+  codex: (
+    [
+      ["compact", "summarize conversation to prevent hitting the context limit"],
+      ["diff", "show git diff (including untracked files)"],
+      ["init", "create an AGENTS.md file with instructions for Codex"],
+      ["mention", "mention a file"],
+      ["model", "choose what model and reasoning effort to use"],
+      ["new", "start a new chat during a conversation"],
+      ["permissions", "choose what Codex is allowed to do"],
+      ["review", "review my current changes and find issues"],
+      ["status", "show current session configuration and token usage"],
+      ["exit", "exit Codex"],
+    ] as [string, string, string?][]
+  ).map(cmd("built-in")),
 };
 const VERBS = ["Thinking", "Reading", "Editing", "Testing", "Refactoring", "Pondering", "Wiring", "Tidying"];
 const SPINNER = ["·", "✢", "✳", "✶", "✻", "✽"];
@@ -130,31 +229,65 @@ const PRINT_CHANCE = 0.07;
 // Rows for made-up diffs, by kind of file.
 const SNIPPETS: Record<string, string[]> = {
   ts: [
-    "export async function snapshot(machine: Machine) {", "  const res = await machine.request(\"session.snapshot\");", "  if (!res) return null;",
-    "  return res.snapshot;", "}", "const retries = opts.retries ?? 3;", "  await queue.drain();", "  if (!session) return null;",
-    "  return rows.map(toInvoice);", "  timeout: 30_000,", "  logger.warn(\"slow snapshot\", { ms });", "export function fit(scene: Scene) {",
-    "  clock = options.clock ?? Date;", "  for (const pane of panes) {", "    if (pane.agent_status === \"blocked\") blocked++;", "  }",
-    "import { backoff } from \"./retry\";", "  const page = Math.max(1, Number(query.page) || 1);", "  expect(res.status).toBe(200);",
+    "export async function snapshot(machine: Machine) {",
+    '  const res = await machine.request("session.snapshot");',
+    "  if (!res) return null;",
+    "  return res.snapshot;",
+    "}",
+    "const retries = opts.retries ?? 3;",
+    "  await queue.drain();",
+    "  if (!session) return null;",
+    "  return rows.map(toInvoice);",
+    "  timeout: 30_000,",
+    '  logger.warn("slow snapshot", { ms });',
+    "export function fit(scene: Scene) {",
+    "  clock = options.clock ?? Date;",
+    "  for (const pane of panes) {",
+    '    if (pane.agent_status === "blocked") blocked++;',
+    "  }",
+    'import { backoff } from "./retry";',
+    "  const page = Math.max(1, Number(query.page) || 1);",
+    "  expect(res.status).toBe(200);",
   ],
   py: [
-    "def run(cases, model):", "    results = []", "    for case in cases:", "        score = grade(case, model)", "        results.append(score)",
-    "    return results", "import asyncio", "    await asyncio.sleep(backoff)", "CACHE_SIZE = 4096", "@lru_cache(maxsize=CACHE_SIZE)",
+    "def run(cases, model):",
+    "    results = []",
+    "    for case in cases:",
+    "        score = grade(case, model)",
+    "        results.append(score)",
+    "    return results",
+    "import asyncio",
+    "    await asyncio.sleep(backoff)",
+    "CACHE_SIZE = 4096",
+    "@lru_cache(maxsize=CACHE_SIZE)",
     "def tokenize(text: str) -> list[int]:",
   ],
   md: [
-    "## Remote floors", "Floors are saved in `~/.config/kauak/machines.json`.", "Run `npx kauak serve` to start the office.", "",
-    "- **working**: typing at the desk", "- **blocked**: hand raised, waiting for you", "See the plugin guide for themes.",
+    "## Remote floors",
+    "Floors are saved in `~/.config/kauak/machines.json`.",
+    "Run `npx kauak serve` to start the office.",
+    "",
+    "- **working**: typing at the desk",
+    "- **blocked**: hand raised, waiting for you",
+    "See the plugin guide for themes.",
   ],
   sql: [
-    "CREATE TABLE refunds (", "  id bigserial PRIMARY KEY,", "  invoice_id bigint NOT NULL REFERENCES invoices(id),",
-    "  amount_cents integer NOT NULL CHECK (amount_cents > 0),", "  created_at timestamptz NOT NULL DEFAULT now()", ");",
+    "CREATE TABLE refunds (",
+    "  id bigserial PRIMARY KEY,",
+    "  invoice_id bigint NOT NULL REFERENCES invoices(id),",
+    "  amount_cents integer NOT NULL CHECK (amount_cents > 0),",
+    "  created_at timestamptz NOT NULL DEFAULT now()",
+    ");",
     "CREATE INDEX refunds_invoice_idx ON refunds (invoice_id);",
   ],
   json: ['  "ws": "^8.18.0",', '  "vite": "^6.0.0",', '  "typescript": "^5.6.0",', '  "test": "vitest run",', '  "build": "vite build",'],
 };
 const COMMITS = [
-  "Merge pull request #42 from feat/refunds", "Retry webhooks with backoff", "Fix the session timer race",
-  "Add pagination to invoices", "Bump ws to 8.18",
+  "Merge pull request #42 from feat/refunds",
+  "Retry webhooks with backoff",
+  "Fix the session timer race",
+  "Add pagination to invoices",
+  "Bump ws to 8.18",
 ];
 
 // ---------------------------------------------------------------- model
@@ -179,17 +312,36 @@ interface DemoPane {
 }
 
 /** A workspace. A `plain` one is a folder outside git (no branch, no repository). */
-interface DemoRoom { id: string; number: number; repo: string; branch: string; dir: string; panes: DemoPane[]; label?: string; plain?: boolean }
+interface DemoRoom {
+  id: string;
+  number: number;
+  repo: string;
+  branch: string;
+  dir: string;
+  panes: DemoPane[];
+  label?: string;
+  plain?: boolean;
+}
 
-interface DemoFloor { info: MachineInfo; host: string; rooms: DemoRoom[]; focused: string | null }
+interface DemoFloor {
+  info: MachineInfo;
+  host: string;
+  rooms: DemoRoom[];
+  focused: string | null;
+}
 
 const pick = <T>(xs: readonly T[]): T => xs[Math.floor(Math.random() * xs.length)]!;
 const between = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo));
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-const clip = (s: string, n: number) => ([...s].length > n ? [...s].slice(0, n - 1).join("") + "…" : s);
+const clip = (s: string, n: number) => ([...s].length > n ? `${[...s].slice(0, n - 1).join("")}…` : s);
 
 const sgr = (code: string) => (s: string) => `\x1b[${code}m${s}\x1b[0m`;
-const gray = sgr("90"), green = sgr("32"), red = sgr("31"), yellow = sgr("33"), blue = sgr("34"), bold = sgr("1");
+const gray = sgr("90"),
+  green = sgr("32"),
+  red = sgr("31"),
+  yellow = sgr("33"),
+  blue = sgr("34"),
+  bold = sgr("1");
 // Dim is how agents draw placeholders.
 const dim = sgr("2");
 const rgb = (c: number) => sgr(`38;2;${c >> 16};${(c >> 8) & 255};${c & 255}`);
@@ -214,7 +366,10 @@ export class DemoBridge implements BridgeApi {
     setTimeout(() => {
       this.h.onStatus(true);
       this.pushMachines();
-      for (const f of this.floors) { this.pushSnapshot(f); this.pushPrints(f); }
+      for (const f of this.floors) {
+        this.pushSnapshot(f);
+        this.pushPrints(f);
+      }
     }, 0);
     setInterval(() => this.tick(), TICK_MS);
   }
@@ -260,7 +415,11 @@ export class DemoBridge implements BridgeApi {
       if (!SSH_TARGET.test(ssh)) return this.h.onMachineError?.("Use an SSH host, user@host, or a Host alias from ~/.ssh/config.");
       if (this.floors.some((f) => f.info.ssh === ssh)) return this.h.onMachineError?.(`${ssh} already has a floor.`);
       const name = (label || ssh.split("@").pop() || ssh).slice(0, 40);
-      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "machine";
+      const slug =
+        name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "") || "machine";
       let id = slug;
       for (let n = 2; this.floors.some((f) => f.info.id === id); n++) id = `${slug}-${n}`;
       const now = Date.now();
@@ -316,12 +475,21 @@ export class DemoBridge implements BridgeApi {
         const branch = spec.branch.trim();
         if (!checkout) return fail(`fatal: not a git repository: ${cwd}`);
         if (!GIT_REF.test(branch)) return fail("Enter a branch name like feat/my-change.");
-        if (floor.rooms.some((r) => r.repo === checkout.repo && r.branch === branch)) return fail(`fatal: a branch named '${branch}' already exists`);
+        if (floor.rooms.some((r) => r.repo === checkout.repo && r.branch === branch))
+          return fail(`fatal: a branch named '${branch}' already exists`);
         const slug = branch.replace(/\//g, "-");
-        room = { ...base, repo: checkout.repo, branch, dir: `/home/dev/.herdr/worktrees/${checkout.repo}/${slug}`, label: base.label ?? slug };
+        room = {
+          ...base,
+          repo: checkout.repo,
+          branch,
+          dir: `/home/dev/.herdr/worktrees/${checkout.repo}/${slug}`,
+          label: base.label ?? slug,
+        };
       } else {
         // A repository's main checkout is a git room; any other folder is plain.
-        room = checkout ? { ...base, repo: checkout.repo, branch: "main", dir: cwd } : { ...base, repo: cwd.split("/").pop() || "~", branch: "", dir: cwd, plain: true };
+        room = checkout
+          ? { ...base, repo: checkout.repo, branch: "main", dir: cwd }
+          : { ...base, repo: cwd.split("/").pop() || "~", branch: "", dir: cwd, plain: true };
       }
       floor.rooms.push(room);
       this.addPane(floor, room, `${room.id}:p1`, agent, id);
@@ -333,7 +501,8 @@ export class DemoBridge implements BridgeApi {
     const { machine, id: root } = splitKey(printer);
     setTimeout(() => {
       const known = this.floors.some((f) => f.info.id === machine && f.rooms.some((r) => !r.plain && r.dir === root));
-      if (!known) return this.h.onUncommitted?.(printer, id, { files: [], incomplete: false, error: "That room is not in a git checkout." });
+      if (!known)
+        return this.h.onUncommitted?.(printer, id, { files: [], incomplete: false, error: "That room is not in a git checkout." });
       const files = [...(this.worktrees.get(printer)?.values() ?? [])].sort((a, b) => (a.path < b.path ? -1 : 1));
       this.h.onUncommitted?.(printer, id, { files, incomplete: false });
     }, 350);
@@ -367,7 +536,10 @@ export class DemoBridge implements BridgeApi {
     for (const r of rooms) for (let i = between(0, 3); i > 0; i--) this.record(f, fakeSheet(r, now - 3_600_000));
     const sheets = rooms.flatMap((r) => Array.from({ length: between(1, 6) }, () => fakeSheet(r, now - between(60_000, 40 * 60_000))));
     for (const s of sheets) this.record(f, s);
-    this.h.onPrints?.(f.info.id, sheets.sort((a, b) => a.at - b.at));
+    this.h.onPrints?.(
+      f.info.id,
+      sheets.sort((a, b) => a.at - b.at),
+    );
   }
 
   /** A made-up edit joins its room's uncommitted changes. */
@@ -377,7 +549,10 @@ export class DemoBridge implements BridgeApi {
     if (!tree) this.worktrees.set(key, (tree = new Map()));
     const { id: _id, root: _root, at: _at, ...file } = sheet;
     const prev = tree.get(file.path);
-    tree.set(file.path, prev ? { ...prev, added: prev.added + file.added, removed: prev.removed + file.removed, diff: `${prev.diff}\n${file.diff}` } : file);
+    tree.set(
+      file.path,
+      prev ? { ...prev, added: prev.added + file.added, removed: prev.removed + file.removed, diff: `${prev.diff}\n${file.diff}` } : file,
+    );
   }
 
   private find(key: string) {
@@ -394,13 +569,22 @@ export class DemoBridge implements BridgeApi {
     const rooms = seeds.map((s, i): DemoRoom => {
       const n = i + 1;
       const room: DemoRoom = {
-        id: `w${n}`, number: n, repo: s.repo, branch: s.branch, panes: [],
+        id: `w${n}`,
+        number: n,
+        repo: s.repo,
+        branch: s.branch,
+        panes: [],
         dir: s.branch === "main" ? `/home/dev/code/${s.repo}` : `/home/dev/code/${s.repo}/.worktrees/${s.branch.split("/").pop()}`,
       };
       room.panes = s.panes.map(([agent, status], j) => newPane(`w${n}:p${j + 1}`, agent, status ?? "idle", room, host, now));
       return room;
     });
-    return { info: { id, label, ssh, state: "live", message: "", runtime: { name: "Herdr", version: "demo" } }, host, rooms, focused: rooms[0]?.panes[0]?.id ?? null };
+    return {
+      info: { id, label, ssh, state: "live", message: "", runtime: { name: "Herdr", version: "demo" } },
+      host,
+      rooms,
+      focused: rooms[0]?.panes[0]?.id ?? null,
+    };
   }
 
   // ------------------------------------------------------------ life
@@ -414,14 +598,19 @@ export class DemoBridge implements BridgeApi {
         if (!p.agent) continue;
         if (p.status === "working" && Math.random() < 0.4) {
           addLog(p, action(p));
-          if (p.agent in WINDOW) { think(p); changed = true; }
+          if (p.agent in WINDOW) {
+            think(p);
+            changed = true;
+          }
         }
         if (now < p.next) continue;
         changed = true;
         if (p.status === "working") {
           const r = Math.random();
-          if (r < 0.25 && blocked < MAX_BLOCKED) { block(p, now); blocked++; }
-          else if (r < 0.7) finish(p, now);
+          if (r < 0.25 && blocked < MAX_BLOCKED) {
+            block(p, now);
+            blocked++;
+          } else if (r < 0.7) finish(p, now);
           else p.next = now + between(4000, 9000);
         } else if (p.status === "blocked") answer(p, true, now);
         else if (p.status === "done") setStatus(p, "idle", now);
@@ -466,7 +655,10 @@ export class DemoBridge implements BridgeApi {
       else submit(p, room, floor, now);
     } else if (k === "esc" || k === "ctrl+c") {
       if (!p.agent) {
-        if (k === "ctrl+c") { addLog(p, [shellPrompt(room, floor.host) + p.input + "^C"]); p.input = ""; }
+        if (k === "ctrl+c") {
+          addLog(p, [`${shellPrompt(room, floor.host)}${p.input}^C`]);
+          p.input = "";
+        }
       } else if (p.status === "blocked") answer(p, false, now);
       else if (k === "ctrl+c" && p.input) p.input = "";
       else if (p.status === "working") {
@@ -481,12 +673,27 @@ export class DemoBridge implements BridgeApi {
 
 function newPane(id: string, agent: string | null, status: AgentStatus, room: DemoRoom, host: string, now: number): DemoPane {
   const p: DemoPane = {
-    id, agent, status: agent ? status : "unknown", task: "", verb: pick(VERBS), placeholder: pick(TASKS), suggestion: "",
-    log: [], input: "", ask: null, startedAt: now - between(3000, 90_000), next: 0,
-    context: Math.round((WINDOW[agent ?? ""] ?? 0) * between(4, 75) / 100),
+    id,
+    agent,
+    status: agent ? status : "unknown",
+    task: "",
+    verb: pick(VERBS),
+    placeholder: pick(TASKS),
+    suggestion: "",
+    log: [],
+    input: "",
+    ask: null,
+    startedAt: now - between(3000, 90_000),
+    next: 0,
+    context: Math.round(((WINDOW[agent ?? ""] ?? 0) * between(4, 75)) / 100),
   };
   if (!agent) {
-    p.log = [shellPrompt(room, host) + "git pull", "Already up to date.", shellPrompt(room, host) + "git status --short", gray(" M src/config.ts")];
+    p.log = [
+      `${shellPrompt(room, host)}git pull`,
+      "Already up to date.",
+      `${shellPrompt(room, host)}git status --short`,
+      gray(" M src/config.ts"),
+    ];
     return p;
   }
   // Every agent is partway through (or just past) a task, so the roster has something to say.
@@ -494,8 +701,10 @@ function newPane(id: string, agent: string | null, status: AgentStatus, room: De
   p.task = pick(TASKS);
   addLog(p, ["", bold(`▎ ${p.task}`), "", ...action(p), "", ...action(p)]);
   if (status === "blocked") block(p, now);
-  else if (status === "done" || status === "idle") { finish(p, now); setStatus(p, status, now); }
-  else schedule(p, now);
+  else if (status === "done" || status === "idle") {
+    finish(p, now);
+    setStatus(p, status, now);
+  } else schedule(p, now);
   // Stagger the first changes so the floor does not move in lockstep.
   p.next = now + between(2000, p.next - now + 2000);
   return p;
@@ -517,8 +726,14 @@ function agentHeader(p: DemoPane, room: DemoRoom): string[] {
 }
 
 function schedule(p: DemoPane, now: number) {
-  const [lo, hi] = p.status === "working" ? [7000, 18_000] : p.status === "blocked" ? [30_000, 50_000]
-    : p.status === "done" ? [8000, 18_000] : [8000, 25_000];
+  const [lo, hi] =
+    p.status === "working"
+      ? [7000, 18_000]
+      : p.status === "blocked"
+        ? [30_000, 50_000]
+        : p.status === "done"
+          ? [8000, 18_000]
+          : [8000, 25_000];
   p.next = now + between(lo, hi);
 }
 
@@ -538,7 +753,7 @@ function addLog(p: DemoPane, rows: string[]) {
 function think(p: DemoPane) {
   const max = WINDOW[p.agent ?? ""];
   if (!max) return;
-  p.context += Math.round(max * between(5, 30) / 1000); // 0.5-3% a call
+  p.context += Math.round((max * between(5, 30)) / 1000); // 0.5-3% a call
   if (p.context < max * 0.9) return;
   p.context = between(24_000, 45_000);
   addLog(p, ["", gray(`✻ Conversation compacted · ${p.agent} summarized the session to free up context`)]);
@@ -563,8 +778,12 @@ function block(p: DemoPane, now: number) {
 function answer(p: DemoPane, yes: boolean, now: number) {
   if (yes) {
     const [what, detail] = p.ask ?? ["", ""];
-    const result = what === "Edit file" ? `Updated ${detail} with ${plural(between(1, 9), "addition")}`
-      : what === "Fetch" ? "Received 12.4KB (200 OK)" : pick(COMMANDS)[1];
+    const result =
+      what === "Edit file"
+        ? `Updated ${detail} with ${plural(between(1, 9), "addition")}`
+        : what === "Fetch"
+          ? "Received 12.4KB (200 OK)"
+          : pick(COMMANDS)[1];
     addLog(p, [gray(`  ⎿  ${result}`)]);
     setStatus(p, "working", now);
   } else {
@@ -589,12 +808,24 @@ function submit(p: DemoPane, room: DemoRoom, floor: DemoFloor, now: number) {
     p.log = [shellPrompt(room, floor.host)];
     return;
   }
-  if (text === "/clear") { p.log = agentHeader(p, room); p.context = between(...BASE_CONTEXT); return; }
-  if (text === "/compact") { p.context = Math.min(p.context, between(24_000, 45_000)); addLog(p, ["", gray("✻ Conversation compacted")]); return; }
+  if (text === "/clear") {
+    p.log = agentHeader(p, room);
+    p.context = between(...BASE_CONTEXT);
+    return;
+  }
+  if (text === "/compact") {
+    p.context = Math.min(p.context, between(24_000, 45_000));
+    addLog(p, ["", gray("✻ Conversation compacted")]);
+    return;
+  }
   if (text.startsWith("/")) {
     const name = text.slice(1).split(/\s/)[0]!;
     const known = (SLASH[p.agent ?? ""] ?? []).some((c) => c.name === name);
-    addLog(p, ["", bold(`▎ ${clip(text, COLS - 4)}`), gray(known ? `  ⎿  /${name} does nothing in this demo` : `  ⎿  Unknown command: /${name}`)]);
+    addLog(p, [
+      "",
+      bold(`▎ ${clip(text, COLS - 4)}`),
+      gray(known ? `  ⎿  /${name} does nothing in this demo` : `  ⎿  Unknown command: /${name}`),
+    ]);
     return;
   }
   // A message typed while the agent works is queued in the transcript.
@@ -609,18 +840,32 @@ function bullet(p: DemoPane, tool: boolean): string {
 
 /** A few transcript rows of the agent at work. */
 function action(p: DemoPane): string[] {
-  const b = bullet(p, true), f = pick(FILES), cx = codexy(p);
-  const add = between(1, 40), del = between(0, 15);
+  const b = bullet(p, true),
+    f = pick(FILES),
+    cx = codexy(p);
+  const add = between(1, 40),
+    del = between(0, 15);
   switch (between(0, 5)) {
-    case 0: return cx ? [`${b} Explored`, gray(`  └ Read ${f}`)] : [`${b} Read(${f})`, gray(`  ⎿  Read ${between(40, 400)} lines`)];
-    case 1: return [
-      cx ? `${b} Edited ${f} (${green(`+${add}`)} ${red(`-${del}`)})` : `${b} Update(${f})`,
-      ...(cx ? [] : [gray(`  ⎿  Updated ${f} with ${plural(add, "addition")} and ${plural(del, "removal")}`)]),
-      red(`      - ${pick(CODE)}`), green(`      + ${pick(CODE)}`),
-    ];
-    case 2: { const [cmd, out] = pick(COMMANDS); return cx ? [`${b} Ran ${cmd}`, gray(`  └ ${out}`)] : [`${b} Bash(${cmd})`, gray(`  ⎿  ${out}`)]; }
-    case 3: { const s = pick(SEARCHES), n = between(2, 14); return cx ? [`${b} Explored`, gray(`  └ Search ${s}`)] : [`${b} Search(pattern: "${s}")`, gray(`  ⎿  Found ${n} files`)]; }
-    default: return [`${bullet(p, false)} ${pick(THOUGHTS)}`];
+    case 0:
+      return cx ? [`${b} Explored`, gray(`  └ Read ${f}`)] : [`${b} Read(${f})`, gray(`  ⎿  Read ${between(40, 400)} lines`)];
+    case 1:
+      return [
+        cx ? `${b} Edited ${f} (${green(`+${add}`)} ${red(`-${del}`)})` : `${b} Update(${f})`,
+        ...(cx ? [] : [gray(`  ⎿  Updated ${f} with ${plural(add, "addition")} and ${plural(del, "removal")}`)]),
+        red(`      - ${pick(CODE)}`),
+        green(`      + ${pick(CODE)}`),
+      ];
+    case 2: {
+      const [cmd, out] = pick(COMMANDS);
+      return cx ? [`${b} Ran ${cmd}`, gray(`  └ ${out}`)] : [`${b} Bash(${cmd})`, gray(`  ⎿  ${out}`)];
+    }
+    case 3: {
+      const s = pick(SEARCHES),
+        n = between(2, 14);
+      return cx ? [`${b} Explored`, gray(`  └ Search ${s}`)] : [`${b} Search(pattern: "${s}")`, gray(`  ⎿  Found ${n} files`)];
+    }
+    default:
+      return [`${bullet(p, false)} ${pick(THOUGHTS)}`];
   }
 }
 
@@ -643,22 +888,45 @@ function runShell(p: DemoPane, room: DemoRoom, floor: DemoFloor) {
   if (!cmd) return;
   if (AGENTS.includes(cmd)) return seat(p, cmd, room);
   switch (cmd) {
-    case "clear": p.log = []; return;
-    case "ls": return out(`README.md  package.json  pnpm-lock.yaml  ${blue("src")}  ${blue("test")}  tsconfig.json`);
-    case "pwd": return out(room.dir);
-    case "whoami": return out("dev");
-    case "date": return out(new Date().toString());
-    case "echo": return out(args.join(" "));
-    case "exit": return out("There is no way out of the office.");
-    case "sudo": return out("dev is not in the sudoers file. This incident will be reported.");
-    case "npx": return out(args[0] === "kauak" ? "You are already in the office. Run it on your own machine to see your real agents." : `npx: ${args[0] ?? ""}: not in this demo`);
-    case "help": return out("This is a demo shell. Try ls, git status, git log or clear,", `or start an agent: ${AGENTS.join(", ")}.`);
+    case "clear":
+      p.log = [];
+      return;
+    case "ls":
+      return out(`README.md  package.json  pnpm-lock.yaml  ${blue("src")}  ${blue("test")}  tsconfig.json`);
+    case "pwd":
+      return out(room.dir);
+    case "whoami":
+      return out("dev");
+    case "date":
+      return out(new Date().toString());
+    case "echo":
+      return out(args.join(" "));
+    case "exit":
+      return out("There is no way out of the office.");
+    case "sudo":
+      return out("dev is not in the sudoers file. This incident will be reported.");
+    case "npx":
+      return out(
+        args[0] === "kauak"
+          ? "You are already in the office. Run it on your own machine to see your real agents."
+          : `npx: ${args[0] ?? ""}: not in this demo`,
+      );
+    case "help":
+      return out("This is a demo shell. Try ls, git status, git log or clear,", `or start an agent: ${AGENTS.join(", ")}.`);
     case "git":
-      if (args[0] === "status") return out(`On branch ${room.branch}`, `Your branch is up to date with 'origin/${room.branch}'.`, "", "Changes not staged for commit:", red("\tmodified:   src/config.ts"));
+      if (args[0] === "status")
+        return out(
+          `On branch ${room.branch}`,
+          `Your branch is up to date with 'origin/${room.branch}'.`,
+          "",
+          "Changes not staged for commit:",
+          red("\tmodified:   src/config.ts"),
+        );
       if (args[0] === "log") return out(...COMMITS.map((m, i) => `${yellow((0x5e1f3a7 * (i + 3)).toString(16).slice(0, 7))} ${m}`));
       if (args[0] === "branch") return out(green(`* ${room.branch}`));
       return out(`git: '${args[0] ?? ""}' is not in this demo. Try git status or git log.`);
-    default: return out(`${cmd}: command not found (this is a demo shell; try help)`);
+    default:
+      return out(`${cmd}: command not found (this is a demo shell; try help)`);
   }
 }
 
@@ -684,8 +952,15 @@ function agentScreen(p: DemoPane, now: number): string[] {
     const [what, detail] = p.ask;
     // A selector, not a text prompt: no "❯" row.
     rows.push(
-      yellow("─".repeat(COLS)), bold(` ${what}`), `   ${detail}`, "", " Do you want to proceed?",
-      ` ${yellow("▸ 1. Yes")}`, `   2. No, and tell ${p.agent} what to do differently`, "", gray(" Enter to approve · Esc to reject"),
+      yellow("─".repeat(COLS)),
+      bold(` ${what}`),
+      `   ${detail}`,
+      "",
+      " Do you want to proceed?",
+      ` ${yellow("▸ 1. Yes")}`,
+      `   2. No, and tell ${p.agent} what to do differently`,
+      "",
+      gray(" Enter to approve · Esc to reject"),
     );
   } else {
     const prompt = codexy(p) ? "›" : "❯";
@@ -708,17 +983,30 @@ function snapshotKey(p: DemoPane): string {
 /** The floor as the bridge would send it: a Kauak snapshot, made without any runtime behind it. */
 function snapshotOf(f: DemoFloor): Snapshot {
   const focusedRoom = f.rooms.find((r) => r.panes.some((p) => p.id === f.focused)) ?? null;
-  const panes: PaneInfo[] = f.rooms.flatMap((r) => r.panes.map((p) => ({
-    pane_id: p.id, workspace_id: r.id, focused: p.id === f.focused, cwd: r.dir,
-    title: p.agent ? p.task || p.agent : `dev@${f.host}: ${r.dir.replace(/^\/home\/dev/, "~")}`,
-    agent: p.agent, agent_status: p.agent ? p.status : "unknown",
-    screen: { rows: ROWS, cols: COLS, exact: true }, scrollback: false,
-    context: p.agent && WINDOW[p.agent] ? { used: p.context, max: WINDOW[p.agent]! } : null,
-  })));
+  const panes: PaneInfo[] = f.rooms.flatMap((r) =>
+    r.panes.map((p) => ({
+      pane_id: p.id,
+      workspace_id: r.id,
+      focused: p.id === f.focused,
+      cwd: r.dir,
+      title: p.agent ? p.task || p.agent : `dev@${f.host}: ${r.dir.replace(/^\/home\/dev/, "~")}`,
+      agent: p.agent,
+      agent_status: p.agent ? p.status : "unknown",
+      screen: { rows: ROWS, cols: COLS, exact: true },
+      scrollback: false,
+      context: p.agent && WINDOW[p.agent] ? { used: p.context, max: WINDOW[p.agent]! } : null,
+    })),
+  );
   return {
     workspaces: f.rooms.map((r) => ({
-      workspace_id: r.id, number: r.number, label: r.label ?? (r.branch || r.repo), focused: r === focusedRoom, git_root: r.plain ? null : r.dir,
-      repo: r.plain ? null : { key: `${f.info.id}:${r.repo}`, name: r.repo, root: repoRoot(r), checkout: r.dir, linked: r.dir !== repoRoot(r) },
+      workspace_id: r.id,
+      number: r.number,
+      label: r.label ?? (r.branch || r.repo),
+      focused: r === focusedRoom,
+      git_root: r.plain ? null : r.dir,
+      repo: r.plain
+        ? null
+        : { key: `${f.info.id}:${r.repo}`, name: r.repo, root: repoRoot(r), checkout: r.dir, linked: r.dir !== repoRoot(r) },
     })),
     panes,
   };
@@ -737,11 +1025,22 @@ function fakeSheet(room: DemoRoom, at: number): DiffSheet {
     return { ...base, change: "added", added: lines.length, removed: 0, diff: [`@@ -0,0 +1,${lines.length} @@`, ...lines].join("\n") };
   }
   const out: string[] = [];
-  let added = 0, removed = 0, at0 = between(6, 120);
+  let added = 0,
+    removed = 0,
+    at0 = between(6, 120);
   for (let h = between(1, 3); h > 0; h--) {
-    const del = between(0, 4), add = between(del ? 0 : 1, 6);
-    out.push(`@@ -${at0},${del + 6} +${at0 + added - removed},${add + 6} @@`, ...rows(3, " "), ...rows(del, "-"), ...rows(add, "+"), ...rows(3, " "));
-    added += add; removed += del; at0 += del + 6 + between(10, 60);
+    const del = between(0, 4),
+      add = between(del ? 0 : 1, 6);
+    out.push(
+      `@@ -${at0},${del + 6} +${at0 + added - removed},${add + 6} @@`,
+      ...rows(3, " "),
+      ...rows(del, "-"),
+      ...rows(add, "+"),
+      ...rows(3, " "),
+    );
+    added += add;
+    removed += del;
+    at0 += del + 6 + between(10, 60);
   }
   return { ...base, change: "modified", added, removed, diff: out.join("\n") };
 }
@@ -750,9 +1049,15 @@ function fakeSheet(room: DemoRoom, at: number): DiffSheet {
 function randomRooms(): RoomSeed[] {
   const repos = [...EXTRA_REPOS].sort(() => Math.random() - 0.5).slice(0, 2);
   const status = (): AgentStatus => pick(["working", "working", "idle", "blocked", "done"]);
-  return repos.flatMap((repo) => ["main", pick(BRANCHES)].slice(0, between(1, 3)).map((branch) => ({
-    repo, branch, panes: Array.from({ length: between(1, 4) }, (_, i) => (i === 0 || Math.random() < 0.75 ? [pick(AGENTS), status()] : [null])) as RoomSeed["panes"],
-  })));
+  return repos.flatMap((repo) =>
+    ["main", pick(BRANCHES)].slice(0, between(1, 3)).map((branch) => ({
+      repo,
+      branch,
+      panes: Array.from({ length: between(1, 4) }, (_, i) =>
+        i === 0 || Math.random() < 0.75 ? [pick(AGENTS), status()] : [null],
+      ) as RoomSeed["panes"],
+    })),
+  );
 }
 
 // ---------------------------------------------------------------- card
@@ -765,8 +1070,17 @@ function showCard() {
   document.body.classList.add("demo-card");
   const copy = card.querySelector<HTMLElement>("[data-copy] i");
   card.querySelector("[data-copy]")?.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(INSTALL); } catch { return; }
-    if (copy) { copy.textContent = "copied"; setTimeout(() => { copy.textContent = "copy"; }, 1500); }
+    try {
+      await navigator.clipboard.writeText(INSTALL);
+    } catch {
+      return;
+    }
+    if (copy) {
+      copy.textContent = "copied";
+      setTimeout(() => {
+        copy.textContent = "copy";
+      }, 1500);
+    }
   });
   card.querySelector("[data-close]")?.addEventListener("click", () => {
     card.hidden = true;

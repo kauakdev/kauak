@@ -111,12 +111,18 @@ export class TerminalPanel {
     this.term.attachCustomWheelEventHandler(() => false);
 
     document.getElementById("panel-close")!.addEventListener("click", () => this.close());
-    document.getElementById("panel-focus")!.addEventListener("click", () => { if (this.pane) this.onFocus(this.pane.pane_id); });
-    for (const b of this.el.querySelectorAll<HTMLButtonElement>("[data-key]")) b.addEventListener("click", () => this.sendKey(b.dataset.key!));
+    document.getElementById("panel-focus")!.addEventListener("click", () => {
+      if (this.pane) this.onFocus(this.pane.pane_id);
+    });
+    for (const b of this.el.querySelectorAll<HTMLButtonElement>("[data-key]"))
+      b.addEventListener("click", () => this.sendKey(b.dataset.key!));
     // Buttons must not take keyboard focus: it stays in the message box, and a
     // later Space would click them instead of typing.
     for (const b of this.el.querySelectorAll("button")) b.addEventListener("mousedown", (e) => e.preventDefault());
-    this.form.addEventListener("submit", (e) => { e.preventDefault(); this.submit(); });
+    this.form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      this.submit();
+    });
     this.box.addEventListener("keydown", (e) => this.onKey(e));
     this.box.addEventListener("input", () => this.changed());
     // The menu shows only while the box has focus.
@@ -129,9 +135,15 @@ export class TerminalPanel {
     const grip = document.getElementById("panel-resize")!;
     this.setWidth(Number(load(WIDTH_KEY)) || null);
     grip.addEventListener("pointerdown", (e) => this.dragWidth(e, grip));
-    grip.addEventListener("dblclick", () => { this.setWidth(null); save(WIDTH_KEY, ""); this.onResize(); });
+    grip.addEventListener("dblclick", () => {
+      this.setWidth(null);
+      save(WIDTH_KEY, "");
+      this.onResize();
+    });
     // A click on the mirror means "I want to type", unless it selected text to copy.
-    this.host.addEventListener("click", () => { if (!this.term.hasSelection() && finePointer()) this.box.focus(); });
+    this.host.addEventListener("click", () => {
+      if (!this.term.hasSelection() && finePointer()) this.box.focus();
+    });
     this.host.addEventListener("scroll", () => {
       this.pinned = this.atEdge(1);
       if (this.pinned) this.release();
@@ -139,7 +151,10 @@ export class TerminalPanel {
     });
     this.host.addEventListener("wheel", (e) => this.onWheel(e), { passive: true });
     this.liveBtn.addEventListener("click", () => this.toBottom());
-    const ro = new ResizeObserver(() => { this.fit(); this.keepBottom(); });
+    const ro = new ResizeObserver(() => {
+      this.fit();
+      this.keepBottom();
+    });
     ro.observe(this.host);
     ro.observe(this.host.querySelector(".xterm-screen")!);
     // Esc in the message box goes to the pane (agents use it); Esc elsewhere closes the panel.
@@ -157,7 +172,10 @@ export class TerminalPanel {
   setSnapshot(s: Snapshot) {
     if (!this.pane) return;
     const fresh = s.panes.find((p) => p.pane_id === this.pane!.pane_id);
-    if (!fresh) { this.close(); return; }
+    if (!fresh) {
+      this.close();
+      return;
+    }
     this.pane = fresh;
     this.renderHeader();
     this.resizeToPane();
@@ -204,10 +222,15 @@ export class TerminalPanel {
     this.commandsFor = "";
     this.box.blur();
     if (wasOpen) this.onClose();
-    if (this.timer !== null) { clearInterval(this.timer); this.timer = null; }
+    if (this.timer !== null) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
   }
 
-  get selectedPaneId(): string | null { return this.pane?.pane_id ?? null; }
+  get selectedPaneId(): string | null {
+    return this.pane?.pane_id ?? null;
+  }
 
   /** The "/" menu's commands for a pane, from the bridge. */
   setCommands(paneId: string, cmds: SlashCommand[]) {
@@ -248,7 +271,7 @@ export class TerminalPanel {
     // off (?7l) so a row wider than xterm is clipped instead of pushing every
     // row below it down a line. The cursor stays hidden (?25l): Herdr does not
     // say where it is.
-    this.term.write("\x1b[?7l\x1b[H\x1b[2J" + text + "\x1b[?25l", () => this.keepBottom());
+    this.term.write(`\x1b[?7l\x1b[H\x1b[2J${text}\x1b[?25l`, () => this.keepBottom());
     // Only the screen: an old prompt up in the history is not the current one.
     this.setShadow(this.pane.agent === "claude" ? promptShadow(rows.slice(-screenRows).join("\r\n")) : null);
   }
@@ -272,7 +295,11 @@ export class TerminalPanel {
       e.stopPropagation();
       return;
     }
-    if (e.key === "Enter" && !e.shiftKey && !e.altKey) { e.preventDefault(); this.submit(); return; }
+    if (e.key === "Enter" && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      this.submit();
+      return;
+    }
     const empty = this.box.value === "";
     if (empty && plain && !e.shiftKey && e.key === "Tab" && this.shadow?.suggestion) {
       e.preventDefault();
@@ -295,10 +322,14 @@ export class TerminalPanel {
     const cmd = this.menu.current;
     if (!cmd) return false;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") this.menu.move(e.key === "ArrowDown" ? 1 : -1);
-    else if (e.key === "Tab") { if (e.shiftKey) this.menu.move(-1); else this.complete(cmd); }
-    else if (e.key === "Enter" && !e.shiftKey) this.submit();
-    else if (e.key === "Escape") { this.menu.dismiss(); this.changed(); }
-    else return false;
+    else if (e.key === "Tab") {
+      if (e.shiftKey) this.menu.move(-1);
+      else this.complete(cmd);
+    } else if (e.key === "Enter" && !e.shiftKey) this.submit();
+    else if (e.key === "Escape") {
+      this.menu.dismiss();
+      this.changed();
+    } else return false;
     return true;
   }
 
@@ -355,7 +386,9 @@ export class TerminalPanel {
     this.toBottom();
   }
 
-  private sendKey(key: string) { if (this.send([{ keys: [key] }])) this.toBottom(); }
+  private sendKey(key: string) {
+    if (this.send([{ keys: [key] }])) this.toBottom();
+  }
 
   private send(ops: InputOp[]): boolean {
     if (!this.pane) return false;
@@ -386,7 +419,11 @@ export class TerminalPanel {
     const empty = this.box.value.trim() === "";
     const cmd = this.menu.current;
     this.sendBtn.textContent = cmd ? "Run" : empty ? "Enter ↵" : "Send";
-    this.sendBtn.title = cmd ? "Run the highlighted command (Enter)" : empty ? "Press Enter in the pane (to accept a prompt, say)" : "Send the message, then Enter (Enter)";
+    this.sendBtn.title = cmd
+      ? "Run the highlighted command (Enter)"
+      : empty
+        ? "Press Enter in the pane (to accept a prompt, say)"
+        : "Send the message, then Enter (Enter)";
   }
 
   private renderHint() {
@@ -394,17 +431,23 @@ export class TerminalPanel {
     this.hintEl.classList.remove("warn");
     const typed = /^\/([\w.:-]+) /.exec(this.box.value);
     const usage = typed && this.menu.find(typed[1]!)?.hint;
-    this.hintEl.textContent = this.menu.open ? "↑ ↓ pick · Tab completes · Enter runs · Esc closes"
-      : usage ? `/${typed[1]} ${usage}`
-      : this.box.value === "" && this.shadow?.suggestion ? "Tab takes the suggestion · Esc, and ↑ ↓ ⌃C in an empty box, go to the pane"
-      : `Enter sends · Shift+Enter new line${this.menu.any ? " · / for commands" : ""} · Esc, and ↑ ↓ Tab ⌃C in an empty box, go to the pane`;
+    this.hintEl.textContent = this.menu.open
+      ? "↑ ↓ pick · Tab completes · Enter runs · Esc closes"
+      : usage
+        ? `/${typed[1]} ${usage}`
+        : this.box.value === "" && this.shadow?.suggestion
+          ? "Tab takes the suggestion · Esc, and ↑ ↓ ⌃C in an empty box, go to the pane"
+          : `Enter sends · Shift+Enter new line${this.menu.any ? " · / for commands" : ""} · Esc, and ↑ ↓ Tab ⌃C in an empty box, go to the pane`;
   }
 
   private flashHint(text: string) {
     this.hintEl.textContent = text;
     this.hintEl.classList.add("warn");
     if (this.hintTimer !== null) clearTimeout(this.hintTimer);
-    this.hintTimer = window.setTimeout(() => { this.hintTimer = null; this.renderHint(); }, 2500);
+    this.hintTimer = window.setTimeout(() => {
+      this.hintTimer = null;
+      this.renderHint();
+    }, 2500);
   }
 
   private poll() {
@@ -473,7 +516,10 @@ export class TerminalPanel {
     const r = screen.getBoundingClientRect();
     if (w <= 0 || !r.width) return;
     const key = `${w}:${this.term.cols}`;
-    if (key !== this.fitFor) { this.fitFor = key; this.fontCap = FONT_MAX; }
+    if (key !== this.fitFor) {
+      this.fitFor = key;
+      this.fontCap = FONT_MAX;
+    }
     const size = this.term.options.fontSize ?? FONT_MAX;
     // Cells are rounded to whole pixels, so the estimate can overshoot: when
     // it does, step down and never try that size again for this panel width.
@@ -490,7 +536,9 @@ export class TerminalPanel {
     grip.setPointerCapture(e.pointerId);
     document.body.classList.add("resizing-panel");
     let width: number | null = null;
-    const move = (ev: PointerEvent) => { width = this.setWidth(innerWidth - ev.clientX); };
+    const move = (ev: PointerEvent) => {
+      width = this.setWidth(innerWidth - ev.clientX);
+    };
     const end = () => {
       grip.removeEventListener("pointermove", move);
       grip.removeEventListener("pointerup", end);
@@ -511,7 +559,10 @@ export class TerminalPanel {
    */
   private setWidth(px: number | null): number | null {
     const root = document.documentElement.style;
-    if (px === null) { root.removeProperty("--panel-custom"); return null; }
+    if (px === null) {
+      root.removeProperty("--panel-custom");
+      return null;
+    }
     const width = Math.round(Math.max(WIDTH_MIN, Math.min(innerWidth - OFFICE_MIN, px)));
     root.setProperty("--panel-custom", `min(${width}px, calc(100vw - ${OFFICE_MIN}px))`);
     return width;
@@ -558,7 +609,10 @@ export class TerminalPanel {
     if (!this.pane?.agent || this.history || e.ctrlKey) return;
     const screen = this.host.querySelector<HTMLElement>(".xterm-screen")!;
     const dy = e.deltaY * (e.deltaMode === 1 ? WHEEL_LINE_PX : e.deltaMode === 2 ? this.host.clientHeight : 1);
-    if (dy === 0 || !this.atEdge(dy < 0 ? -1 : 1)) { this.wheel = 0; return; }
+    if (dy === 0 || !this.atEdge(dy < 0 ? -1 : 1)) {
+      this.wheel = 0;
+      return;
+    }
     if (Math.sign(dy) !== Math.sign(this.wheel)) this.wheel = 0;
     this.wheel += dy;
     const page = Math.max(40, screen.getBoundingClientRect().height * WHEEL_PAGE);
@@ -575,13 +629,19 @@ function finePointer(): boolean {
 
 // localStorage can be missing or throw (private windows, blocked site data).
 function load(key: string): string | null {
-  try { return localStorage.getItem(key); } catch { return null; }
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 function save(key: string, value: string) {
-  try { localStorage.setItem(key, value); } catch {}
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
 }
 
-const ESC_RE = /\x1b(?:\[[0-9;:?]*[ -\/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][A-Za-z0-9]|.)/g;
+const ESC_RE = /\x1b(?:\[[0-9;:?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][A-Za-z0-9]|.)/g;
 
 function stripAnsi(s: string): string {
   return s.replace(ESC_RE, "");
@@ -593,14 +653,22 @@ function width(s: string): number {
   for (const ch of s) {
     const c = ch.codePointAt(0)!;
     if (c < 0x300) w += 1;
-    else if ((c <= 0x36f) || c === 0x200d || (c >= 0xfe00 && c <= 0xfe0f)) continue;
+    else if (c <= 0x36f || c === 0x200d || (c >= 0xfe00 && c <= 0xfe0f)) continue;
     else w += isWide(c) ? 2 : 1;
   }
   return w;
 }
 
 function isWide(c: number): boolean {
-  return (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3) ||
-    (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60) ||
-    (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1faff) || (c >= 0x20000 && c <= 0x3fffd);
+  return (
+    (c >= 0x1100 && c <= 0x115f) ||
+    (c >= 0x2e80 && c <= 0xa4cf) ||
+    (c >= 0xac00 && c <= 0xd7a3) ||
+    (c >= 0xf900 && c <= 0xfaff) ||
+    (c >= 0xfe30 && c <= 0xfe4f) ||
+    (c >= 0xff00 && c <= 0xff60) ||
+    (c >= 0xffe0 && c <= 0xffe6) ||
+    (c >= 0x1f300 && c <= 0x1faff) ||
+    (c >= 0x20000 && c <= 0x3fffd)
+  );
 }

@@ -57,7 +57,9 @@ let sheetSeq = 0;
 
 /** A remote floor's helper is not running (it says why in the log when it stops). */
 class HostDown extends Error {
-  constructor() { super("the remote helper is not running"); }
+  constructor() {
+    super("the remote helper is not running");
+  }
 }
 
 /**
@@ -113,12 +115,20 @@ export class DiffTracker extends EventEmitter {
   }
 
   update() {
-    if (this.updating) { this.again = true; return; }
+    if (this.updating) {
+      this.again = true;
+      return;
+    }
     this.updating = true;
-    this.resolveRooms().catch((err) => console.error(`[bridge] ${this.m.label}: printers:`, err.message)).finally(() => {
-      this.updating = false;
-      if (this.again) { this.again = false; this.update(); }
-    });
+    this.resolveRooms()
+      .catch((err) => console.error(`[bridge] ${this.m.label}: printers:`, err.message))
+      .finally(() => {
+        this.updating = false;
+        if (this.again) {
+          this.again = false;
+          this.update();
+        }
+      });
   }
 
   async resolveRooms() {
@@ -133,7 +143,10 @@ export class DiffTracker extends EventEmitter {
     if (this.stopped) return;
     const used = new Set(next.values());
     for (const root of [...this.checkouts.keys()]) {
-      if (!used.has(root)) { this.checkouts.delete(root); this.sheets.delete(root); }
+      if (!used.has(root)) {
+        this.checkouts.delete(root);
+        this.sheets.delete(root);
+      }
     }
     for (const root of used) if (!this.checkouts.has(root)) this.checkouts.set(root, new Checkout(root, this.host));
     if (!sameMap(next, this.roots)) {
@@ -195,7 +208,9 @@ class Checkout {
 
   /** The sheets for what changed since the last scan (none on the first: that is the baseline). */
   async scan() {
-    const status = parseStatus((await this.host.git(this.root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"])).out.toString("utf8"));
+    const status = parseStatus(
+      (await this.host.git(this.root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"])).out.toString("utf8"),
+    );
     const paths = [...new Set([...status.keys(), ...this.files.keys()])];
     const stats = paths.length ? await this.host.stat(this.root, paths) : new Map();
     const changed = [];
@@ -209,7 +224,10 @@ class Checkout {
       }
       changed.push(file);
     }
-    if (!changed.length) { this.ready = true; return []; }
+    if (!changed.length) {
+      this.ready = true;
+      return [];
+    }
     const present = changed.filter((f) => stats.get(f));
     const contents = present.length ? await this.host.read(this.root, present) : new Map();
     const fresh = this.ready ? changed.filter((f) => !this.files.has(f)) : [];
@@ -218,7 +236,7 @@ class Checkout {
     for (const file of changed) {
       const now = decode(contents.get(file) ?? null);
       const known = this.files.get(file);
-      const before = known ? known.content : this.ready ? heads.get(status.get(file)?.orig ?? file) ?? null : undefined;
+      const before = known ? known.content : this.ready ? (heads.get(status.get(file)?.orig ?? file) ?? null) : undefined;
       if (status.has(file)) this.files.set(file, { sig: stats.get(file) ?? "-", content: now });
       else this.files.delete(file); // back to what HEAD has
       if (before === undefined) continue;
@@ -234,7 +252,9 @@ class Checkout {
     const result = new Map(paths.map((p) => [p, null]));
     const asked = paths.filter((p) => !p.includes("\n"));
     if (!asked.length) return result;
-    const { out } = await this.host.git(this.root, ["cat-file", "--batch"], { input: Buffer.from(asked.map((p) => `HEAD:${p}\n`).join("")) });
+    const { out } = await this.host.git(this.root, ["cat-file", "--batch"], {
+      input: Buffer.from(asked.map((p) => `HEAD:${p}\n`).join("")),
+    });
     let at = 0;
     for (const p of asked) {
       const nl = out.indexOf(10, at);
@@ -253,31 +273,59 @@ class Checkout {
   async uncommitted() {
     const opts = { timeout: UNCOMMITTED_TIMEOUT_MS };
     // A repository without commits yet is compared with the empty tree.
-    const base = await this.host.git(this.root, ["rev-parse", "-q", "--verify", "HEAD"], opts).then(() => "HEAD",
-      async () => (await this.host.git(this.root, ["hash-object", "-t", "tree", "--stdin"], { ...opts, input: Buffer.alloc(0) })).out.toString().trim());
-    const diff = await this.host.git(this.root, [
-      "diff", base, "--no-color", "--no-ext-diff", "--no-textconv", "--no-relative", "--find-renames",
-      "--src-prefix=a/", "--dst-prefix=b/", `-U${CONTEXT}`, "--",
-    ], { ...opts, max: MAX_DIFF_OUT });
+    const base = await this.host.git(this.root, ["rev-parse", "-q", "--verify", "HEAD"], opts).then(
+      () => "HEAD",
+      async () =>
+        (await this.host.git(this.root, ["hash-object", "-t", "tree", "--stdin"], { ...opts, input: Buffer.alloc(0) })).out
+          .toString()
+          .trim(),
+    );
+    const diff = await this.host.git(
+      this.root,
+      [
+        "diff",
+        base,
+        "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-relative",
+        "--find-renames",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        `-U${CONTEXT}`,
+        "--",
+      ],
+      { ...opts, max: MAX_DIFF_OUT },
+    );
     const pages = parseGitDiff(diff.out.toString("utf8"));
     let incomplete = diff.truncated;
-    const untracked = (await this.host.git(this.root, ["ls-files", "--others", "--exclude-standard", "-z"], opts)).out.toString("utf8").split("\0").filter(Boolean);
+    const untracked = (await this.host.git(this.root, ["ls-files", "--others", "--exclude-standard", "-z"], opts)).out
+      .toString("utf8")
+      .split("\0")
+      .filter(Boolean);
     const read = untracked.slice(0, MAX_UNTRACKED);
     const contents = read.length ? await this.host.read(this.root, read, opts) : new Map();
     for (const file of untracked) {
       const page = { path: file, change: "added", untracked: true, added: 0, removed: 0, diff: "", truncated: false };
       const content = contents.has(file) ? decode(contents.get(file)) : undefined;
       if (content === undefined) pages.push({ ...page, note: "Not printed: too many new files." });
-      else if (content === null) continue; // gone since git listed it
+      else if (content === null)
+        continue; // gone since git listed it
       else if (typeof content === "symbol") pages.push({ ...page, note: content === LARGE ? "Too large to print." : "Binary file." });
       else pages.push({ ...page, ...lineDiff([], lines(content)) });
     }
     pages.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-    if (pages.length > MAX_PAGES) { pages.length = MAX_PAGES; incomplete = true; }
+    if (pages.length > MAX_PAGES) {
+      pages.length = MAX_PAGES;
+      incomplete = true;
+    }
     let total = 0;
     for (const page of pages) {
       const n = page.diff ? page.diff.split("\n").length : 0;
-      if (total + n <= MAX_TOTAL_LINES) { total += n; continue; }
+      if (total + n <= MAX_TOTAL_LINES) {
+        total += n;
+        continue;
+      }
       Object.assign(page, { diff: "", truncated: false, note: "Not printed: there was too much to print." });
       incomplete = true;
     }
@@ -297,14 +345,23 @@ class LocalHost {
 
   git(cwd, args, { input = null, max = MAX_GIT_OUT } = {}) {
     return new Promise((resolve, reject) => {
-      const child = execFile("git", ["-c", "core.quotepath=off", ...args], {
-        cwd, encoding: "buffer", maxBuffer: max, timeout: GIT_TIMEOUT_MS, env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-      }, (err, stdout, stderr) => {
-        // Past maxBuffer git is stopped, and what came until then is kept.
-        if (err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") resolve({ out: stdout, truncated: true });
-        else if (err) reject(Object.assign(err, { stderr }));
-        else resolve({ out: stdout, truncated: false });
-      });
+      const child = execFile(
+        "git",
+        ["-c", "core.quotepath=off", ...args],
+        {
+          cwd,
+          encoding: "buffer",
+          maxBuffer: max,
+          timeout: GIT_TIMEOUT_MS,
+          env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+        },
+        (err, stdout, stderr) => {
+          // Past maxBuffer git is stopped, and what came until then is kept.
+          if (err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") resolve({ out: stdout, truncated: true });
+          else if (err) reject(Object.assign(err, { stderr }));
+          else resolve({ out: stdout, truncated: false });
+        },
+      );
       child.stdin.on("error", () => {});
       child.stdin.end(input ?? undefined);
     });
@@ -312,20 +369,24 @@ class LocalHost {
 
   async stat(root, paths) {
     const stats = await Promise.all(paths.map((p) => fs.promises.lstat(path.join(root, p)).catch(() => null)));
-    return new Map(paths.map((p, i) => {
-      const st = stats[i];
-      return [p, !st ? null : st.isFile() ? `${st.size}:${st.mtimeMs}` : "other"];
-    }));
+    return new Map(
+      paths.map((p, i) => {
+        const st = stats[i];
+        return [p, !st ? null : st.isFile() ? `${st.size}:${st.mtimeMs}` : "other"];
+      }),
+    );
   }
 
   async read(root, paths) {
-    const out = await Promise.all(paths.map(async (p) => {
-      const file = path.join(root, p);
-      const st = await fs.promises.stat(file).catch(() => null);
-      if (!st) return null;
-      if (st.size > MAX_BYTES) return LARGE;
-      return fs.promises.readFile(file).catch(() => null);
-    }));
+    const out = await Promise.all(
+      paths.map(async (p) => {
+        const file = path.join(root, p);
+        const st = await fs.promises.stat(file).catch(() => null);
+        if (!st) return null;
+        if (st.size > MAX_BYTES) return LARGE;
+        return fs.promises.readFile(file).catch(() => null);
+      }),
+    );
     return new Map(paths.map((p, i) => [p, out[i]]));
   }
 }
@@ -372,7 +433,7 @@ function parseStatus(out) {
     const e = parts[i];
     if (e.length < 4) continue;
     const code = e.slice(0, 2);
-    const orig = code[0] === "R" || code[0] === "C" ? parts[++i] ?? null : null;
+    const orig = code[0] === "R" || code[0] === "C" ? (parts[++i] ?? null) : null;
     entries.set(e.slice(3), { code, orig });
   }
   return entries;
@@ -381,18 +442,25 @@ function parseStatus(out) {
 /** `git diff` output as one page per file: path, change, counts and its hunks. */
 export function parseGitDiff(text) {
   const pages = [];
-  let page = null, rows = [], inHunk = false, mode = false;
+  let page = null,
+    rows = [],
+    inHunk = false,
+    mode = false;
   const done = () => {
     if (!page) return;
     page.diff = rows.join("\n");
-    if (!page.diff && !page.note) page.note = page.change === "renamed" ? "Renamed; the contents did not change." : mode ? "Only the file's mode changed." : "Nothing to print.";
+    if (!page.diff && !page.note)
+      page.note =
+        page.change === "renamed" ? "Renamed; the contents did not change." : mode ? "Only the file's mode changed." : "Nothing to print.";
     pages.push(page);
   };
   for (const line of text.split("\n")) {
     if (line.startsWith("diff --git ")) {
       done();
       page = { path: gitLinePath(line.slice(11)), change: "modified", added: 0, removed: 0, diff: "", truncated: false };
-      rows = []; inHunk = false; mode = false;
+      rows = [];
+      inHunk = false;
+      mode = false;
       continue;
     }
     if (!page) continue;
@@ -400,8 +468,10 @@ export function parseGitDiff(text) {
       if (line.startsWith("new file mode")) page.change = "added";
       else if (line.startsWith("deleted file mode")) page.change = "deleted";
       else if (line.startsWith("old mode")) mode = true;
-      else if (line.startsWith("rename from ")) { page.change = "renamed"; page.from = unquote(line.slice(12)); }
-      else if (line.startsWith("rename to ")) page.path = unquote(line.slice(10));
+      else if (line.startsWith("rename from ")) {
+        page.change = "renamed";
+        page.from = unquote(line.slice(12));
+      } else if (line.startsWith("rename to ")) page.path = unquote(line.slice(10));
       else if (line.startsWith("--- ") && line !== "--- /dev/null") page.path = headerPath(line.slice(4), "a/");
       else if (line.startsWith("+++ ") && line !== "+++ /dev/null") page.path = headerPath(line.slice(4), "b/");
       else if (line.startsWith("Binary files ")) page.note = "Binary file.";
@@ -412,8 +482,11 @@ export function parseGitDiff(text) {
     if (kind === "+") page.added++;
     else if (kind === "-") page.removed++;
     else if (kind !== " " && kind !== "@") continue; // "\ No newline at end of file", the final ""
-    if (rows.length >= MAX_DIFF_LINES) { page.truncated = true; continue; }
-    rows.push(line.length > MAX_LINE + 1 ? line.slice(0, MAX_LINE + 1) + "…" : line);
+    if (rows.length >= MAX_DIFF_LINES) {
+      page.truncated = true;
+      continue;
+    }
+    rows.push(line.length > MAX_LINE + 1 ? `${line.slice(0, MAX_LINE + 1)}…` : line);
   }
   done();
   return pages;
@@ -439,10 +512,15 @@ function unquote(s) {
   const bytes = [];
   const body = s.slice(1, -1);
   for (let i = 0; i < body.length; i++) {
-    if (body[i] !== "\\") { bytes.push(...Buffer.from(body[i])); continue; }
+    if (body[i] !== "\\") {
+      bytes.push(...Buffer.from(body[i]));
+      continue;
+    }
     const c = body[++i] ?? "";
-    if (/[0-7]/.test(c)) { bytes.push(parseInt(body.slice(i, i + 3), 8)); i += 2; }
-    else bytes.push({ n: 10, t: 9, r: 13, a: 7, b: 8, f: 12, v: 11 }[c] ?? c.charCodeAt(0));
+    if (/[0-7]/.test(c)) {
+      bytes.push(parseInt(body.slice(i, i + 3), 8));
+      i += 2;
+    } else bytes.push({ n: 10, t: 9, r: 13, a: 7, b: 8, f: 12, v: 11 }[c] ?? c.charCodeAt(0));
   }
   return Buffer.from(bytes).toString("utf8");
 }
@@ -493,7 +571,8 @@ export function lineDiff(a, b) {
 
 /** Line ops for the changed middle: a longest common subsequence, or all replaced when it is too big for that. */
 function middle(A, B) {
-  const n = A.length, m = B.length;
+  const n = A.length,
+    m = B.length;
   if (n * m > LCS_CELLS) return [...A.map((t) => ["-", t]), ...B.map((t) => ["+", t])];
   const w = m + 1;
   const L = new Uint16Array((n + 1) * w); // n × m ≤ LCS_CELLS keeps every length under 65536
@@ -503,10 +582,14 @@ function middle(A, B) {
     }
   }
   const out = [];
-  let i = 0, j = 0;
+  let i = 0,
+    j = 0;
   while (i < n && j < m) {
-    if (A[i] === B[j]) { out.push([" ", A[i]]); i++; j++; }
-    else if (L[(i + 1) * w + j] >= L[i * w + j + 1]) out.push(["-", A[i++]]);
+    if (A[i] === B[j]) {
+      out.push([" ", A[i]]);
+      i++;
+      j++;
+    } else if (L[(i + 1) * w + j] >= L[i * w + j + 1]) out.push(["-", A[i++]]);
     else out.push(["+", B[j++]]);
   }
   while (i < n) out.push(["-", A[i++]]);
@@ -515,16 +598,28 @@ function middle(A, B) {
 }
 
 function hunks(ops) {
-  let added = 0, removed = 0;
+  let added = 0,
+    removed = 0;
   const changes = [];
   // Old and new line numbers at each op.
-  const oldAt = new Int32Array(ops.length + 1), newAt = new Int32Array(ops.length + 1);
+  const oldAt = new Int32Array(ops.length + 1),
+    newAt = new Int32Array(ops.length + 1);
   for (let k = 0, o = 1, n = 1; k <= ops.length; k++) {
-    oldAt[k] = o; newAt[k] = n;
+    oldAt[k] = o;
+    newAt[k] = n;
     const kind = ops[k]?.[0];
-    if (kind === "+") { added++; n++; changes.push(k); }
-    else if (kind === "-") { removed++; o++; changes.push(k); }
-    else if (kind === " ") { o++; n++; }
+    if (kind === "+") {
+      added++;
+      n++;
+      changes.push(k);
+    } else if (kind === "-") {
+      removed++;
+      o++;
+      changes.push(k);
+    } else if (kind === " ") {
+      o++;
+      n++;
+    }
   }
   const out = [];
   let truncated = false;
@@ -533,10 +628,11 @@ function hunks(ops) {
     let end = changes[c];
     while (c + 1 < changes.length && changes[c + 1] - end <= CONTEXT * 2 + 1) end = changes[++c];
     const slice = ops.slice(start, Math.min(ops.length, end + CONTEXT + 1));
-    const oldLen = slice.filter(([k]) => k !== "+").length, newLen = slice.filter(([k]) => k !== "-").length;
+    const oldLen = slice.filter(([k]) => k !== "+").length,
+      newLen = slice.filter(([k]) => k !== "-").length;
     // As git writes them: an empty side starts at the line before.
     out.push(`@@ -${oldAt[start] - (oldLen ? 0 : 1)},${oldLen} +${newAt[start] - (newLen ? 0 : 1)},${newLen} @@`);
-    for (const [k, t] of slice) out.push(k + (t.length > MAX_LINE ? t.slice(0, MAX_LINE) + "…" : t));
+    for (const [k, t] of slice) out.push(k + (t.length > MAX_LINE ? `${t.slice(0, MAX_LINE)}…` : t));
     if (out.length > MAX_DIFF_LINES) truncated = true;
   }
   return { added, removed, diff: out.slice(0, MAX_DIFF_LINES).join("\n"), truncated };

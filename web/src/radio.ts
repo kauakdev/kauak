@@ -7,7 +7,8 @@
 
 import { STATIONS, type Station } from "./stations";
 
-const MIN = 87.5, MAX = 108;
+const MIN = 87.5,
+  MAX = 108;
 /** How far (MHz) from a station its signal still comes through. */
 const REACH = 0.8;
 /** Loudness of pure static next to a locked station. */
@@ -16,8 +17,18 @@ const STATIC = 0.2;
 const TURN_PER_MHZ = 70;
 const KEY = "agent-office.radio";
 
-interface Graph { ctx: AudioContext; master: GainNode; music: GainNode; tone: BiquadFilterNode; hiss: GainNode }
-interface Saved { freq?: unknown; volume?: unknown; on?: unknown }
+interface Graph {
+  ctx: AudioContext;
+  master: GainNode;
+  music: GainNode;
+  tone: BiquadFilterNode;
+  hiss: GainNode;
+}
+interface Saved {
+  freq?: unknown;
+  volume?: unknown;
+  on?: unknown;
+}
 
 export class Radio {
   private card = document.getElementById("radio")!;
@@ -74,19 +85,29 @@ export class Radio {
     // Credit each station, and say where the sound comes from before anyone turns it on.
     const host = (s: Station) => new URL(s.site).host;
     for (const s of STATIONS) {
-      const line = document.createElement("p"), link = document.createElement("a");
+      const line = document.createElement("p"),
+        link = document.createElement("a");
       Object.assign(link, { href: s.site, target: "_blank", rel: "noopener noreferrer", textContent: host(s) });
       line.append(`Stream: ${s.name} · `, link);
       this.credit.append(line);
     }
-    const hosts = [...new Set(STATIONS.map(host))], note = document.createElement("p");
+    const hosts = [...new Set(STATIONS.map(host))],
+      note = document.createElement("p");
     note.textContent = `Plays straight from ${hosts.join(", ")}; your browser connects to ${hosts.length > 1 ? "them" : "it"} directly.`;
     this.credit.append(note);
 
     this.audio.crossOrigin = "anonymous";
     this.audio.preload = "none";
-    this.audio.addEventListener("playing", () => { this.live = true; this.failed = false; this.update(); });
-    for (const ev of ["waiting", "emptied", "pause"]) this.audio.addEventListener(ev, () => { this.live = false; this.update(); });
+    this.audio.addEventListener("playing", () => {
+      this.live = true;
+      this.failed = false;
+      this.update();
+    });
+    for (const ev of ["waiting", "emptied", "pause"])
+      this.audio.addEventListener(ev, () => {
+        this.live = false;
+        this.update();
+      });
     this.audio.addEventListener("error", () => {
       if (!this.audio.getAttribute("src")) return;
       this.live = false;
@@ -94,14 +115,19 @@ export class Radio {
       this.update();
       // Streams drop now and then; try again while the dial stays on the station.
       const station = this.tuned;
-      window.setTimeout(() => { if (this.on && this.failed && this.tuned === station) this.load(station); }, 5000);
+      window.setTimeout(() => {
+        if (this.on && this.failed && this.tuned === station) this.load(station);
+      }, 5000);
     });
 
     this.toggle.addEventListener("click", () => this.show(this.card.hidden));
     this.powerBtn.addEventListener("click", () => this.power(!this.lit));
     document.getElementById("radio-prev")!.addEventListener("click", () => this.seek(-1));
     document.getElementById("radio-next")!.addEventListener("click", () => this.seek(1));
-    this.volume.addEventListener("input", () => { this.update(); this.persist(); });
+    this.volume.addEventListener("input", () => {
+      this.update();
+      this.persist();
+    });
 
     // Drag along the dial window to put the needle there; drag the knob (either axis) to turn it.
     this.drag(this.dial, (e) => {
@@ -122,10 +148,20 @@ export class Radio {
     this.dial.addEventListener("wheel", wheel, { passive: false });
     this.knob.addEventListener("wheel", wheel, { passive: false });
     this.knob.addEventListener("keydown", (e) => {
-      const fine = (d: number) => { this.stopSweep(); this.setFreq(Math.round((this.freq + d) * 10) / 10); this.persist(); };
+      const fine = (d: number) => {
+        this.stopSweep();
+        this.setFreq(Math.round((this.freq + d) * 10) / 10);
+        this.persist();
+      };
       const keys: Record<string, () => void> = {
-        ArrowRight: () => fine(0.1), ArrowUp: () => fine(0.1), ArrowLeft: () => fine(-0.1), ArrowDown: () => fine(-0.1),
-        PageUp: () => this.seek(1), PageDown: () => this.seek(-1), Home: () => fine(MIN - this.freq), End: () => fine(MAX - this.freq),
+        ArrowRight: () => fine(0.1),
+        ArrowUp: () => fine(0.1),
+        ArrowLeft: () => fine(-0.1),
+        ArrowDown: () => fine(-0.1),
+        PageUp: () => this.seek(1),
+        PageDown: () => this.seek(-1),
+        Home: () => fine(MIN - this.freq),
+        End: () => fine(MAX - this.freq),
       };
       const act = keys[e.key];
       if (!act) return;
@@ -135,13 +171,28 @@ export class Radio {
     });
 
     addEventListener("keydown", (e) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || this.isTyping() || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        this.isTyping() ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.altKey
+      )
+        return;
       if (e.key === "m") this.power(!this.lit);
     });
     // Capture phase, so Esc closes the radio before it can close the terminal panel.
-    addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !this.card.hidden && !this.isTyping()) { e.stopPropagation(); this.show(false); }
-    }, true);
+    addEventListener(
+      "keydown",
+      (e) => {
+        if (e.key === "Escape" && !this.card.hidden && !this.isTyping()) {
+          e.stopPropagation();
+          this.show(false);
+        }
+      },
+      true,
+    );
     addEventListener("pointerdown", (e) => {
       const t = e.target as Node;
       if (!this.card.hidden && !this.card.contains(t) && !this.toggle.contains(t)) this.show(false);
@@ -163,7 +214,9 @@ export class Radio {
   }
 
   /** On as the user sees it, including waiting to resume after a reload. */
-  private get lit() { return this.on || this.wantResume; }
+  private get lit() {
+    return this.on || this.wantResume;
+  }
 
   private show(open: boolean) {
     this.card.hidden = !open;
@@ -182,7 +235,10 @@ export class Radio {
       else this.update();
     } else {
       this.update(); // fades out
-      this.offTimer = window.setTimeout(() => { this.load(null); void this.graph?.ctx.suspend(); }, 250);
+      this.offTimer = window.setTimeout(() => {
+        this.load(null);
+        void this.graph?.ctx.suspend();
+      }, 250);
     }
     this.persist();
   }
@@ -197,7 +253,10 @@ export class Radio {
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     const noise = new AudioBufferSourceNode(ctx, { buffer, loop: true });
     const hiss = new GainNode(ctx, { gain: 0 });
-    noise.connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 2200, Q: 0.5 })).connect(hiss).connect(master);
+    noise
+      .connect(new BiquadFilterNode(ctx, { type: "bandpass", frequency: 2200, Q: 0.5 }))
+      .connect(hiss)
+      .connect(master);
     noise.start();
     const tone = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 500 });
     const music = new GainNode(ctx, { gain: 0 });
@@ -237,10 +296,14 @@ export class Radio {
 
   /** Nearest station within reach, and how cleanly it comes in (0..1). */
   private reception(freq = this.freq): { station: Station | null; signal: number } {
-    let best: Station | null = null, d = Infinity;
+    let best: Station | null = null,
+      d = Infinity;
     for (const s of STATIONS) {
       const x = Math.abs(s.freq - freq);
-      if (x < d) { d = x; best = s; }
+      if (x < d) {
+        d = x;
+        best = s;
+      }
     }
     return d < REACH ? { station: best, signal: 1 - d / REACH } : { station: null, signal: 0 };
   }
@@ -262,12 +325,16 @@ export class Radio {
   private sweepTo(target: number, ms: number) {
     this.stopSweep();
     this.target = target;
-    const from = this.freq, t0 = performance.now();
+    const from = this.freq,
+      t0 = performance.now();
     const step = (now: number) => {
       const k = Math.min(1, (now - t0) / ms);
       this.setFreq(from + (target - from) * (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2));
       if (k < 1) this.anim = requestAnimationFrame(step);
-      else { this.anim = 0; this.persist(); }
+      else {
+        this.anim = 0;
+        this.persist();
+      }
     };
     this.anim = requestAnimationFrame(step);
   }
@@ -283,9 +350,14 @@ export class Radio {
       e.preventDefault();
       this.stopSweep();
       el.setPointerCapture(e.pointerId);
-      let x = e.clientX, y = e.clientY;
+      let x = e.clientX,
+        y = e.clientY;
       move(e, 0, 0);
-      const onMove = (ev: PointerEvent) => { move(ev, ev.clientX - x, ev.clientY - y); x = ev.clientX; y = ev.clientY; };
+      const onMove = (ev: PointerEvent) => {
+        move(ev, ev.clientX - x, ev.clientY - y);
+        x = ev.clientX;
+        y = ev.clientY;
+      };
       const onUp = () => {
         el.removeEventListener("pointermove", onMove);
         el.removeEventListener("pointerup", onUp);
@@ -304,7 +376,8 @@ export class Radio {
     const heard = this.on && this.live && station === this.tuned ? signal : 0;
     const g = this.graph;
     if (g) {
-      const t = g.ctx.currentTime, lag = 0.06;
+      const t = g.ctx.currentTime,
+        lag = 0.06;
       g.master.gain.setTargetAtTime(this.on ? (Number(this.volume.value) / 100) ** 2 : 0, t, lag);
       g.music.gain.setTargetAtTime(heard ** 1.5, t, lag);
       g.hiss.gain.setTargetAtTime(STATIC * (1 - heard) ** 2, t, lag);
@@ -318,14 +391,20 @@ export class Radio {
     this.knob.setAttribute("aria-valuetext", `${f} FM${station ? `, ${station.name}` : ""}`);
     this.freqEl.textContent = f;
     this.nameEl.textContent = station?.name ?? "—";
-    this.infoEl.textContent =
-      this.wantResume ? "click anywhere to resume"
-      : !this.on ? station?.genre ?? "between stations"
-      : !station ? "static"
-      : this.failed ? "no signal, retrying…"
-      : heard > 0 ? station.genre
-      : "tuning…";
-    this.bars.forEach((b, i) => b.classList.toggle("lit", this.on && signal > i / this.bars.length));
+    this.infoEl.textContent = this.wantResume
+      ? "click anywhere to resume"
+      : !this.on
+        ? (station?.genre ?? "between stations")
+        : !station
+          ? "static"
+          : this.failed
+            ? "no signal, retrying…"
+            : heard > 0
+              ? station.genre
+              : "tuning…";
+    this.bars.forEach((b, i) => {
+      b.classList.toggle("lit", this.on && signal > i / this.bars.length);
+    });
     this.card.dataset.state = !this.lit ? "off" : heard > 0.85 ? "locked" : "on";
     this.powerBtn.setAttribute("aria-pressed", String(this.lit));
     this.toggle.classList.toggle("on", this.lit);
@@ -335,7 +414,9 @@ export class Radio {
 
   private persist() {
     const saved = { freq: Math.round(this.freq * 10) / 10, volume: Number(this.volume.value), on: this.lit };
-    try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch {}
+    try {
+      localStorage.setItem(KEY, JSON.stringify(saved));
+    } catch {}
   }
 }
 
@@ -344,5 +425,7 @@ function restore(): Saved {
   try {
     const v: unknown = JSON.parse(localStorage.getItem(KEY) ?? "{}");
     return v && typeof v === "object" ? v : {};
-  } catch { return {}; }
+  } catch {
+    return {};
+  }
 }

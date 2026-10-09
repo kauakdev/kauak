@@ -2,7 +2,10 @@
 export const TILE_W = 64;
 export const TILE_H = 32;
 
-export interface Pt { x: number; y: number }
+export interface Pt {
+  x: number;
+  y: number;
+}
 
 /** World tile coords (x right-down, y left-down) + height z → screen px. */
 export function toScreen(x: number, y: number, z = 0): Pt {
@@ -33,7 +36,10 @@ export function mix(a: number, b: number, k: number): number {
 /** FNV-1a string hash → uint32. Stable across reloads, used to seed props. */
 export function hashStr(s: string): number {
   let h = 2166136261;
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
   return h >>> 0;
 }
 

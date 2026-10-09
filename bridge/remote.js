@@ -54,7 +54,7 @@ export class RemoteScript {
         clearTimeout(timer);
         resolve(result);
       });
-      this.child.stdin.write(JSON.stringify({ ...request, id }) + "\n");
+      this.child.stdin.write(`${JSON.stringify({ ...request, id })}\n`);
     });
   }
 
@@ -74,13 +74,19 @@ export class RemoteScript {
         const line = this.buf.slice(0, nl);
         this.buf = this.buf.slice(nl + 1);
         let msg;
-        try { msg = JSON.parse(line); } catch { continue; }
+        try {
+          msg = JSON.parse(line);
+        } catch {
+          continue;
+        }
         const done = this.waiting.get(msg.id);
         this.waiting.delete(msg.id);
         done?.(msg.result ?? null);
       }
     });
-    child.stderr.on("data", (d) => { this.stderr = (this.stderr + d).slice(-2000); });
+    child.stderr.on("data", (d) => {
+      this.stderr = (this.stderr + d).slice(-2000);
+    });
     const gone = (code, signal) => {
       if (this.child !== child) return;
       this.child = null;
@@ -93,6 +99,9 @@ export class RemoteScript {
       console.warn(`[bridge] ${this.m.label}: ${this.what} stopped (${why}); retrying in ${(this.retryAt - Date.now()) / 1000}s`);
     };
     child.once("exit", gone);
-    child.once("error", (err) => { this.stderr += err.message; gone(null, null); });
+    child.once("error", (err) => {
+      this.stderr += err.message;
+      gone(null, null);
+    });
   }
 }

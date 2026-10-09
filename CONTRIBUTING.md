@@ -58,12 +58,28 @@ Run the checks, in this order (the CLI's page tests skip until the page is
 built):
 
 ```sh
-pnpm typecheck
+pnpm install --frozen-lockfile
+pnpm check
 pnpm build
 pnpm build:demo
 pnpm test
 pnpm verify:pack
 ```
+
+`pnpm check` runs `pnpm lint`, `pnpm check:boundaries` and `pnpm typecheck`.
+`pnpm lint` runs [Biome](https://biomejs.dev) (`biome.jsonc`) over the
+JavaScript, TypeScript, JSON and CSS, checking formatting and lint rules
+without changing anything; `pnpm format` rewrites files to its style, and
+`.editorconfig` tells your editor the same. Markdown and the Python helpers are
+formatted by hand.
+
+`pnpm check:boundaries` (`scripts/check-boundaries.mjs`) keeps the pieces
+apart: only the Herdr adapter (`bridge/machine.js`, `bridge/herdr.js`,
+`bridge/remote.js`) imports `herdr.js` or names Herdr's methods, the trackers
+and the protocol do not import the adapter, `shared/plugins/registry.ts`
+imports nothing but its contracts and uses no DOM, the page imports only the
+protocol's types from the bridge, and the bridge and the CLI import nothing
+from the page. When a file moves, update the rules at the top of the script.
 
 `pnpm test` runs `node --test`, which finds every `*.test.mjs`. Tests use
 Node's built-in runner (`node:test` with `node:assert/strict`) and sit next to
@@ -76,8 +92,8 @@ each. It needs the npm registry, and matters most when you change what the
 package ships: a new folder that the bridge or the CLI loads at runtime has to
 be added to `files` in package.json.
 
-CI (`.github/workflows/ci.yml`) runs all five on Node 22 and 24, for every pull
-request and push to `main`.
+CI (`.github/workflows/ci.yml`) runs all of them on Node 22 and 24, for every
+pull request and push to `main`.
 
 Then check the change in the browser: against Herdr if it touches the bridge,
 and in the demo.
@@ -88,7 +104,9 @@ Some conventions:
   comments. Comments say why, not what.
 - Do not add dependencies without a good reason, and give that reason in the
   pull request.
-- Update the README or `docs/` when you change behavior they describe.
+- Update the README or `docs/` when you change behavior they describe, and add
+  a line to [CHANGELOG.md](CHANGELOG.md) under Unreleased when the change is
+  one people who run Kauak would notice.
 - Keep one change per pull request. Titles are imperative and in sentence case,
   like the existing history ("Let the terminal panel scroll back through a
   pane's history").

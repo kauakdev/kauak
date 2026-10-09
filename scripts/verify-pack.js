@@ -32,10 +32,19 @@ const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
 // Files `kauak serve` needs, among them some that no failing import would
 // reveal missing: the page, and the helpers a remote floor runs over SSH.
 const REQUIRED = [
-  "package.json", "README.md", "LICENSE",
-  "bin/kauak.js", "cli/main.js", "cli/commands/serve.js",
-  "bridge/server.js", "bridge/machine.js", "bridge/context_remote.py", "bridge/diffs_remote.py",
-  "dist/index.html", "dist/kauak.png", "dist/THIRD_PARTY_LICENSES.txt",
+  "package.json",
+  "README.md",
+  "LICENSE",
+  "bin/kauak.js",
+  "cli/main.js",
+  "cli/commands/serve.js",
+  "bridge/server.js",
+  "bridge/machine.js",
+  "bridge/context_remote.py",
+  "bridge/diffs_remote.py",
+  "dist/index.html",
+  "dist/kauak.png",
+  "dist/THIRD_PARTY_LICENSES.txt",
 ];
 const FORBIDDEN = [
   [/(^|\/)[^/]+\.test\.[^/]+$/, "a test"],
@@ -44,14 +53,20 @@ const FORBIDDEN = [
   [/\.map$/, "a source map"],
   [/\.tgz$/, "a tarball"],
   [/^(web|shared|plugins|docs|scripts|node_modules|dist-demo|\.github|\.agents|\.claude)\//, "development files"],
-  [/^(package-lock\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|skills-lock\.json|tsconfig\.json|vite\.config\.ts|\.gitignore|\.npmrc)$|(^|\/)\.env/, "repository configuration"],
+  [
+    /^(package-lock\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|skills-lock\.json|tsconfig\.json|vite\.config\.ts|\.gitignore|\.npmrc)$|(^|\/)\.env/,
+    "repository configuration",
+  ],
   [/^dist\/kauak-banner\.png$/, "only the demo site's social preview uses it"],
 ];
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "kauak-verify-pack-"));
 const children = new Set();
 process.on("exit", () => {
-  for (const child of children) try { process.kill(-child.pid, "SIGKILL"); } catch {}
+  for (const child of children)
+    try {
+      process.kill(-child.pid, "SIGKILL");
+    } catch {}
   fs.rmSync(temp, { recursive: true, force: true });
 });
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => process.exit(130));
@@ -70,7 +85,9 @@ const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(n
 Object.assign(env, {
   PATH: `${openers}${path.delimiter}${process.env.PATH}`,
   npm_config_cache: path.join(temp, "npm-cache"),
-  npm_config_audit: "false", npm_config_fund: "false", npm_config_update_notifier: "false",
+  npm_config_audit: "false",
+  npm_config_fund: "false",
+  npm_config_update_notifier: "false",
   HERDR_SOCKET_PATH: path.join(temp, "no-herdr.sock"),
   KAUAK_CONFIG: path.join(temp, "machines.json"),
   KAUAK_HOST: "127.0.0.1",
@@ -78,7 +95,8 @@ Object.assign(env, {
 
 try {
   const tarball = pack();
-  const local = path.join(temp, "local"), global = path.join(temp, "global");
+  const local = path.join(temp, "local"),
+    global = path.join(temp, "global");
   npm(["install", "--prefix", local, tarball]);
   checkInstall(path.join(local, "node_modules"));
   ok(`npm install: ${path.relative(temp, local)}/node_modules/kauak, with only its dependencies`);
@@ -114,7 +132,10 @@ function pack() {
   assert.ok(start >= 0, `no JSON from npm pack:\n${out}`);
   process.stdout.write(out.slice(0, start));
   const [info] = Object.values(JSON.parse(out.slice(start)));
-  assert.ok(fs.statSync(path.join(ROOT, "dist", "index.html")).mtimeMs > started - 2000, "npm pack did not rebuild dist/ (the prepack script)");
+  assert.ok(
+    fs.statSync(path.join(ROOT, "dist", "index.html")).mtimeMs > started - 2000,
+    "npm pack did not rebuild dist/ (the prepack script)",
+  );
 
   console.log(`\n${info.id} → ${info.filename}`);
   for (const f of info.files) console.log(`  ${size(f.size).padStart(9)}  ${f.path}`);
@@ -122,7 +143,10 @@ function pack() {
 
   const files = new Map(info.files.map((f) => [f.path, f]));
   for (const f of REQUIRED) assert.ok(files.has(f), `${f} is missing from the package`);
-  assert.ok([...files.keys()].some((f) => /^dist\/assets\/[^/]+\.js$/.test(f)), "the page's scripts are missing from the package");
+  assert.ok(
+    [...files.keys()].some((f) => /^dist\/assets\/[^/]+\.js$/.test(f)),
+    "the page's scripts are missing from the package",
+  );
   assert.ok(files.get("bin/kauak.js").mode & 0o111, "bin/kauak.js is not executable in the package");
   for (const f of files.keys()) {
     for (const [pattern, why] of FORBIDDEN) assert.ok(!pattern.test(f), `${f} should not be in the package: ${why}`);
@@ -146,7 +170,7 @@ function checkCommands(kauak) {
   const version = run(kauak, ["--version"]);
   assert.equal(version.stdout, `${PKG.version}\n`, "kauak --version");
   const help = run(kauak, ["--help"]);
-  assert.match(help.stdout, /^Usage: kauak \[command\] \[options\]\n[^]*\n {2}serve +/, "kauak --help");
+  assert.match(help.stdout, /^Usage: kauak \[command\] \[options\]\n[\s\S]*\n {2}serve +/, "kauak --help");
 }
 
 /** `kauak serve --no-open --port <n>`, or bare `kauak`, which gets its port from KAUAK_PORT. */
@@ -155,17 +179,31 @@ async function checkServe(kauak, { bare = false } = {}) {
   const base = `http://127.0.0.1:${port}/`;
   const args = bare ? [] : ["serve", "--no-open", "--port", String(port)];
   const openerLog = path.join(temp, `opener-${port}.log`);
-  const opened = () => { try { return fs.readFileSync(openerLog, "utf8"); } catch { return ""; } };
+  const opened = () => {
+    try {
+      return fs.readFileSync(openerLog, "utf8");
+    } catch {
+      return "";
+    }
+  };
   // Its own process group, so Ctrl+C reaches npx's child too, as in a terminal.
   const child = spawn(kauak[0], [...kauak.slice(1), ...args], {
-    cwd: temp, env: { ...env, OPENER_LOG: openerLog, ...(bare && { KAUAK_PORT: String(port) }) },
-    detached: true, stdio: ["ignore", "pipe", "pipe"],
+    cwd: temp,
+    env: { ...env, OPENER_LOG: openerLog, ...(bare && { KAUAK_PORT: String(port) }) },
+    detached: true,
+    stdio: ["ignore", "pipe", "pipe"],
   });
   children.add(child);
   let output = "";
-  for (const stream of [child.stdout, child.stderr]) stream.setEncoding("utf8").on("data", (d) => { output += d; });
+  for (const stream of [child.stdout, child.stderr])
+    stream.setEncoding("utf8").on("data", (d) => {
+      output += d;
+    });
   let exited = false;
-  const exit = once(child, "close").then(([code, signal]) => { exited = true; return code ?? signal; });
+  const exit = once(child, "close").then(([code, signal]) => {
+    exited = true;
+    return code ?? signal;
+  });
 
   for (const end = Date.now() + 60_000; !output.includes("Press Ctrl+C to stop."); await sleep(100)) {
     assert.ok(!exited && Date.now() < end, `kauak serve did not start:\n${output}`);
@@ -176,7 +214,10 @@ async function checkServe(kauak, { bare = false } = {}) {
   assert.match(page, /<title>kauak<\/title>/);
   // Everything the page links to on this server: its script, styles and icon.
   const links = new Set([...page.matchAll(/\b(?:src|href)="([^"#:]+)"/g)].map((m) => m[1]));
-  assert.ok([...links].some((l) => /^\/assets\/.+\.js$/.test(l)), "the page links no script");
+  assert.ok(
+    [...links].some((l) => /^\/assets\/.+\.js$/.test(l)),
+    "the page links no script",
+  );
   for (const link of links) await get(new URL(link, base), link.endsWith(".js") ? "text/javascript" : "");
 
   // The bridge's first message to a page lists the floors; this machine is always one.
@@ -185,7 +226,10 @@ async function checkServe(kauak, { bare = false } = {}) {
     const [data] = await once(ws, "message", { signal: AbortSignal.timeout(10_000) });
     const msg = JSON.parse(data.toString());
     assert.equal(msg.type, "machines");
-    assert.ok(msg.machines.some((m) => m.id === "local"), data.toString());
+    assert.ok(
+      msg.machines.some((m) => m.id === "local"),
+      data.toString(),
+    );
   } finally {
     ws.terminate();
   }
@@ -213,7 +257,14 @@ async function get(url, type) {
 }
 
 function npm(args, { cwd = temp } = {}) {
-  const r = spawnSync("npm", args, { cwd, env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 600_000, stdio: ["ignore", "pipe", "inherit"] });
+  const r = spawnSync("npm", args, {
+    cwd,
+    env,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: 600_000,
+    stdio: ["ignore", "pipe", "inherit"],
+  });
   if (r.error) throw r.error;
   assert.equal(r.status, 0, `npm ${args.join(" ")} exited with ${r.status ?? r.signal}`);
   return r.stdout;
@@ -224,7 +275,14 @@ function run([cmd, ...pre], args) {
   const r = spawnSync(cmd, [...pre, ...args], { cwd: temp, env, encoding: "utf8", timeout: 120_000 });
   if (r.error) throw r.error;
   assert.equal(r.status, 0, `kauak ${args.join(" ")} exited with ${r.status ?? r.signal}:\n${r.stdout}${r.stderr}`);
-  assert.equal(r.stderr.split("\n").filter((l) => l && !l.startsWith("npm ")).join("\n"), "", `kauak ${args.join(" ")} wrote to stderr`);
+  assert.equal(
+    r.stderr
+      .split("\n")
+      .filter((l) => l && !l.startsWith("npm "))
+      .join("\n"),
+    "",
+    `kauak ${args.join(" ")} wrote to stderr`,
+  );
   return r;
 }
 

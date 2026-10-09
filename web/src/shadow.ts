@@ -38,20 +38,32 @@ export function promptShadow(screen: string): Shadow | null {
     const visible = all.filter((c) => c.ch.trim() !== "");
     // Typed text is not dim. Claude's own cursor may sit on the first letter, drawn inverted.
     if (!visible.some((c) => c.dim) || visible.some((c) => !c.dim && !c.inverse)) return null;
-    const text = parts.map((p) => plain(p).replace(/\u00a0/g, " ").trim()).filter(Boolean).join(" ");
+    const text = parts
+      .map((p) =>
+        plain(p)
+          .replace(/\u00a0/g, " ")
+          .trim(),
+      )
+      .filter(Boolean)
+      .join(" ");
     return { text, suggestion: !HINT.test(text) };
   }
   return null;
 }
 
-interface Cell { ch: string; dim: boolean; inverse: boolean }
+interface Cell {
+  ch: string;
+  dim: boolean;
+  inverse: boolean;
+}
 
-const TOKEN_RE = /\x1b\[([0-9;:]*)m|\x1b(?:\[[0-9;:?]*[ -\/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][A-Za-z0-9]|.)|([^\x1b]+)/g;
+const TOKEN_RE = /\x1b\[([0-9;:]*)m|\x1b(?:\[[0-9;:?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][A-Za-z0-9]|.)|([^\x1b]+)/g;
 
 /** A row's characters with the two attributes that matter here. */
 function styledCells(row: string): Cell[] {
   const cells: Cell[] = [];
-  let dim = false, inverse = false;
+  let dim = false,
+    inverse = false;
   for (const m of row.matchAll(TOKEN_RE)) {
     if (m[1] !== undefined) {
       const params = m[1].split(";");

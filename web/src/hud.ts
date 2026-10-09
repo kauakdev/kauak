@@ -11,8 +11,19 @@ const ORDER: AgentStatus[] = ["working", "idle", "blocked", "done", "unknown"];
 const MAX_FEED = 40;
 const FEED_KEY = "agent-office.feed-hidden";
 
-interface Tracked { status: AgentStatus; agent: string | null; since: number; room: string }
-interface FeedItem { at: number; text: string; status: AgentStatus; paneId: string; floor: string }
+interface Tracked {
+  status: AgentStatus;
+  agent: string | null;
+  since: number;
+  room: string;
+}
+interface FeedItem {
+  at: number;
+  text: string;
+  status: AgentStatus;
+  paneId: string;
+  floor: string;
+}
 
 export interface HudHandlers {
   onSelect(paneId: string): void;
@@ -44,20 +55,37 @@ export class Hud {
     document.getElementById("btn-zoom-out")!.addEventListener("click", () => h.onZoom(0.8));
     document.getElementById("btn-roster")!.addEventListener("click", () => document.body.classList.toggle("roster-hidden"));
     document.getElementById("btn-feed")!.addEventListener("click", () => this.toggleFeed());
-    document.getElementById("feed-hide")!.addEventListener("click", (e) => { e.stopPropagation(); this.toggleFeed(true); });
+    document.getElementById("feed-hide")!.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.toggleFeed(true);
+    });
     // On phones a hidden feed is a pill; tapping it brings the feed back.
-    document.querySelector("#feed header")!.addEventListener("click", () => { if (document.body.classList.contains("feed-hidden")) this.toggleFeed(false); });
+    document.querySelector("#feed header")!.addEventListener("click", () => {
+      if (document.body.classList.contains("feed-hidden")) this.toggleFeed(false);
+    });
     this.toggleFeed(load(FEED_KEY) === "1");
     addEventListener("keydown", (e) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || this.isTyping() || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        this.isTyping() ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.altKey
+      )
+        return;
       if (e.key === "f") h.onFit();
       else if (e.key === "r") document.body.classList.toggle("roster-hidden");
       else if (e.key === "a") this.toggleFeed();
-      else if (e.key === "j" || e.key === "k" || e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); this.step(e.key === "j" || e.key === "ArrowDown" ? 1 : -1); }
-      else if (e.key === "+" || e.key === "=") h.onZoom(1.25);
+      else if (e.key === "j" || e.key === "k" || e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        this.step(e.key === "j" || e.key === "ArrowDown" ? 1 : -1);
+      } else if (e.key === "+" || e.key === "=") h.onZoom(1.25);
       else if (e.key === "-") h.onZoom(0.8);
     });
-    const tickClock = () => { this.clock.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); };
+    const tickClock = () => {
+      this.clock.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    };
     tickClock();
     setInterval(tickClock, 15_000);
     setInterval(() => this.refreshTimes(), 10_000);
@@ -101,7 +129,9 @@ export class Hud {
             t.since = now;
             item(`${who} in ${room} is now ${p.agent_status}`, p.agent_status);
           }
-          t.status = p.agent_status; t.agent = p.agent ?? null; t.room = room;
+          t.status = p.agent_status;
+          t.agent = p.agent ?? null;
+          t.room = room;
         }
       }
     }
@@ -144,23 +174,34 @@ export class Hud {
   private renderConn() {
     const conn = document.getElementById("conn")!;
     const f = this.floors.find((x) => x.info.id === this.current);
-    let ok = false, text: string;
+    let ok = false,
+      text: string;
     if (!this.bridgeUp) {
       text = "bridge offline · retrying";
-      this.showEmpty("The bridge is offline", "Start it with npx kauak serve (or pnpm dev in a checkout). This page reconnects on its own.");
+      this.showEmpty(
+        "The bridge is offline",
+        "Start it with npx kauak serve (or pnpm dev in a checkout). This page reconnects on its own.",
+      );
     } else if (!f) {
       text = "connecting…";
       this.empty.hidden = true;
     } else if (f.info.state === "down") {
       text = `${f.info.label} unreachable`;
-      this.showEmpty(`Floor ${f.number} · ${f.info.label} is unreachable`, `${(f.info.message || "Herdr did not answer").replace(/\.?$/, ".")} Retrying on its own.`);
+      this.showEmpty(
+        `Floor ${f.number} · ${f.info.label} is unreachable`,
+        `${(f.info.message || "Herdr did not answer").replace(/\.?$/, ".")} Retrying on its own.`,
+      );
     } else if (!f.snapshot) {
       text = "connecting…";
       this.showEmpty(`Taking the elevator to ${f.info.label}…`, f.info.message || "Waiting for Herdr.");
     } else {
       ok = f.info.state === "live";
       text = `${f.number}F · ${runtimeOf(f.info)}`;
-      if (f.snapshot.panes.length === 0) this.showEmpty(`Floor ${f.number} is empty`, `Open a workspace or pane in Herdr${f.info.ssh ? ` on ${f.info.label}` : ""} and it will appear here.`);
+      if (f.snapshot.panes.length === 0)
+        this.showEmpty(
+          `Floor ${f.number} is empty`,
+          `Open a workspace or pane in Herdr${f.info.ssh ? ` on ${f.info.label}` : ""} and it will appear here.`,
+        );
       else this.empty.hidden = true;
     }
     conn.classList.toggle("ok", ok);
@@ -171,8 +212,14 @@ export class Hud {
   private renderStats(panes: PaneInfo[]) {
     const counts: Record<AgentStatus, number> = { working: 0, idle: 0, blocked: 0, done: 0, unknown: 0 };
     let agents = 0;
-    for (const p of panes) if (p.agent) { agents++; counts[p.agent_status]++; }
-    const chips = [`<span class="chip"><b>${agents}</b> agent${agents === 1 ? "" : "s"} · <b>${panes.length}</b> pane${panes.length === 1 ? "" : "s"}</span>`];
+    for (const p of panes)
+      if (p.agent) {
+        agents++;
+        counts[p.agent_status]++;
+      }
+    const chips = [
+      `<span class="chip"><b>${agents}</b> agent${agents === 1 ? "" : "s"} · <b>${panes.length}</b> pane${panes.length === 1 ? "" : "s"}</span>`,
+    ];
     for (const st of ORDER) {
       if (st === "unknown" && counts[st] === 0) continue;
       chips.push(`<span class="chip st-${st} ${counts[st] === 0 ? "zero" : ""}"><i class="dot"></i>${counts[st]} ${st}</span>`);
@@ -189,13 +236,16 @@ export class Hud {
     for (const f of [...this.floors].reverse()) {
       const state = floorProblem(f.info);
       if (many) {
-        html.push(`<h2 class="floor-h conn-${f.info.state} ${f.info.id === this.current ? "current" : ""}"><span class="fn">${f.number}F</span>` +
-          `<span class="name">${esc(f.info.label)}</span>${state ? `<span class="state" title="${esc(f.info.message)}">${esc(state)}</span>` : ""}</h2>`);
+        html.push(
+          `<h2 class="floor-h conn-${f.info.state} ${f.info.id === this.current ? "current" : ""}"><span class="fn">${f.number}F</span>` +
+            `<span class="name">${esc(f.info.label)}</span>${state ? `<span class="state" title="${esc(f.info.message)}">${esc(state)}</span>` : ""}</h2>`,
+        );
       }
       if (f.snapshot) html.push(`<div class="floor-body conn-${f.info.state}">${this.rosterGroups(f.snapshot)}</div>`);
     }
     this.roster.innerHTML = html.join("");
-    for (const el of this.roster.querySelectorAll<HTMLElement>(".pane")) el.addEventListener("click", () => this.h.onSelect(el.dataset.pane!));
+    for (const el of this.roster.querySelectorAll<HTMLElement>(".pane"))
+      el.addEventListener("click", () => this.h.onSelect(el.dataset.pane!));
   }
 
   private rosterGroups(s: Snapshot): string {
@@ -207,15 +257,17 @@ export class Hud {
       const key = ws.repo?.key ?? `dir:${panes[0]?.cwd ?? ws.label}`;
       const name = ws.repo?.name ?? (panes[0]?.cwd?.split("/").pop() || "loose");
       const g = groups.get(key) ?? { name, rows: [] };
-      g.rows.push(`<div class="room"><span>${esc(ws.label || ws.workspace_id)}</span>${ws.focused ? '<em title="focused in Herdr">●</em>' : ""}</div>`);
+      g.rows.push(
+        `<div class="room"><span>${esc(ws.label || ws.workspace_id)}</span>${ws.focused ? '<em title="focused in Herdr">●</em>' : ""}</div>`,
+      );
       for (const p of panes) {
         this.order.push(p.pane_id);
         const t = this.tracked.get(p.pane_id);
         const title = p.title || p.cwd?.split("/").pop() || p.pane_id;
         g.rows.push(
           `<button class="pane st-${p.agent_status} ${p.pane_id === this.selected ? "selected" : ""}" data-pane="${esc(p.pane_id)}">` +
-          `<i class="dot"></i><span class="kind">${esc(p.agent ?? "shell")}</span><span class="title">${esc(title)}</span>${contextMeter(p)}` +
-          `<span class="age" data-since="${t?.since ?? Date.now()}">${ago(t?.since ?? Date.now())}</span></button>`,
+            `<i class="dot"></i><span class="kind">${esc(p.agent ?? "shell")}</span><span class="title">${esc(title)}</span>${contextMeter(p)}` +
+            `<span class="age" data-since="${t?.since ?? Date.now()}">${ago(t?.since ?? Date.now())}</span></button>`,
         );
       }
       groups.set(key, g);
@@ -224,17 +276,24 @@ export class Hud {
   }
 
   private renderFeed() {
-    if (this.items.length === 0) { this.feed.innerHTML = `<div class="quiet">Quiet so far. Status changes show up here.</div>`; return; }
+    if (this.items.length === 0) {
+      this.feed.innerHTML = `<div class="quiet">Quiet so far. Status changes show up here.</div>`;
+      return;
+    }
     const many = this.floors.length > 1;
     const numberOf = new Map(this.floors.map((f) => [f.info.id, f.number]));
-    this.feed.innerHTML = this.items.slice(0, 12).map((it) => {
-      const n = numberOf.get(it.floor);
-      const tag = many && n ? `<b class="fl">${n}F</b>` : "";
-      return `<button class="ev st-${it.status}" data-pane="${esc(it.paneId)}"><i class="dot"></i><span>${tag}${esc(it.text)}</span><time data-since="${it.at}">${ago(it.at)}</time></button>`;
-    }).join("");
-    for (const el of this.feed.querySelectorAll<HTMLElement>(".ev")) el.addEventListener("click", () => {
-      if (this.tracked.has(el.dataset.pane!)) this.h.onSelect(el.dataset.pane!);
-    });
+    this.feed.innerHTML = this.items
+      .slice(0, 12)
+      .map((it) => {
+        const n = numberOf.get(it.floor);
+        const tag = many && n ? `<b class="fl">${n}F</b>` : "";
+        return `<button class="ev st-${it.status}" data-pane="${esc(it.paneId)}"><i class="dot"></i><span>${tag}${esc(it.text)}</span><time data-since="${it.at}">${ago(it.at)}</time></button>`;
+      })
+      .join("");
+    for (const el of this.feed.querySelectorAll<HTMLElement>(".ev"))
+      el.addEventListener("click", () => {
+        if (this.tracked.has(el.dataset.pane!)) this.h.onSelect(el.dataset.pane!);
+      });
   }
 
   private refreshTimes() {
@@ -268,10 +327,16 @@ function ago(ts: number): string {
 
 // localStorage can be missing or throw (private windows, blocked site data).
 function load(key: string): string | null {
-  try { return localStorage.getItem(key); } catch { return null; }
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 function save(key: string, value: string) {
-  try { localStorage.setItem(key, value); } catch {}
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
 }
 
 function esc(s: string): string {

@@ -25,8 +25,8 @@ import os from "node:os";
 import path from "node:path";
 import { RUNTIME, errorMessage, paneSession, toSnapshot } from "./herdr.js";
 
-export const LOCAL_SOCKET = process.env.HERDR_SOCKET_PATH ?? process.env.HERDR_SOCKET
-  ?? path.join(os.homedir(), ".config", "herdr", "herdr.sock");
+export const LOCAL_SOCKET =
+  process.env.HERDR_SOCKET_PATH ?? process.env.HERDR_SOCKET ?? path.join(os.homedir(), ".config", "herdr", "herdr.sock");
 export const SSH = process.env.KAUAK_SSH ?? process.env.AGENT_OFFICE_SSH ?? "ssh";
 // BatchMode: never prompt for a password or host key; fail instead.
 export const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"];
@@ -52,13 +52,29 @@ const REMOTE_PROBE = `sh -c '${[
 // needs a pane_id, so we rely on pane.updated (fires on status changes too).
 // Kauak has no events of its own: each of these becomes a fresh snapshot.
 const SUBSCRIPTIONS = [
-  "workspace.created", "workspace.updated", "workspace.metadata_updated",
-  "workspace.renamed", "workspace.moved", "workspace.reordered",
-  "workspace.closed", "workspace.focused",
-  "worktree.created", "worktree.opened", "worktree.removed",
-  "tab.created", "tab.closed", "tab.focused", "tab.renamed", "tab.moved",
-  "pane.created", "pane.closed", "pane.updated", "pane.focused",
-  "pane.moved", "pane.exited", "pane.agent_detected",
+  "workspace.created",
+  "workspace.updated",
+  "workspace.metadata_updated",
+  "workspace.renamed",
+  "workspace.moved",
+  "workspace.reordered",
+  "workspace.closed",
+  "workspace.focused",
+  "worktree.created",
+  "worktree.opened",
+  "worktree.removed",
+  "tab.created",
+  "tab.closed",
+  "tab.focused",
+  "tab.renamed",
+  "tab.moved",
+  "pane.created",
+  "pane.closed",
+  "pane.updated",
+  "pane.focused",
+  "pane.moved",
+  "pane.exited",
+  "pane.agent_detected",
   "layout.updated",
 ].map((type) => ({ type }));
 
@@ -74,7 +90,7 @@ function herdrRequest(socketPath, method, params = {}) {
     const sock = net.createConnection(socketPath);
     let buf = "";
     sock.setEncoding("utf8");
-    sock.on("connect", () => sock.write(JSON.stringify({ id, method, params }) + "\n"));
+    sock.on("connect", () => sock.write(`${JSON.stringify({ id, method, params })}\n`));
     sock.on("data", (chunk) => {
       buf += chunk;
       const nl = buf.indexOf("\n");
@@ -125,7 +141,14 @@ export class Machine extends EventEmitter {
 
   /** The floor's Kauak MachineInfo. */
   get info() {
-    return { id: this.id, label: this.label, ssh: this.ssh, state: this.state, message: this.message, runtime: { name: RUNTIME, version: this.raw?.version ?? null } };
+    return {
+      id: this.id,
+      label: this.label,
+      ssh: this.ssh,
+      state: this.state,
+      message: this.message,
+      runtime: { name: RUNTIME, version: this.raw?.version ?? null },
+    };
   }
 
   /** Settings that go in the config file. */
@@ -137,7 +160,9 @@ export class Machine extends EventEmitter {
     return c;
   }
 
-  start() { this.connect(); }
+  start() {
+    this.connect();
+  }
 
   stop() {
     this.stopped = true;
@@ -162,7 +187,13 @@ export class Machine extends EventEmitter {
 
   /** The pane's screen as ANSI text; with `lines`, the last `lines` rows of its history and screen. */
   async readPane(paneId, lines = null) {
-    const res = await this.call("pane.read", { pane_id: paneId, source: lines ? "recent" : "visible", format: "ansi", strip_ansi: false, lines });
+    const res = await this.call("pane.read", {
+      pane_id: paneId,
+      source: lines ? "recent" : "visible",
+      format: "ansi",
+      strip_ansi: false,
+      lines,
+    });
     return res.read.text;
   }
 
@@ -200,9 +231,16 @@ export class Machine extends EventEmitter {
    * first pane's id.
    */
   async createRoom(room) {
-    const res = room.kind === "worktree"
-      ? await this.call("worktree.create", { cwd: room.cwd, branch: room.branch, base: room.base ?? null, label: room.label ?? null, focus: false })
-      : await this.call("workspace.create", { cwd: room.cwd, label: room.label ?? null, focus: false });
+    const res =
+      room.kind === "worktree"
+        ? await this.call("worktree.create", {
+            cwd: room.cwd,
+            branch: room.branch,
+            base: room.base ?? null,
+            label: room.label ?? null,
+            focus: false,
+          })
+        : await this.call("workspace.create", { cwd: room.cwd, label: room.label ?? null, focus: false });
     return res.root_pane.pane_id;
   }
 
@@ -280,7 +318,7 @@ export class Machine extends EventEmitter {
     let answered = false;
     sock.setEncoding("utf8");
     sock.on("connect", () => {
-      sock.write(JSON.stringify({ id: "office:sub", method: "events.subscribe", params: { subscriptions: SUBSCRIPTIONS } }) + "\n");
+      sock.write(`${JSON.stringify({ id: "office:sub", method: "events.subscribe", params: { subscriptions: SUBSCRIPTIONS } })}\n`);
     });
     sock.on("data", (chunk) => {
       if (!answered) {
@@ -295,13 +333,24 @@ export class Machine extends EventEmitter {
         buf = buf.slice(nl + 1);
         if (!line) continue;
         let msg;
-        try { msg = JSON.parse(line); } catch { continue; }
-        if (msg.error) { console.error(`[bridge] ${this.label}: subscribe error:`, msg.error); continue; }
+        try {
+          msg = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (msg.error) {
+          console.error(`[bridge] ${this.label}: subscribe error:`, msg.error);
+          continue;
+        }
         if (msg.event) this.scheduleRefresh();
       }
     });
-    const lost = (why) => { if (this.sub === sock) this.fail(why); };
-    sock.on("error", (err) => lost(err.code === "ENOENT" || err.code === "ECONNREFUSED" ? `Herdr is not running (${err.code})` : err.message));
+    const lost = (why) => {
+      if (this.sub === sock) this.fail(why);
+    };
+    sock.on("error", (err) =>
+      lost(err.code === "ENOENT" || err.code === "ECONNREFUSED" ? `Herdr is not running (${err.code})` : err.message),
+    );
     sock.on("close", () => lost(answered ? "Herdr closed the event stream" : `no reply from Herdr${this.ssh ? ` on ${this.ssh}` : ""}`));
   }
 
@@ -327,19 +376,37 @@ export class Machine extends EventEmitter {
   async openTunnel() {
     fs.mkdirSync(TUNNEL_DIR, { recursive: true, mode: 0o700 });
     fs.chmodSync(TUNNEL_DIR, 0o700); // the tunnel socket reaches a remote shell; keep it ours
-    const remote = this.remoteSocket ?? await this.probeRemoteSocket();
-    try { fs.unlinkSync(this.socketPath); } catch {}
+    const remote = this.remoteSocket ?? (await this.probeRemoteSocket());
+    try {
+      fs.unlinkSync(this.socketPath);
+    } catch {}
     // ControlPath=none: with ControlMaster in ~/.ssh/config, `ssh -N -L` would
     // hand the forward to the shared master and exit 0 right away, leaving us
     // nothing to watch or kill. The tunnel gets its own connection instead.
-    const child = spawn(SSH, [
-      ...SSH_OPTS, "-o", "ControlPath=none", "-N", "-o", "ExitOnForwardFailure=yes", "-o", "StreamLocalBindUnlink=yes",
-      "-L", `${this.socketPath}:${remote}`, "--", this.ssh,
-    ], { stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawn(
+      SSH,
+      [
+        ...SSH_OPTS,
+        "-o",
+        "ControlPath=none",
+        "-N",
+        "-o",
+        "ExitOnForwardFailure=yes",
+        "-o",
+        "StreamLocalBindUnlink=yes",
+        "-L",
+        `${this.socketPath}:${remote}`,
+        "--",
+        this.ssh,
+      ],
+      { stdio: ["ignore", "ignore", "pipe"] },
+    );
     this.tunnel = child;
     let stderr = "";
     child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (d) => { stderr = (stderr + d).slice(-2000); });
+    child.stderr.on("data", (d) => {
+      stderr = (stderr + d).slice(-2000);
+    });
     const why = (code, signal) => lastLine(stderr) || (signal ? `killed by ${signal}` : `connection closed (exit ${code})`);
 
     await new Promise((resolve, reject) => {
@@ -354,8 +421,11 @@ export class Machine extends EventEmitter {
         reject(new Error(message));
       };
       const poll = setInterval(() => {
-        if (fs.existsSync(this.socketPath)) { settled = true; clearInterval(poll); resolve(); }
-        else if (Date.now() - started > TUNNEL_READY_MS) died("ssh: timed out opening the tunnel");
+        if (fs.existsSync(this.socketPath)) {
+          settled = true;
+          clearInterval(poll);
+          resolve();
+        } else if (Date.now() - started > TUNNEL_READY_MS) died("ssh: timed out opening the tunnel");
       }, 100);
       child.once("exit", (code, signal) => died(`ssh: ${why(code, signal)}`));
       child.once("error", (err) => died(`ssh: ${err.message}`));
@@ -373,7 +443,10 @@ export class Machine extends EventEmitter {
     this.tunnel = null;
     child?.kill();
     // Only ever remove our own tunnel socket, never a Herdr socket.
-    if (this.ssh) try { fs.unlinkSync(this.socketPath); } catch {}
+    if (this.ssh)
+      try {
+        fs.unlinkSync(this.socketPath);
+      } catch {}
   }
 
   probeRemoteSocket() {
@@ -389,5 +462,12 @@ export class Machine extends EventEmitter {
 
 /** Last line ssh printed, without its own "ssh: " prefix. */
 export function lastLine(s) {
-  return (s.trim().split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? "").replace(/^ssh: /, "");
+  return (
+    s
+      .trim()
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .pop() ?? ""
+  ).replace(/^ssh: /, "");
 }

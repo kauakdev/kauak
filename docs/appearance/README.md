@@ -31,6 +31,15 @@ It goes well with the **Moonlit summit** background.
 
 ![Alpine basecamp](basecamp.jpg)
 
+## Suits
+
+The `suit` character model wears a jacket and trousers in `shell` over a shirt
+in `visor`, with a tie and a pocket square in the agent's color. From behind
+you see the shirt collar and the jacket's back seam. No included package uses
+it; a custom package picks it with `"model": "suit"`.
+
+![The suit model in a custom law firm office](suit.jpg)
+
 Appearance changes do not create, close, rename, focus or send input to
 terminal sessions. Which terminals the office shows is up to the bridge and
 its runtime adapters, never an appearance package. The bridge serves the
@@ -150,7 +159,7 @@ developer removing or breaking a default is a build/runtime programming error.
 | Capability | Host and implemented contract |
 |---|---|
 | `office.theme` | Browser. Ground, path, walls, wing/focus/rug/light palettes; material colors; wall height; checker/inset/planks floor pattern; botanical/technical/alpine décor and lighting intensity; 1–4 banner anchors. |
-| `office.characters` | Browser. Human/robot/climber silhouette templates; skin/hair/shell/visor colors (a robot's body and visor, a climber's helmet and goggles); animation tempo for each of the five states; motion amplitude and working glyphs. Semantic status colors and agent-kind labels stay in the core. |
+| `office.characters` | Browser. Human/robot/climber/suit silhouette templates; skin/hair/shell/visor colors (a robot's body and visor, a climber's helmet and goggles, a suit's jacket and shirt); animation tempo for each of the five states; motion amplitude and working glyphs. Semantic status colors and agent-kind labels stay in the core. |
 
 The scene consumes only validated capability data. The core still owns
 snapshot interpretation, room/desk layout, session identity, camera, selection,

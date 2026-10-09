@@ -122,7 +122,7 @@ function characters(v: unknown): Characters {
   if (!Array.isArray(a.glyphs) || a.glyphs.length < 1 || a.glyphs.length > 16) fail(`${p}.animation.glyphs`, "expected 1–16 glyphs");
   return {
     apiVersion: version(o.apiVersion, `${p}.apiVersion`),
-    model: choice(o.model, ["human", "robot", "climber"], `${p}.model`),
+    model: choice(o.model, ["human", "robot", "climber", "suit"], `${p}.model`),
     skin: colors(o.skin, `${p}.skin`),
     hair: colors(o.hair, `${p}.hair`),
     shell: color(o.shell, `${p}.shell`),

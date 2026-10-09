@@ -94,6 +94,12 @@ test("the basecamp templates are accepted for custom packages, and unknown templ
     assert.throws(() => validateManifest(q), /expected/);
   }
 });
+test("the suit template is accepted for custom packages", () => {
+  const p = structuredClone(builtins[0]);
+  p.id = "example.firm";
+  p.capabilities["office.characters"].model = "suit";
+  assert.equal(validateManifest(p).capabilities["office.characters"].model, "suit");
+});
 test("registry rejects collisions and preserves the default when saved packages fail validation", () => {
   const bad = custom();
   bad.capabilities["office.theme"].apiVersion = 2;

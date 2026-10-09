@@ -265,6 +265,7 @@ function drawBody(
   const y = -lift,
     e = eye * 1.2;
   if (look.model === "climber") drawClimber(g, look, color, skin, hair, kit, y, back, e);
+  else if (look.model === "suit") drawSuit(g, look, color, skin, hair, y, back, e);
   else if (look.model === "robot") {
     g.roundRect(-9, y - 26, 18, 22, 4)
       .fill(skin)
@@ -392,6 +393,60 @@ function drawClimber(
   g.circle(2.6 + e, y - 31.6, 1).fill(0x222222);
 }
 
+/**
+ * Business dress: a jacket in `shell` over a shirt in `visor`, with a tie and
+ * a pocket square in the agent's color; from behind, the collar and back seam.
+ */
+function drawSuit(g: Graphics, look: Characters, color: number, skin: number, hair: number, y: number, back: boolean, e: number) {
+  const jacket = hex(look.shell),
+    shirt = hex(look.visor),
+    edge = shade(jacket, 0.6);
+  g.ellipse(0, y - 15, 10, 12)
+    .fill(jacket)
+    .stroke({ color: edge, width: 1 });
+  if (back) {
+    g.moveTo(-4.5, y - 26.3)
+      .quadraticCurveTo(0, y - 24.4, 4.5, y - 26.3)
+      .stroke({ color: shirt, width: 1.6 }); // collar
+    g.moveTo(0, y - 24)
+      .lineTo(0, y - 3.4)
+      .stroke({ color: edge, width: 0.8 }); // back seam
+    g.circle(0, y - 33, 7.5)
+      .fill(skin)
+      .stroke({ color: shade(skin, 0.7), width: 1 });
+    g.circle(0, y - 33.5, 7.7).fill(hair);
+    return;
+  }
+  g.poly([-4.2, y - 26.2, 4.2, y - 26.2, 0, y - 13]).fill(shirt); // between the lapels
+  g.poly([-1.3, y - 24, 1.3, y - 24, 1.9, y - 14.6, 0, y - 12.4, -1.9, y - 14.6])
+    .fill(color)
+    .stroke({ color: shade(color, 0.6), width: 0.6 }); // tie
+  g.poly([-1.6, y - 25.9, 1.6, y - 25.9, 1.1, y - 23.7, -1.1, y - 23.7]).fill(shade(color, 0.8)); // its knot
+  for (const s of [-1, 1])
+    g.poly([s * 4.2, y - 26.2, s * 6.9, y - 20.4, 0, y - 12.8])
+      .fill(shade(jacket, 1.18))
+      .stroke({ color: edge, width: 0.8 }); // lapels
+  for (const s of [-1, 1])
+    g.poly([s * 4.3, y - 26.4, s * 0.4, y - 25.4, s * 2.5, y - 22.6])
+      .fill(shirt)
+      .stroke({ color: shade(shirt, 0.7), width: 0.6 }); // shirt collar
+  g.circle(0, y - 10.2, 0.9).fill(edge); // buttons
+  g.circle(0, y - 6.6, 0.9).fill(edge);
+  g.poly([4.4, y - 18.6, 7.4, y - 19, 6.2, y - 20.8]).fill(color); // pocket square
+  g.moveTo(4, y - 18.4)
+    .lineTo(7.9, y - 18.9)
+    .stroke({ color: edge, width: 0.8 });
+  g.circle(0, y - 33, 7.5)
+    .fill(skin)
+    .stroke({ color: shade(skin, 0.7), width: 1 }); // head
+  g.moveTo(-8, y - 34)
+    .arc(0, y - 34, 8, Math.PI, Math.PI * 2)
+    .closePath()
+    .fill(hair);
+  g.circle(-2.6 + e, y - 33, 1).fill(0x222222);
+  g.circle(2.6 + e, y - 33, 1).fill(0x222222);
+}
+
 /** A shoe, or a climber's boot, at (x, y). */
 function foot(g: Graphics, x: number, y: number, boots: boolean) {
   if (!boots) {
@@ -446,7 +501,14 @@ export function makeCharacter(
   const climber = look.model === "climber";
   const skin = look.model === "robot" ? hex(look.shell) : hex(look.skin[seed % look.skin.length]!);
   const hair = hex(look.hair[(seed >>> 4) % look.hair.length]!);
-  const pants = look.model === "robot" ? shade(skin, 0.72) : climber ? mix(0x2b3140, color, 0.15) : shade(color, 0.42);
+  const pants =
+    look.model === "robot"
+      ? shade(skin, 0.72)
+      : climber
+        ? mix(0x2b3140, color, 0.15)
+        : look.model === "suit"
+          ? shade(hex(look.shell), 0.85) // the suit's trousers
+          : shade(color, 0.42);
   const can = CANS[(seed >>> 8) % CANS.length]!;
   const kit: Kit = { pack: PACKS[(seed >>> 12) % PACKS.length]!, rope: ROPES[(seed >>> 16) % ROPES.length]! };
   const palm = climber ? GLOVE : skin;

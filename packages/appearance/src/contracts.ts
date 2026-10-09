@@ -48,7 +48,7 @@ export interface Theme {
 }
 export interface Characters {
   apiVersion: 1;
-  model: "human" | "robot" | "climber";
+  model: "human" | "robot" | "climber" | "suit";
   skin: string[];
   hair: string[];
   shell: string;

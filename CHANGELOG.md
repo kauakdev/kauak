@@ -24,6 +24,9 @@ turns Unreleased into the new version's section, as
 - **Download harbor.json** in the appearance settings saves the example
   package to start one's own from. The example moves from
   `docs/appearance/harbor.json` to `packages/appearance/examples/harbor.json`.
+- A `suit` character model for appearance packages: a jacket and trousers in
+  `shell`, a shirt in `visor`, and a tie and pocket square in the agent's
+  color.
 
 ### Changed
 

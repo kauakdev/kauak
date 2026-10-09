@@ -1,15 +1,25 @@
 import {
   CAPABILITIES,
+  type AppearancePackage,
   type BannerAnchor,
   type BrandBanner,
   type Capability,
   type Characters,
-  type PluginManifest,
   type Preferences,
   type Theme,
 } from "./contracts";
 
-export const SETTINGS_KEY = "agent-office.plugins.v1";
+export const SETTINGS_KEY = "kauak.appearance.v1";
+/** Where settings were saved before the rename. loadPreferences copies them to SETTINGS_KEY once. */
+export const LEGACY_SETTINGS_KEY = "agent-office.plugins.v1";
+// The included packages' ids before the rename, which selections saved under LEGACY_SETTINGS_KEY name.
+const LEGACY_IDS = new Map([
+  ["agent-office.classic", "kauak.classic"],
+  ["agent-office.orbital", "kauak.orbital"],
+  ["agent-office.basecamp", "kauak.basecamp"],
+]);
+// Included packages use kauak.*, and used agent-office.* before the rename, so an old copy of one cannot shadow it.
+const RESERVED_PREFIXES = ["kauak.", "agent-office."];
 export const MAX_PACKAGE_BYTES = 64 * 1024;
 export const MAX_PACKAGES = 8;
 export const MAX_BANNER_BYTES = 1_500_000;
@@ -136,29 +146,20 @@ function characters(v: unknown): Characters {
 }
 
 /** Reconstruct every accepted field: no prototype keys, executable code or resource URLs. */
-export function validateManifest(value: unknown, trusted = false): PluginManifest {
+export function validateManifest(value: unknown, trusted = false): AppearancePackage {
   const o = object(value, "package");
   keys(o, ["schemaVersion", "id", "name", "version", "description", "capabilities"], "package");
   const packageId = id(o.id, "package.id");
-  if (!trusted && packageId.startsWith("agent-office.")) fail("package.id", "agent-office.* is reserved for included packages");
+  if (!trusted && RESERVED_PREFIXES.some((prefix) => packageId.startsWith(prefix)))
+    fail("package.id", "kauak.* and agent-office.* are reserved for included packages");
   const ver = str(o.version, "package.version", 32);
   if (!/^\d+\.\d+\.\d+$/.test(ver)) fail("package.version", "expected a version such as 1.0.0");
   const caps = object(o.capabilities, "package.capabilities");
   keys(caps, Object.keys(CAPABILITIES), "package.capabilities");
   if (!Object.keys(caps).length) fail("package.capabilities", "declare at least one capability");
-  const capabilities: PluginManifest["capabilities"] = {};
+  const capabilities: AppearancePackage["capabilities"] = {};
   if (caps["office.theme"] !== undefined) capabilities["office.theme"] = theme(caps["office.theme"]);
   if (caps["office.characters"] !== undefined) capabilities["office.characters"] = characters(caps["office.characters"]);
-  if (caps["terminal.provider"] !== undefined) {
-    if (!trusted) fail("terminal.provider", "provider imports are not supported; use a visual package");
-    const p = object(caps["terminal.provider"], "terminal.provider");
-    keys(p, ["apiVersion", "runtime", "adapter"], "terminal.provider");
-    capabilities["terminal.provider"] = {
-      apiVersion: version(p.apiVersion, "terminal.provider.apiVersion"),
-      runtime: choice(p.runtime, ["bridge"], "terminal.provider.runtime"),
-      adapter: choice(p.adapter, ["herdr"], "terminal.provider.adapter"),
-    };
-  }
   return {
     schemaVersion: version(o.schemaVersion, "package.schemaVersion"),
     id: packageId,
@@ -169,7 +170,7 @@ export function validateManifest(value: unknown, trusted = false): PluginManifes
   };
 }
 
-export function parsePackage(text: string): PluginManifest {
+export function parsePackage(text: string): AppearancePackage {
   if (new TextEncoder().encode(text).byteLength > MAX_PACKAGE_BYTES) fail("package", "file exceeds 64 KB");
   let v: unknown;
   try {
@@ -180,8 +181,8 @@ export function parsePackage(text: string): PluginManifest {
   return validateManifest(v);
 }
 
-export class PluginRegistry {
-  private entries = new Map<string, PluginManifest>();
+export class AppearanceRegistry {
+  private entries = new Map<string, AppearancePackage>();
   readonly warnings: string[] = [];
   constructor(builtins: unknown[], custom: unknown[] = []) {
     for (const v of builtins)
@@ -199,7 +200,7 @@ export class PluginRegistry {
     for (const [cap, meta] of Object.entries(CAPABILITIES))
       if (!this.entries.get(meta.defaultId)?.capabilities[cap as Capability]) throw new Error(`Missing default for ${cap}`);
   }
-  register(value: unknown, trusted = false): PluginManifest {
+  register(value: unknown, trusted = false): AppearancePackage {
     const p = validateManifest(value, trusted);
     if (this.entries.has(p.id)) throw new Error(`Package ${p.id} is already installed. Remove the custom package before replacing it.`);
     this.entries.set(p.id, p);
@@ -210,8 +211,8 @@ export class PluginRegistry {
   }
   resolve(cap: Capability, requested: string) {
     const p = this.entries.get(requested);
-    if (p?.capabilities[cap]) return { plugin: p, fallback: false };
-    return { plugin: this.entries.get(CAPABILITIES[cap].defaultId)!, fallback: true };
+    if (p?.capabilities[cap]) return { package: p, fallback: false };
+    return { package: this.entries.get(CAPABILITIES[cap].defaultId)!, fallback: true };
   }
 }
 
@@ -245,35 +246,50 @@ export interface StorageLike {
   setItem(key: string, value: string): void;
 }
 export function loadPreferences(storage: StorageLike): { value: Preferences; warnings: string[] } {
-  const value = defaults(),
-    warnings: string[] = [];
   try {
     const raw = storage.getItem(SETTINGS_KEY);
-    if (!raw) return { value, warnings };
-    if (raw.length > MAX_BANNER_BYTES + MAX_PACKAGE_BYTES * MAX_PACKAGES + 4096) throw new Error("saved settings exceed the size limit");
-    const o = object(JSON.parse(raw), "settings");
-    version(o.schemaVersion, "settings.schemaVersion");
-    const s = object(o.selections, "settings.selections");
-    for (const cap of Object.keys(CAPABILITIES) as Capability[]) if (typeof s[cap] === "string") value.selections[cap] = s[cap] as string;
-    // This release's bridge remains Herdr. Persisted browser data cannot select another adapter.
-    value.selections["terminal.provider"] = CAPABILITIES["terminal.provider"].defaultId;
-    if (Array.isArray(o.packages))
-      for (const p of o.packages.slice(0, MAX_PACKAGES)) {
-        try {
-          value.packages.push(parsePackage(JSON.stringify(p)));
-        } catch (e) {
-          warnings.push(`Skipped a saved package: ${(e as Error).message}`);
-        }
-      }
-    if (o.banner != null)
-      try {
-        value.banner = validateBanner(o.banner);
-      } catch {
-        warnings.push("The saved banner could not be restored. Upload it again.");
-      }
+    if (raw !== null) return readPreferences(raw);
+    // The first time, settings saved before the rename are copied to SETTINGS_KEY with the
+    // included packages' new ids. The old key is left as it was, for an older version, and
+    // is not read once the copy is saved; a copy that cannot be saved is tried on the next load.
+    const legacy = storage.getItem(LEGACY_SETTINGS_KEY);
+    if (!legacy) return { value: defaults(), warnings: [] };
+    const copied = readPreferences(legacy, LEGACY_IDS);
+    savePreferences(storage, copied.value);
+    return copied;
   } catch {
-    warnings.push("Saved appearance settings could not be read. Included packages are being used.");
+    return { value: defaults(), warnings: ["Saved appearance settings could not be read. Included packages are being used."] };
   }
+}
+/** A saved package or banner that fails is skipped with a warning; settings that cannot be read at all throw. */
+function readPreferences(raw: string, renamed = new Map<string, string>()): { value: Preferences; warnings: string[] } {
+  const value = defaults(),
+    warnings: string[] = [];
+  if (!raw) return { value, warnings };
+  if (raw.length > MAX_BANNER_BYTES + MAX_PACKAGE_BYTES * MAX_PACKAGES + 4096) throw new Error("saved settings exceed the size limit");
+  const o = object(JSON.parse(raw), "settings");
+  version(o.schemaVersion, "settings.schemaVersion");
+  const s = object(o.selections, "settings.selections");
+  // Only the capabilities this version has are read, so a selection saved for one it
+  // no longer has (terminal.provider, in earlier versions) is dropped.
+  for (const cap of Object.keys(CAPABILITIES) as Capability[]) {
+    const selected = s[cap];
+    if (typeof selected === "string") value.selections[cap] = renamed.get(selected) ?? selected;
+  }
+  if (Array.isArray(o.packages))
+    for (const p of o.packages.slice(0, MAX_PACKAGES)) {
+      try {
+        value.packages.push(parsePackage(JSON.stringify(p)));
+      } catch (e) {
+        warnings.push(`Skipped a saved package: ${(e as Error).message}`);
+      }
+    }
+  if (o.banner != null)
+    try {
+      value.banner = validateBanner(o.banner);
+    } catch {
+      warnings.push("The saved banner could not be restored. Upload it again.");
+    }
   return { value, warnings };
 }
 export function savePreferences(storage: StorageLike, value: Preferences): string | null {

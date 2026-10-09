@@ -168,4 +168,5 @@ flat sheet is `rotateX(60deg) rotateZ(45deg)`).
 
 Appearance packages (`packages/appearance/packages/`, validated by
 `packages/appearance/src/`) change how the office and its people look, never
-what the bridge does. See the [plugin and banner guide](plugins/README.md).
+what the bridge does. See the
+[appearance and banner guide](appearance/README.md).

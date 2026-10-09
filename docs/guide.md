@@ -205,6 +205,5 @@ to close settings and see the full scene. For a preview without changing your
 saved choice, add `&background=alpine` (or `summit`, `contours`, `original`) to a
 demo URL such as `?demo&background=alpine`.
 
-See the [plugin and banner guide](plugins/README.md) for authoring,
-validation, capability contracts, screenshots and current limits. Herdr remains
-the included provider; custom provider loading is not part of this release.
+See the [appearance and banner guide](appearance/README.md) for authoring,
+validation, capability contracts, screenshots and current limits.

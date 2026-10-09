@@ -1,4 +1,4 @@
-# Visual plugins and company banners
+# Appearance packages and company banners
 
 This release adds declarative appearance packages and local company branding.
 The original **Classic office** is the default. **Orbital workshop** changes the
@@ -31,9 +31,9 @@ It goes well with the **Moonlit summit** background.
 
 ![Alpine basecamp](basecamp.jpg)
 
-Herdr remains the included provider. Appearance changes do not create, close,
-rename, focus or send input to provider sessions. Custom provider adapters are
-outside this release.
+Appearance changes do not create, close, rename, focus or send input to
+terminal sessions. Which terminals the office shows is up to the bridge and
+its runtime adapters, never an appearance package.
 
 ## Try it
 
@@ -73,6 +73,11 @@ leaves the previous banner intact. Storage/quota errors are visible and leave
 the previously saved configuration active. Clearing site data removes these
 local settings; they do not sync between devices or origins.
 
+The settings are saved under the `kauak.appearance.v1` key. Settings saved
+before the rename, under `agent-office.plugins.v1`, are copied there once, the
+first time the page loads without it, with the included packages' new IDs. The
+old key is left as it was, for an older version, and is not read after that.
+
 ## Author and load a package
 
 Copy [harbor.json](harbor.json), change its ID/name and edit its palette. This
@@ -86,8 +91,9 @@ kept. Replace a package by removing it and importing its new version.
 For a package shipped with the repo, add its JSON to
 `packages/appearance/packages/`, then include it in `bundledPackages` in
 `packages/web/src/appearance/catalog.ts`. There is no per-package switch in the
-scene. IDs starting with `agent-office.` are reserved for included packages;
-custom IDs can use lowercase letters, numbers, dots and hyphens, for example
+scene. IDs starting with `kauak.` are reserved for included packages, and so
+are those starting with `agent-office.`, their IDs before the rename; custom
+IDs can use lowercase letters, numbers, dots and hyphens, for example
 `company.harbor`.
 
 The public API is [contracts.ts](../../packages/appearance/src/contracts.ts).
@@ -121,7 +127,6 @@ developer removing or breaking a default is a build/runtime programming error.
 |---|---|
 | `office.theme` | Browser. Ground, path, walls, wing/focus/rug/light palettes; material colors; wall height; checker/inset/planks floor pattern; botanical/technical/alpine décor and lighting intensity; 1–4 banner anchors. |
 | `office.characters` | Browser. Human/robot/climber silhouette templates; skin/hair/shell/visor colors (a robot's body and visor, a climber's helmet and goggles); animation tempo for each of the five states; motion amplitude and working glyphs. Semantic status colors and agent-kind labels stay in the core. |
-| `terminal.provider` | Bridge descriptor for the included Herdr adapter in the same manifest/registry vocabulary. Importing provider packages and selecting another backend are **not implemented**. Browser preferences are fenced to Herdr. |
 
 The scene consumes only validated capability data. The core still owns
 snapshot interpretation, room/desk layout, session identity, camera, selection,
@@ -134,8 +139,8 @@ camera/floor transitions immediate.
 Furniture has a coherent first extension path through theme **materials** and
 **décor** presets. This version does not provide free furniture placement,
 custom sprite resources or arbitrary renderer templates. New silhouettes or
-primitive templates require a deliberate public API extension, not a plugin
-importing private scene internals.
+primitive templates require a deliberate public API extension, not a package
+that reaches into private scene internals.
 
 ## Banner anchor contract
 
@@ -157,29 +162,30 @@ room of the displayed floor). Coordinates and width use floor tiles; `z` is
 the panel's bottom height and `height` is pixels in the wall plane. `facing`
 is `x` or `y`, selecting the isometric wall axis. Width is 1–7 tiles, height
 20–64 pixels, x/y offsets −3–8 and z 0–40. Themes own these anchor definitions;
-the user's image and preferred anchor ID remain outside the plugin. Choose
+the user's image and preferred anchor ID remain outside the package. Choose
 locations that avoid desks. The included entrance is a supported sign on the
 campus; the room anchor mounts the panel above its back wall.
 
-## Adding a future capability or provider
+## Adding a future capability
 
-Use this envelope and capability registry instead of a separate plugin
-system. Add a versioned data contract to `contracts.ts`, capability/runtime
-metadata and a host-side validator to `registry.ts`. Supply a known default
-and an explicit host implementation, then bind that host to resolved data.
-Keep configuration in its own capability selection. A future bridge provider
-also needs an adapter for discovery, terminal operations, updates, identity
-and cleanup; a manifest alone does not implement it. The current bridge is
-unchanged and never executes custom browser package data.
+Use this envelope and capability registry: appearance packages are data, not
+code. Add a versioned data contract and its entry in `CAPABILITIES` to
+`contracts.ts`, and a validator to `registry.ts`. Supply a known default and an
+explicit host implementation, then bind that host to resolved data. Keep
+configuration in its own capability selection.
 
-Unknown capabilities currently fail validation. Panels, actions, custom
-provider loading, service management, downloaded JavaScript, dependency
-resolution and a marketplace are outside this release.
+A new runtime is not an appearance package: it is a `Runtime` adapter in the
+bridge, under `packages/bridge/src/runtimes/`. The bridge never reads
+appearance packages.
+
+Unknown capabilities currently fail validation. Panels, actions, service
+management, downloaded JavaScript, dependency resolution and a marketplace are
+outside this release.
 
 ## Validation and review evidence
 
 ```sh
-npm run test:plugins
+pnpm test:appearance
 pnpm typecheck
 pnpm build
 pnpm build:demo
@@ -188,8 +194,9 @@ git diff --check
 
 Contract tests cover import incompatibility, bounds, duplicate/reserved IDs,
 code/URL rejection, registry fallback, separate persisted capabilities and
-banners, corrupted storage and quota errors. They compile the public API in
-a temporary directory and do not use a browser or provider.
+banners, corrupted storage and quota errors, and the one-time copy of settings
+saved before the rename. They compile the public API in a temporary directory
+and do not use a browser or the bridge.
 
 Browser checks on **5 October 2026** used a separate Chrome context and the
 demo, with a neutral **Company banner test** image. The tool could not access
@@ -224,7 +231,7 @@ reload. The user's image and screenshot are not included in this repository.
 
 Screenshots: [Classic](classic.jpg), [Orbital](orbital.jpg), [Basecamp](basecamp.jpg),
 [settings](settings.jpg), [mobile](mobile.jpg). These show evolving simulated
-agents, not a synchronized provider benchmark.
+agents, not a synchronized benchmark of real sessions.
 
 Final checks: **7/7 contract tests**, typecheck, normal build, demo build and
 diff whitespace checks passed.

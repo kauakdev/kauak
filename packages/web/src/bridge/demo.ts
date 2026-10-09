@@ -270,7 +270,7 @@ const SNIPPETS: Record<string, string[]> = {
     "",
     "- **working**: typing at the desk",
     "- **blocked**: hand raised, waiting for you",
-    "See the plugin guide for themes.",
+    "See the appearance guide for themes.",
   ],
   sql: [
     "CREATE TABLE refunds (",

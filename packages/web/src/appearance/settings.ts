@@ -1,10 +1,10 @@
-import type { BrandBanner, Characters, PluginManifest, Preferences, Theme } from "@kauak/appearance/contracts";
+import type { AppearancePackage, BrandBanner, Characters, Preferences, Theme } from "@kauak/appearance/contracts";
 import {
   loadPreferences,
   MAX_PACKAGES,
   MAX_PACKAGE_BYTES,
   parsePackage,
-  PluginRegistry,
+  AppearanceRegistry,
   resolveAnchor,
   savePreferences,
 } from "@kauak/appearance/registry";
@@ -20,7 +20,7 @@ interface AppearanceHost {
 }
 export class AppearanceSettings {
   private dialog = document.createElement("dialog");
-  private registry: PluginRegistry;
+  private registry: AppearanceRegistry;
   private prefs: Preferences;
   private bannerImage: HTMLImageElement | null = null;
   private busy = false;
@@ -34,7 +34,7 @@ export class AppearanceSettings {
   ) {
     const loaded = loadPreferences(this.storage);
     this.prefs = loaded.value;
-    this.registry = new PluginRegistry(bundledPackages, this.prefs.packages);
+    this.registry = new AppearanceRegistry(bundledPackages, this.prefs.packages);
     this.startupWarnings = [...loaded.warnings, ...this.registry.warnings];
     this.dialog.id = "appearance";
     this.dialog.setAttribute("aria-labelledby", "appearance-title");
@@ -148,8 +148,8 @@ export class AppearanceSettings {
     return this.dialog.querySelector<T>(`#${id}`)!;
   }
   private apply() {
-    const theme = this.registry.resolve("office.theme", this.prefs.selections["office.theme"]).plugin.capabilities["office.theme"]!;
-    const chars = this.registry.resolve("office.characters", this.prefs.selections["office.characters"]).plugin.capabilities[
+    const theme = this.registry.resolve("office.theme", this.prefs.selections["office.theme"]).package.capabilities["office.theme"]!;
+    const chars = this.registry.resolve("office.characters", this.prefs.selections["office.characters"]).package.capabilities[
       "office.characters"
     ]!;
     this.host.setAppearance(theme, chars);
@@ -163,7 +163,7 @@ export class AppearanceSettings {
       return false;
     }
     this.prefs = next;
-    this.registry = new PluginRegistry(bundledPackages, next.packages);
+    this.registry = new AppearanceRegistry(bundledPackages, next.packages);
     this.startupWarnings = [];
     this.apply();
     this.render(false);
@@ -188,15 +188,15 @@ export class AppearanceSettings {
       const select = this.el<HTMLSelectElement>(field),
         result = this.registry.resolve(cap, this.prefs.selections[cap]);
       select.replaceChildren(...this.registry.list(cap).map((p) => new Option(p.name, p.id)));
-      select.value = result.plugin.id;
-      this.el(desc).textContent = result.plugin.description;
+      select.value = result.package.id;
+      this.el(desc).textContent = result.package.description;
       if (result.fallback)
-        fallback.push(`${cap === "office.theme" ? "Office" : "Characters"} was unavailable. Using ${result.plugin.name}.`);
+        fallback.push(`${cap === "office.theme" ? "Office" : "Characters"} was unavailable. Using ${result.package.name}.`);
     }
     const warning = this.el("appearance-fallback");
     warning.textContent = fallback.join(" ");
     warning.hidden = !fallback.length;
-    const theme = this.registry.resolve("office.theme", this.prefs.selections["office.theme"]).plugin.capabilities["office.theme"]!;
+    const theme = this.registry.resolve("office.theme", this.prefs.selections["office.theme"]).package.capabilities["office.theme"]!;
     const banner = this.prefs.banner,
       anchor = this.el<HTMLSelectElement>("banner-anchor");
     const preferred = banner?.anchorId ?? theme.bannerAnchors[0]!.id,
@@ -227,7 +227,7 @@ export class AppearanceSettings {
       (this.el(field) as HTMLInputElement).disabled = this.busy;
     if (showWarnings && this.startupWarnings.length) this.message(this.startupWarnings.join(" "), true);
   }
-  private packageRow(p: PluginManifest): HTMLLIElement {
+  private packageRow(p: AppearancePackage): HTMLLIElement {
     const row = document.createElement("li"),
       text = document.createElement("span"),
       remove = document.createElement("button");
@@ -275,7 +275,7 @@ export class AppearanceSettings {
       const p = parsePackage(await file.text());
       // Validate against the current registry before persistence; startup recovery
       // skips broken packages, whereas an explicit import must show the error.
-      const check = new PluginRegistry(bundledPackages, this.prefs.packages);
+      const check = new AppearanceRegistry(bundledPackages, this.prefs.packages);
       check.register(p);
       this.commit({ ...this.prefs, packages: [...this.prefs.packages, p] });
     } catch (e) {

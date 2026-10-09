@@ -28,8 +28,10 @@ Floors are saved in `~/.config/kauak/machines.json`. Floors saved before the
 rename, in `~/.config/agent-office/machines.json`, are copied there once: the
 first time the bridge starts without a kauak file (and without `KAUAK_CONFIG`),
 it copies the old file and says so in its log. The old file is left as it was,
-for an older version, and is not read after that. Browser preferences from
-before the rename are reused. The `AGENT_OFFICE_*` environment variables are no
+for an older version, and is not read after that. In the browser, the
+appearance settings saved before the rename are copied to their new key the same
+way, once, and the old key is left as it was; the page's other preferences
+still use their old names. The `AGENT_OFFICE_*` environment variables are no
 longer read; use their `KAUAK_*` names.
 
 ## Opening the office from another device

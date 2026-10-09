@@ -10,7 +10,7 @@ when an agent runs there. You see at a glance who is working, who is on a break
 and who is waiting for you, and you click a desk to read that agent's terminal
 and answer it.
 
-![An office of simulated agents, in the Alpine basecamp look](docs/plugins/basecamp.jpg)
+![An office of simulated agents, in the Alpine basecamp look](docs/appearance/basecamp.jpg)
 
 ## Why
 
@@ -132,7 +132,7 @@ Page             packages/web/
   command, one module per command in `packages/kauak/cli/commands/`.
 - **Appearance packages** (`packages/appearance/`): offices and
   characters as declarative JSON, validated before use. See the
-  [plugin and banner guide](docs/plugins/README.md).
+  [appearance and banner guide](docs/appearance/README.md).
 
 [How Kauak works](docs/architecture.md) goes into the details.
 

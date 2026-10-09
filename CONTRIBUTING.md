@@ -57,7 +57,7 @@ A pnpm workspace of five packages, each with its own `package.json` and README:
   built with Vite. `src/bridge/demo.ts` stands in for the bridge in the demo.
 - `packages/appearance/` (`@kauak/appearance`): appearance packages (in
   `packages/`) and their validation (in `src/`). See the
-  [plugin and banner guide](docs/plugins/README.md).
+  [appearance and banner guide](docs/appearance/README.md).
 
 `scripts/` holds the repository's tooling: the boundary check, the package
 check and the page's license list.

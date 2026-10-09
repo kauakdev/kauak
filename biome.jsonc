@@ -58,7 +58,7 @@
   "overrides": [
     {
       // Appearance packages are written out one value per line, as JSON.stringify(value, null, 2) does.
-      "includes": ["packages/appearance/packages/*.json", "docs/plugins/*.json"],
+      "includes": ["packages/appearance/packages/*.json", "docs/appearance/*.json"],
       "json": { "formatter": { "expand": "always" } }
     }
   ]

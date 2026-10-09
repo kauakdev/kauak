@@ -1,6 +1,5 @@
-/** Public, data-only plugin API. No scene, Pixi, bridge or session imports. */
-export type Capability = "office.theme" | "office.characters" | "terminal.provider";
-export type VisualCapability = Exclude<Capability, "terminal.provider">;
+/** Public, data-only API of appearance packages. No scene, Pixi, bridge or session imports. */
+export type Capability = "office.theme" | "office.characters";
 export type Status = "working" | "idle" | "blocked" | "done" | "unknown";
 export interface BannerAnchor {
   id: string;
@@ -56,18 +55,13 @@ export interface Characters {
   visor: string;
   animation: { tempo: Record<Status, number>; amplitude: number; glyphs: string[] };
 }
-export interface ProviderDescriptor {
-  apiVersion: 1;
-  runtime: "bridge";
-  adapter: "herdr";
-}
-export interface PluginManifest {
+export interface AppearancePackage {
   schemaVersion: 1;
   id: string;
   name: string;
   version: string;
   description: string;
-  capabilities: { "office.theme"?: Theme; "office.characters"?: Characters; "terminal.provider"?: ProviderDescriptor };
+  capabilities: { "office.theme"?: Theme; "office.characters"?: Characters };
 }
 export interface BrandBanner {
   dataUrl: string;
@@ -81,11 +75,10 @@ export interface BrandBanner {
 export interface Preferences {
   schemaVersion: 1;
   selections: Record<Capability, string>;
-  packages: PluginManifest[];
+  packages: AppearancePackage[];
   banner: BrandBanner | null;
 }
-export const CAPABILITIES: Record<Capability, { runtime: "browser" | "bridge"; defaultId: string }> = {
-  "office.theme": { runtime: "browser", defaultId: "agent-office.classic" },
-  "office.characters": { runtime: "browser", defaultId: "agent-office.classic" },
-  "terminal.provider": { runtime: "bridge", defaultId: "agent-office.herdr" },
+export const CAPABILITIES: Record<Capability, { defaultId: string }> = {
+  "office.theme": { defaultId: "kauak.classic" },
+  "office.characters": { defaultId: "kauak.classic" },
 };

@@ -17,11 +17,24 @@ turns Unreleased into the new version's section, as
   copied to `~/.config/kauak/machines.json` once, the first time the bridge
   starts without one, and the bridge says so. The old file is left as it was
   and is not read after that.
+- Appearance settings saved in the browser before the rename, under
+  `agent-office.plugins.v1`, are copied to `kauak.appearance.v1` once, the first
+  time the page loads without it. The included packages' ids change from
+  `agent-office.classic`, `agent-office.orbital` and `agent-office.basecamp` to
+  `kauak.classic`, `kauak.orbital` and `kauak.basecamp`, and the copy keeps
+  them selected. The old key is left as it was and is not read after that. An
+  imported package may no longer use an id that starts with `kauak.`, as one
+  starting with `agent-office.` already could not.
 
 ### Removed
 
 - The `AGENT_OFFICE_*` environment variables from before the rename. Use their
   `KAUAK_*` names: `KAUAK_PORT`, `KAUAK_HOST`, `KAUAK_ORIGINS`, `KAUAK_CONFIG`
   and `KAUAK_SSH`.
+- The `terminal.provider` capability of appearance packages, and the Herdr
+  package that declared it. The bridge never read them: the terminals the office
+  shows come from the bridge's runtime adapters. A package that declares
+  `terminal.provider` is refused like any other unknown capability, and a saved
+  selection of it is dropped.
 
 [Unreleased]: https://github.com/agustinrbeltran/kauak/commits/main

@@ -10,6 +10,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { SlashCommand } from "@kauak/protocol";
+import type { BridgeConfig } from "./config.ts";
+
+/** Where this machine's agents keep their user-wide commands, from the bridge's config. */
+type AgentDirs = Pick<BridgeConfig, "claudeDir" | "codexDir">;
 
 /** A built-in command: name, description, then its argument hint and aliases if it has them. */
 type Builtin = [name: string, description: string, hint?: string, aliases?: string[]];
@@ -141,18 +145,17 @@ const MAX_DESCRIPTION = 200;
 
 /**
  * The commands `agent` would offer in `cwd`. `local` says whether the pane is
- * on this machine, where its files can be read.
+ * on this machine, where its files can be read; `dirs` are its agents' folders.
  */
-export async function slashCommands(agent: string | null, cwd: string | null, local: boolean): Promise<SlashCommand[]> {
-  if (agent === "claude") return dedupe([...builtins(CLAUDE_BUILTINS), ...(local ? await claudeFiles(cwd) : [])]);
-  if (agent === "codex") return dedupe([...builtins(CODEX_BUILTINS), ...(local ? await codexPrompts() : [])]);
+export async function slashCommands(agent: string | null, cwd: string | null, local: boolean, dirs: AgentDirs): Promise<SlashCommand[]> {
+  if (agent === "claude") return dedupe([...builtins(CLAUDE_BUILTINS), ...(local ? await claudeFiles(dirs.claudeDir, cwd) : [])]);
+  if (agent === "codex") return dedupe([...builtins(CODEX_BUILTINS), ...(local ? await codexPrompts(dirs.codexDir) : [])]);
   return [];
 }
 
 // ---------------------------------------------------------------- claude
 
-async function claudeFiles(cwd: string | null) {
-  const home = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
+async function claudeFiles(home: string, cwd: string | null) {
   const projects = projectDirs(cwd);
   const out = [];
   for (const dir of projects) {
@@ -247,8 +250,7 @@ async function pluginCommands(home: string, cwd: string | null, projects: string
 // ---------------------------------------------------------------- codex
 
 /** Custom prompts in ~/.codex/prompts, run as `/prompts:<name>`. */
-async function codexPrompts() {
-  const home = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
+async function codexPrompts(home: string) {
   const out = [];
   for (const entry of await list(path.join(home, "prompts"))) {
     if (!entry.endsWith(".md")) continue;

@@ -4,11 +4,14 @@
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { UsageError } from "../errors.js";
 
 // The npm package carries a bundle of the bridge beside the CLI (packages/bridge/scripts/bundle.js
 // makes it when packing); a checkout has none and runs the bridge's own source in packages/bridge.
 const PACKED = fs.existsSync(new URL("../../bridge/server.js", import.meta.url));
+// The page is built into this package's dist/: in the npm package as in a checkout (packages/kauak/dist).
+const PAGE_DIR = fileURLToPath(new URL("../../dist/", import.meta.url));
 
 export const name = "serve";
 export const summary = "start the office and open it in the browser";
@@ -34,15 +37,28 @@ export const options = {
 
 export async function run(values) {
   const port = values.port;
-  if (port !== undefined) {
-    if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) throw new UsageError(`invalid port '${port}' (use 1-65535)`);
-    process.env.KAUAK_PORT = port;
-  }
+  if (port !== undefined && (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535))
+    throw new UsageError(`invalid port '${port}' (use 1-65535)`);
 
-  // The bridge starts listening when it is loaded, and reads the environment then.
-  const { ready } = await import(PACKED ? "../../bridge/server.js" : "../../../bridge/src/server.ts");
-  const { LOCAL_SOCKET } = await import(PACKED ? "../../bridge/machine.js" : "../../../bridge/src/machine.ts");
-  const url = await ready;
+  const { resolveConfig } = await import(PACKED ? "../../bridge/config.js" : "../../../bridge/src/config.ts");
+  const { createBridge } = await import(PACKED ? "../../bridge/server.js" : "../../../bridge/src/server.ts");
+  const config = resolveConfig(process.env, { port: port === undefined ? undefined : Number(port), pageDir: PAGE_DIR });
+  const bridge = createBridge(config);
+  // SSH tunnels and remote context readers are child processes; take them down with the bridge.
+  const shutdown = (code = 0) => {
+    bridge.close();
+    process.exit(code);
+  };
+  process.on("SIGINT", () => shutdown());
+  process.on("SIGTERM", () => shutdown());
+  process.on("exit", () => bridge.close());
+
+  let url;
+  try {
+    url = await bridge.listen();
+  } catch {
+    return 1; // the bridge has said why (the port is in use…)
+  }
   if (!url) {
     console.error("kauak: the office page is missing from this install (run `pnpm build` in a checkout)");
     return 1;
@@ -50,8 +66,8 @@ export async function run(values) {
 
   const page = values.demo ? `${url}?demo` : url;
   console.log(`\n  kauak is running at ${page}\n`);
-  if (!values.demo && !fs.existsSync(LOCAL_SOCKET)) {
-    console.log(`  Herdr is not running on this machine (no socket at ${LOCAL_SOCKET}).`);
+  if (!values.demo && !fs.existsSync(config.herdrSocket)) {
+    console.log(`  Herdr is not running on this machine (no socket at ${config.herdrSocket}).`);
     console.log(`  Start Herdr and the office picks it up on its own, or try the demo: npx kauak serve --demo\n`);
   }
   console.log("  Press Ctrl+C to stop.\n");

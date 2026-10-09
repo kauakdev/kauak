@@ -1,5 +1,5 @@
 // Bundles the bridge for the npm package: the two modules `kauak serve`
-// loads (src/server.ts and src/machine.ts, packages/kauak/cli/commands/serve.js)
+// loads (src/config.ts and src/server.ts, packages/kauak/cli/commands/serve.js)
 // become plain JavaScript in packages/kauak/bridge/, with what they import
 // from the workspace inlined. The package cannot carry the source as it is:
 // @kauak/protocol is TypeScript and is not on npm. `ws` and Node's own modules
@@ -41,7 +41,7 @@ export async function bundle(outDir = OUT, { logLevel = "info" } = {}) {
       minify: false,
       sourcemap: false,
       rollupOptions: {
-        input: { server: path.join(SRC, "server.ts"), machine: path.join(SRC, "machine.ts") },
+        input: { server: path.join(SRC, "server.ts"), config: path.join(SRC, "config.ts") },
         output: { format: "es", entryFileNames: "[name].js", chunkFileNames: "[name]-[hash].js" },
       },
     },

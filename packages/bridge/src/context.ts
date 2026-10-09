@@ -26,13 +26,11 @@
 import { execFile } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { ContextUsage, MachineInfo, PaneInfo, Snapshot } from "@kauak/protocol";
+import type { BridgeConfig } from "./config.ts";
 import { RemoteScript } from "./remote.ts";
 
-const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
-const CODEX_DIR = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
 const KINDS: ReadonlySet<string | null> = new Set(["claude", "codex"]);
 const POLL_MS = 2000;
 // A snapshot often means the agent just wrote to its transcript (a status change).
@@ -70,6 +68,11 @@ interface AgentSession {
   value: string;
 }
 
+/** What the tracker uses of the bridge's config: this machine's agent folders, and the ssh executable for a remote floor. */
+type ContextSettings = Pick<BridgeConfig, "claudeDir" | "codexDir" | "sshCommand">;
+/** Where this machine's agents keep their transcripts. */
+type AgentDirs = Pick<BridgeConfig, "claudeDir" | "codexDir">;
+
 /**
  * Emits "change" when any pane's context use changes. The tracker decides
  * which panes to read and how to find their sessions (through Herdr); a
@@ -89,10 +92,10 @@ export class ContextTracker extends EventEmitter {
   kickTimer: NodeJS.Timeout | null;
   timer: NodeJS.Timeout;
 
-  constructor(machine: Floor) {
+  constructor(machine: Floor, settings: ContextSettings) {
     super();
     this.m = machine;
-    this.reader = machine.ssh ? new RemoteReader(machine) : new LocalReader();
+    this.reader = machine.ssh ? new RemoteReader(machine, settings.sshCommand) : new LocalReader(settings);
     this.usage = new Map();
     this.pids = new Map();
     this.misses = new Map();
@@ -236,6 +239,7 @@ interface RolloutMeta {
 
 /** Reads this machine's transcripts. context_remote.py does the same on a remote one. */
 class LocalReader {
+  dirs: AgentDirs;
   /** transcript path → Transcript */
   transcripts: Map<string, Transcript>;
   /** kind:session id → transcript path */
@@ -245,7 +249,8 @@ class LocalReader {
   /** rollout path → its session_meta: { cwd, originator, source } */
   rollouts: Map<string, RolloutMeta>;
 
-  constructor() {
+  constructor(dirs: AgentDirs) {
+    this.dirs = dirs;
     this.transcripts = new Map();
     this.found = new Map();
     this.misses = new Map();
@@ -282,7 +287,7 @@ class LocalReader {
       return started ? { file: await this.codexByFolder(cwd, started.at), pid: started.pid } : { file: null, pid: null };
     }
     for (const pid of pids) {
-      const meta = await readSessionFile(pid);
+      const meta = await readSessionFile(this.dirs.claudeDir, pid);
       if (meta) return { file: await this.find("claude", meta.sessionId, meta.cwd), pid };
     }
     return { file: null, pid: null };
@@ -292,7 +297,7 @@ class LocalReader {
   async codexByFolder(cwd: string | null, since: number) {
     let best: string | null = null,
       bestTime = 0;
-    for (const dir of codexDayDirs(since)) {
+    for (const dir of codexDayDirs(this.dirs.codexDir, since)) {
       for (const name of await fs.promises.readdir(dir).catch(() => [])) {
         if (!name.startsWith("rollout-") || !name.endsWith(".jsonl")) continue;
         const file = path.join(dir, name);
@@ -320,7 +325,8 @@ class LocalReader {
     const known = this.found.get(key);
     if (known && fs.existsSync(known)) return known;
     if ((this.misses.get(key) ?? 0) > Date.now()) return null;
-    const file = kind === "claude" ? await findClaudeTranscript(id, cwd) : await findCodexRollout(id);
+    const file =
+      kind === "claude" ? await findClaudeTranscript(this.dirs.claudeDir, id, cwd) : await findCodexRollout(this.dirs.codexDir, id);
     if (file) {
       this.found.set(key, file);
       this.misses.delete(key);
@@ -338,8 +344,8 @@ class LocalReader {
 class RemoteReader {
   script: RemoteScript;
 
-  constructor(machine: Floor) {
-    this.script = new RemoteScript(machine, "./context_remote.py", "context meters");
+  constructor(machine: Floor, sshCommand: string) {
+    this.script = new RemoteScript(machine, sshCommand, "./context_remote.py", "context meters");
   }
 
   stop() {
@@ -369,13 +375,13 @@ function processStart(pids: number[]) {
 }
 
 /** ~/.codex/sessions/YYYY/MM/DD for each day from the one before `since` (time zones) to today. */
-function codexDayDirs(since: number) {
+function codexDayDirs(codexDir: string, since: number) {
   const dirs: string[] = [];
   const day = new Date(since - 86_400_000);
   day.setHours(12, 0, 0, 0);
   for (let i = 0; i < 31 && day.getTime() <= Date.now() + 86_400_000; i++, day.setDate(day.getDate() + 1)) {
     const pad = (n: number) => String(n).padStart(2, "0");
-    dirs.push(path.join(CODEX_DIR, "sessions", String(day.getFullYear()), pad(day.getMonth() + 1), pad(day.getDate())));
+    dirs.push(path.join(codexDir, "sessions", String(day.getFullYear()), pad(day.getMonth() + 1), pad(day.getDate())));
   }
   return dirs;
 }
@@ -413,10 +419,10 @@ interface ClaudeSessionFile {
   cwd?: string;
 }
 
-async function readSessionFile(pid: number): Promise<ClaudeSessionFile | null> {
+async function readSessionFile(claudeDir: string, pid: number): Promise<ClaudeSessionFile | null> {
   if (!Number.isInteger(pid) || !alive(pid)) return null;
   try {
-    const meta = JSON.parse(await fs.promises.readFile(path.join(CLAUDE_DIR, "sessions", `${pid}.json`), "utf8"));
+    const meta = JSON.parse(await fs.promises.readFile(path.join(claudeDir, "sessions", `${pid}.json`), "utf8"));
     return meta.pid === pid && typeof meta.sessionId === "string" ? meta : null;
   } catch {
     return null;
@@ -433,8 +439,8 @@ function alive(pid: number) {
 }
 
 /** ~/.claude/projects/<folder, non-alphanumerics as "-">/<id>.jsonl; any project folder if that is not it. */
-async function findClaudeTranscript(id: string, cwd: string | null) {
-  const projects = path.join(CLAUDE_DIR, "projects");
+async function findClaudeTranscript(claudeDir: string, id: string, cwd: string | null) {
+  const projects = path.join(claudeDir, "projects");
   if (cwd) {
     const guess = path.join(projects, cwd.replace(/[^A-Za-z0-9]/g, "-"), `${id}.jsonl`);
     if (fs.existsSync(guess)) return guess;
@@ -447,9 +453,9 @@ async function findClaudeTranscript(id: string, cwd: string | null) {
 }
 
 /** ~/.codex/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl, newest days first. */
-async function findCodexRollout(id: string) {
+async function findCodexRollout(codexDir: string, id: string) {
   const ls = async (dir: string) => (await fs.promises.readdir(dir).catch(() => [])).sort().reverse();
-  const root = path.join(CODEX_DIR, "sessions");
+  const root = path.join(codexDir, "sessions");
   for (const y of await ls(root))
     for (const m of await ls(path.join(root, y)))
       for (const d of await ls(path.join(root, y, m))) {

@@ -21,9 +21,9 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import type { MachineInfo, RoomSpec, Snapshot } from "@kauak/protocol";
+import type { BridgeConfig } from "./config.ts";
 import {
   type AgentSession,
   type HerdrError,
@@ -36,12 +36,8 @@ import {
   toSnapshot,
 } from "./herdr.ts";
 
-export const LOCAL_SOCKET =
-  process.env.HERDR_SOCKET_PATH ?? process.env.HERDR_SOCKET ?? path.join(os.homedir(), ".config", "herdr", "herdr.sock");
-export const SSH = process.env.KAUAK_SSH ?? process.env.AGENT_OFFICE_SSH ?? "ssh";
 // BatchMode: never prompt for a password or host key; fail instead.
 export const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"];
-const TUNNEL_DIR = path.join(os.tmpdir(), `kauak-${process.getuid?.() ?? "user"}`);
 const TUNNEL_READY_MS = 20_000;
 const RETRY_MS = [2000, 4000, 8000, 15_000, 30_000];
 const SNAPSHOT_DEBOUNCE_MS = 80;
@@ -132,12 +128,16 @@ export interface MachineConfig {
   remoteSocket?: string | null;
 }
 
+/** The bridge-wide settings a Machine uses (config.ts): this machine's Herdr socket, the ssh executable, and where tunnels go. */
+export type MachineSettings = Pick<BridgeConfig, "herdrSocket" | "sshCommand" | "tunnelDir">;
+
 /**
  * Emits "status" when `state`/`message` change, and "snapshot" with a fresh
  * Kauak snapshot after every Herdr event.
  * `state`: "connecting" → "live" ⇄ "down" (retries with backoff while down).
  */
 export class Machine extends EventEmitter {
+  settings: MachineSettings;
   id: string;
   label: string;
   ssh: string | null;
@@ -156,13 +156,14 @@ export class Machine extends EventEmitter {
   attempt: number;
   stopped: boolean;
 
-  constructor({ id, label, ssh = null, socket = null, remoteSocket = null }: MachineConfig) {
+  constructor({ id, label, ssh = null, socket = null, remoteSocket = null }: MachineConfig, settings: MachineSettings) {
     super();
+    this.settings = settings;
     this.id = id;
     this.label = label;
     this.ssh = ssh;
     this.remoteSocket = remoteSocket;
-    this.socketPath = ssh ? path.join(TUNNEL_DIR, `${id}.sock`) : (socket ?? LOCAL_SOCKET);
+    this.socketPath = ssh ? path.join(settings.tunnelDir, `${id}.sock`) : (socket ?? settings.herdrSocket);
     this.state = "connecting";
     this.message = ssh ? `ssh ${ssh}…` : "";
     this.raw = null;
@@ -192,7 +193,7 @@ export class Machine extends EventEmitter {
     const c: MachineConfig = { id: this.id, label: this.label };
     if (this.ssh) c.ssh = this.ssh;
     if (this.remoteSocket) c.remoteSocket = this.remoteSocket;
-    if (!this.ssh && this.socketPath !== LOCAL_SOCKET) c.socket = this.socketPath;
+    if (!this.ssh && this.socketPath !== this.settings.herdrSocket) c.socket = this.socketPath;
     return c;
   }
 
@@ -411,8 +412,8 @@ export class Machine extends EventEmitter {
   // ------------------------------------------------------------ ssh tunnel
 
   async openTunnel() {
-    fs.mkdirSync(TUNNEL_DIR, { recursive: true, mode: 0o700 });
-    fs.chmodSync(TUNNEL_DIR, 0o700); // the tunnel socket reaches a remote shell; keep it ours
+    fs.mkdirSync(this.settings.tunnelDir, { recursive: true, mode: 0o700 });
+    fs.chmodSync(this.settings.tunnelDir, 0o700); // the tunnel socket reaches a remote shell; keep it ours
     const remote = this.remoteSocket ?? (await this.probeRemoteSocket());
     try {
       fs.unlinkSync(this.socketPath);
@@ -421,7 +422,7 @@ export class Machine extends EventEmitter {
     // hand the forward to the shared master and exit 0 right away, leaving us
     // nothing to watch or kill. The tunnel gets its own connection instead.
     const child = spawn(
-      SSH,
+      this.settings.sshCommand,
       [
         ...SSH_OPTS,
         "-o",
@@ -489,11 +490,16 @@ export class Machine extends EventEmitter {
 
   probeRemoteSocket() {
     return new Promise<string>((resolve, reject) => {
-      execFile(SSH, [...SSH_OPTS, "--", this.ssh!, REMOTE_PROBE], { timeout: TUNNEL_READY_MS }, (err, stdout, stderr) => {
-        if (!err) return resolve(stdout.trim());
-        if (err.code === 3) return reject(new Error(`Herdr is not running on ${this.ssh} (no socket at ${stdout.trim()})`));
-        reject(new Error(`ssh: ${lastLine(stderr) || err.message}`));
-      });
+      execFile(
+        this.settings.sshCommand,
+        [...SSH_OPTS, "--", this.ssh!, REMOTE_PROBE],
+        { timeout: TUNNEL_READY_MS },
+        (err, stdout, stderr) => {
+          if (!err) return resolve(stdout.trim());
+          if (err.code === 3) return reject(new Error(`Herdr is not running on ${this.ssh} (no socket at ${stdout.trim()})`));
+          reject(new Error(`ssh: ${lastLine(stderr) || err.message}`));
+        },
+      );
     });
   }
 }

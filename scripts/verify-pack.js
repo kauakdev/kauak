@@ -41,7 +41,7 @@ const REQUIRED = [
   "cli/main.js",
   "cli/commands/serve.js",
   "bridge/server.js",
-  "bridge/machine.js",
+  "bridge/config.js",
   "bridge/context_remote.py",
   "bridge/diffs_remote.py",
   "dist/index.html",

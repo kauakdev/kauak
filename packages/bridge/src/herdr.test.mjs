@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { resolveConfig } from "./config.ts";
 import { FIXTURE, fakeHerdr, herdrError } from "./fixtures/fake-herdr.mjs";
 import { errorMessage, paneSession, toSnapshot } from "./herdr.ts";
 import { Machine } from "./machine.ts";
@@ -170,9 +171,12 @@ test("Herdr's errors become messages fit to show", () => {
 
 // ---------------------------------------------------------------- the adapter, against a fake Herdr
 
+// The defaults, read from no environment: these floors name their own socket, and none is remote.
+const SETTINGS = resolveConfig({});
+
 async function liveMachine(t, options) {
   const herdr = await fakeHerdr(options);
-  const m = new Machine({ id: "local", label: "local", socket: herdr.socketPath });
+  const m = new Machine({ id: "local", label: "local", socket: herdr.socketPath }, SETTINGS);
   t.after(async () => {
     m.stop();
     await herdr.close();
@@ -278,7 +282,7 @@ test("an agent starts once the new pane's shell is ready for it", async (t) => {
 });
 
 test("a floor whose Herdr is not running is down, and says so", async (t) => {
-  const m = new Machine({ id: "local", label: "local", socket: "/nonexistent/kauak-test/herdr.sock" });
+  const m = new Machine({ id: "local", label: "local", socket: "/nonexistent/kauak-test/herdr.sock" }, SETTINGS);
   t.after(() => m.stop());
   const status = once(m, "status");
   m.start();

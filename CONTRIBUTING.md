@@ -99,9 +99,11 @@ apart: only the Herdr adapter (`packages/bridge/src/machine.ts`,
 `packages/protocol` imports nothing (no other package, no Node or DOM) and the
 others import it by its name, `packages/appearance/src/registry.ts` imports
 nothing but its contracts and uses no DOM, the page imports the protocol and
-the appearance packages but nothing of the bridge or the CLI, and the bridge
-and the CLI import nothing from the page. When a file moves, update the rules
-at the top of the script.
+the appearance packages but nothing of the bridge or the CLI, the bridge and
+the CLI import nothing from the page, and only the bridge's entry points
+(`packages/bridge/src/main.ts`, `packages/kauak/cli/commands/serve.js`) read
+`process.env`, which they hand to `resolveConfig`. When a file moves, update
+the rules at the top of the script.
 
 `pnpm test` runs `node --test` in each package and in `scripts/`, which finds
 every `*.test.mjs`. Tests use Node's built-in runner (`node:test` with
@@ -115,7 +117,7 @@ installed.
 each. It needs the npm registry, and matters most when you change what the
 package ships: a new folder that the CLI loads at runtime has to be added to
 `files` in `packages/kauak/package.json`. The bridge goes in as a bundle of
-`src/server.ts` and `src/machine.ts` with the protocol inlined, plus the Python
+`src/server.ts` and `src/config.ts` with the protocol inlined, plus the Python
 helpers. Packing writes that bundle and copies README and LICENSE into
 `packages/kauak/`, and removes them afterwards; a `packages/kauak/bridge/` left
 behind by an interrupted pack is safe to delete.

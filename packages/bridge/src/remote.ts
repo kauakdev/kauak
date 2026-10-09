@@ -6,7 +6,7 @@
 
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import fs from "node:fs";
-import { SSH, SSH_OPTS, lastLine } from "./machine.ts";
+import { SSH_OPTS, lastLine } from "./machine.ts";
 
 // The first answer waits for the SSH connection.
 const TIMEOUT_MS = 20_000;
@@ -23,6 +23,7 @@ interface Floor {
 
 export class RemoteScript {
   m: Floor;
+  sshCommand: string;
   what: string;
   command: string;
   child: ChildProcessWithoutNullStreams | null;
@@ -34,9 +35,13 @@ export class RemoteScript {
   retryAt: number;
   stopped: boolean;
 
-  /** `file`: the script, beside this one; `what`: what stops working when it dies, for the log. */
-  constructor(machine: Floor, file: string, what: string) {
+  /**
+   * `sshCommand`: the ssh executable (config.ts); `file`: the script, beside
+   * this one; `what`: what stops working when it dies, for the log.
+   */
+  constructor(machine: Floor, sshCommand: string, file: string, what: string) {
     this.m = machine;
+    this.sshCommand = sshCommand;
     this.what = what;
     const script = fs.readFileSync(new URL(file, import.meta.url)).toString("base64");
     this.command = `python3 -u -c "import base64; exec(base64.b64decode('${script}'))"`;
@@ -78,7 +83,9 @@ export class RemoteScript {
 
   start() {
     // ControlPath=none, as for the tunnel: a connection of its own, never handed to a shared master.
-    const child = spawn(SSH, [...SSH_OPTS, "-o", "ControlPath=none", "--", this.m.ssh!, this.command], { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(this.sshCommand, [...SSH_OPTS, "-o", "ControlPath=none", "--", this.m.ssh!, this.command], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     this.child = child;
     this.buf = "";
     this.stderr = "";

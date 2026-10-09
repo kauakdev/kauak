@@ -3,12 +3,14 @@
 // the bridge's Herdr adapter, the trackers reach a floor only through the
 // Machine they are given, the protocol imports nothing (the bridge and the
 // page both load it), the appearance registry is data with no DOM, Pixi or
-// bridge in it, and the page and the bridge meet only in the protocol.
+// bridge in it, the page and the bridge meet only in the protocol, and the
+// bridge's settings come from the environment in one place.
 //
 // It reads every JavaScript and TypeScript file under the repository (or the
 // folder given as the first argument), finds what each one imports (`import`,
-// `export ... from`, `import("...")`, `require("...")`) and its string
-// literals, with comments left out, and checks them against RULES. Paths are
+// `export ... from`, `import("...")`, `require("...")`), its string literals
+// and the globals and properties it reads, with comments left out, and checks
+// them against RULES. Paths are
 // relative to the repository root, so when files move only RULES changes, and
 // a rule whose files no longer exist fails instead of passing on nothing.
 //
@@ -28,12 +30,16 @@ const BRIDGE = ["packages/bridge/**", "@kauak/bridge", "@kauak/bridge/**"];
 // The CLI, bin/kauak.js, and the bundle of the bridge the npm package carries.
 const KAUAK = ["packages/kauak/**", "kauak", "kauak/**"];
 const WEB = ["packages/web/**", "@kauak/web", "@kauak/web/**"];
+// The bridge's entry points: `pnpm bridge` / `pnpm dev`, and `kauak serve`.
+const ENTRY_POINTS = ["packages/bridge/src/main.ts", "packages/kauak/cli/commands/serve.js"];
 
 // Each rule applies to `files` (minus `except`) and checks any of:
 //   forbid   imports that may not be made (repository paths or package names)
 //   only     the only imports allowed; anything else is a violation
 //   strings  string literals that may not appear
 //   globals  globals (the browser's, Node's) that may not be used
+//   members  properties of a global (`process.env`) that may not be read; spreading one
+//            (`{ ...process.env, LC_ALL: "C" }` for a child process) passes it on whole and is allowed
 const RULES = [
   {
     rule: "only the Herdr adapter (machine.ts, herdr.ts, remote.ts) imports herdr.ts",
@@ -92,6 +98,12 @@ const RULES = [
     files: ["packages/bridge/**"],
     forbid: KAUAK,
   },
+  {
+    rule: "only the entry points (main.ts, the CLI's serve.js) read process.env, and hand it to resolveConfig (config.ts)",
+    files: ["packages/bridge/**", "packages/kauak/**"],
+    except: [...ENTRY_POINTS, ...TESTS],
+    members: /^process\.env$/,
+  },
 ];
 
 const SOURCE = /\.(js|mjs|cjs|ts|mts|cts|tsx)$/;
@@ -117,7 +129,7 @@ for (const r of RULES) {
   const matched = files.filter((f) => matches(f, r.files) && !matches(f, r.except));
   if (!matched.length) problems.push(`scripts/check-boundaries.mjs: rule matches no files, update RULES: ${r.rule}`);
   for (const file of matched) {
-    const { imports, strings, identifiers } = scanned.get(file);
+    const { imports, strings, identifiers, members } = scanned.get(file);
     for (const { specifier, line } of imports) {
       const target = resolve(file, specifier);
       const bad = r.only ? !matches(target, r.only) : matches(target, r.forbid);
@@ -127,6 +139,9 @@ for (const r of RULES) {
       for (const { value, line } of strings) if (r.strings.test(value)) problems.push(`${file}:${line}: names "${value}": ${r.rule}`);
     if (r.globals)
       for (const { name, line } of identifiers) if (r.globals.test(name)) problems.push(`${file}:${line}: uses ${name}: ${r.rule}`);
+    if (r.members)
+      for (const { name, line, spread } of members)
+        if (!spread && r.members.test(name)) problems.push(`${file}:${line}: reads ${name}: ${r.rule}`);
   }
 }
 
@@ -192,6 +207,7 @@ function scan(src) {
   const imports = [];
   const strings = [];
   const identifiers = [];
+  const members = [];
   const at = (i) => tokens[i] ?? { type: "eof", value: "" };
   const isPunct = (t, v) => t.type === "punct" && t.value === v;
   const isWord = (t, v) => t.type === "word" && t.value === v;
@@ -202,10 +218,18 @@ function scan(src) {
     if (t.type !== "word") continue;
     const prev = at(i - 1);
     const next = at(i + 1);
-    const member = isPunct(prev, ".") || isPunct(prev, "?.");
+    // `...x` is x itself, spread; the tokenizer gives the three dots one by one.
+    const spread = isPunct(prev, ".") && isPunct(at(i - 2), ".") && isPunct(at(i - 3), ".");
+    const member = (isPunct(prev, ".") && !spread) || isPunct(prev, "?.");
     const objectKey = (isPunct(prev, "{") || isPunct(prev, ",")) && isPunct(next, ":");
     if (!member && !objectKey) identifiers.push({ name: t.value, line: t.line });
     if (member) continue;
+    if ((isPunct(next, ".") || isPunct(next, "?.")) && at(i + 2).type === "word")
+      members.push({
+        name: `${t.value}.${at(i + 2).value}`,
+        line: t.line,
+        spread: spread && ![".", "?.", "["].some((p) => isPunct(at(i + 3), p)),
+      });
 
     if (t.value === "import" && isPunct(next, "(")) {
       // import("x"), and TypeScript's typeof import("x")
@@ -238,7 +262,7 @@ function scan(src) {
       if (isWord(at(j), "from") && at(j + 1).type === "string") imports.push(specifierOf(at(j + 1)));
     }
   }
-  return { imports, strings, identifiers, balanced };
+  return { imports, strings, identifiers, members, balanced };
 }
 
 function specifierOf(token) {

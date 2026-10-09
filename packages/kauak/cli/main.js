@@ -13,7 +13,7 @@
 //
 // so a new command is one module and one entry in COMMANDS, and the help lists
 // it on its own. Commands stay thin: they read their options and hand the work
-// to the application (`serve` loads the bridge). A command throws UsageError
+// to the application (`serve` starts the bridge). A command throws UsageError
 // for a bad value; any other error is a bug and surfaces as one.
 //
 // `kauak` alone runs DEFAULT_COMMAND, and so does `kauak` followed by

@@ -12,15 +12,18 @@
 // does this file: it knows a floor only through its Machine (machine.ts, the
 // Herdr adapter), never Herdr's methods, fields or errors.
 //
-// The same port also serves the built office page (dist/, `pnpm build`), so
-// `npx kauak serve` is one process and one URL. `pnpm dev` serves the page
-// from Vite instead.
+// The same port also serves the built office page (config.pageDir, `pnpm
+// build`), so `npx kauak serve` is one process and one URL. `pnpm dev` serves
+// the page from Vite instead.
+//
+// Loading this file starts nothing. An entry point (`kauak serve`, or main.ts)
+// resolves the config (config.ts), calls createBridge, then `listen()`, and
+// owns the process: its signals and its exit code.
 
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   AGENT_KIND,
   type ClientMessage,
@@ -33,111 +36,11 @@ import {
 } from "@kauak/protocol";
 import { type WebSocket, WebSocketServer } from "ws";
 import { slashCommands } from "./commands.ts";
+import type { BridgeConfig } from "./config.ts";
 import { ContextTracker } from "./context.ts";
 import { DiffTracker } from "./diffs.ts";
-import { LOCAL_SOCKET, Machine, type MachineConfig } from "./machine.ts";
+import { Machine, type MachineConfig } from "./machine.ts";
 
-const WS_PORT = Number(process.env.KAUAK_PORT ?? process.env.AGENT_OFFICE_PORT ?? 7788);
-// The bridge can type into terminals, create panes and worktrees, and open SSH
-// connections, so by default only this computer may connect, and only pages
-// served from it.
-const WS_HOST = process.env.KAUAK_HOST ?? process.env.AGENT_OFFICE_HOST ?? "127.0.0.1";
-const ALLOWED_ORIGIN_HOSTS = new Set([
-  "localhost",
-  "127.0.0.1",
-  "[::1]",
-  ...(process.env.KAUAK_ORIGINS ?? process.env.AGENT_OFFICE_ORIGINS ?? "")
-    .split(",")
-    .map((h) => h.trim())
-    .filter(Boolean),
-]);
-const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config", "kauak", "machines.json");
-const LEGACY_CONFIG_PATH = path.join(os.homedir(), ".config", "agent-office", "machines.json");
-// Reuse existing floors after the rename; fresh installs use the kauak directory.
-const CONFIG_PATH =
-  process.env.KAUAK_CONFIG ??
-  process.env.AGENT_OFFICE_CONFIG ??
-  (!fs.existsSync(DEFAULT_CONFIG_PATH) && fs.existsSync(LEGACY_CONFIG_PATH) ? LEGACY_CONFIG_PATH : DEFAULT_CONFIG_PATH);
-
-// ---------------------------------------------------------------- machines
-
-/** id → Machine, in floor order. */
-const machines = new Map<string, Machine>();
-/** id → ContextTracker */
-const contexts = new Map<string, ContextTracker>();
-/** id → DiffTracker */
-const diffs = new Map<string, DiffTracker>();
-
-/** The saved floors, as saveConfig writes them; each is checked before it is used. */
-function loadConfig(): MachineConfig[] {
-  try {
-    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
-    return Array.isArray(cfg.machines) ? cfg.machines : [];
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") console.error(`[bridge] ignoring ${CONFIG_PATH}: ${(err as Error).message}`);
-    return [];
-  }
-}
-
-function saveConfig() {
-  const list = [...machines.values()].filter((m) => m.id !== "local").map((m) => m.config);
-  fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-  fs.writeFileSync(CONFIG_PATH, `${JSON.stringify({ machines: list }, null, 2)}\n`);
-}
-
-function addMachine(cfg: MachineConfig) {
-  const m = new Machine(cfg);
-  machines.set(m.id, m);
-  const c = new ContextTracker(m);
-  contexts.set(m.id, c);
-  c.on("change", () => broadcast(snapshotMessage(m)));
-  const d = new DiffTracker(m);
-  diffs.set(m.id, d);
-  d.on("change", () => broadcast(snapshotMessage(m)));
-  d.on("print", (sheet) => broadcast({ type: "print", machine: m.id, sheet }));
-  m.on("status", () => broadcastMachines());
-  m.on("snapshot", () => broadcast(snapshotMessage(m)));
-  m.start();
-  return m;
-}
-
-function uniqueId(base: string) {
-  const slug =
-    base
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "") || "machine";
-  let id = slug,
-    n = 2;
-  while (machines.has(id)) id = `${slug}-${n++}`;
-  return id;
-}
-
-addMachine({ id: "local", label: "local", socket: LOCAL_SOCKET });
-for (const c of loadConfig()) {
-  if (typeof c?.label !== "string" || (c.ssh ? !SSH_TARGET.test(c.ssh) : typeof c.socket !== "string")) {
-    console.error(`[bridge] skipping machine in ${CONFIG_PATH}: ${JSON.stringify(c)}`);
-    continue;
-  }
-  addMachine({ ...c, id: typeof c.id === "string" && !machines.has(c.id) ? c.id : uniqueId(c.label) });
-}
-
-function machineInfos() {
-  return [...machines.values()].map((m) => m.info);
-}
-
-function snapshotMessage(m: Machine) {
-  const snapshot = contexts.get(m.id)?.annotate(m.snapshot) ?? m.snapshot;
-  return { type: "snapshot", machine: m.id, snapshot: diffs.get(m.id)?.annotate(snapshot) ?? snapshot };
-}
-
-// ---------------------------------------------------------------- page
-
-// In the npm package the page is beside the bridge's copy (dist/); in a checkout the bridge runs
-// from packages/bridge/src and the page is built into packages/kauak/dist.
-const DIST_DIRS = [new URL("../dist/", import.meta.url), new URL("../../kauak/dist/", import.meta.url)].map((u) => fileURLToPath(u));
-const DIST_DIR = DIST_DIRS.find((d) => fs.existsSync(path.join(d, "index.html"))) ?? DIST_DIRS[0]!;
-const HAS_PAGE = fs.existsSync(path.join(DIST_DIR, "index.html"));
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -149,151 +52,370 @@ const CONTENT_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
-/** Static files from dist/. Nothing here is secret; the WebSocket is what needs guarding. */
-function servePage(req: http.IncomingMessage, res: http.ServerResponse) {
-  if (req.method !== "GET" && req.method !== "HEAD") return res.writeHead(405).end();
-  let rel: string;
-  try {
-    rel = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
-  } catch {
-    return res.writeHead(400).end();
-  }
-  if (rel.endsWith("/")) rel += "index.html";
-  const file = path.resolve(DIST_DIR, `.${rel}`);
-  if (!file.startsWith(DIST_DIR)) return res.writeHead(404).end();
-  fs.stat(file, (err, st) => {
-    if (err || !st.isFile()) {
-      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-      return res.end(HAS_PAGE ? "Not found\n" : "The office page is not built. Run `pnpm build`, or `pnpm dev` for the Vite dev server.\n");
-    }
-    res.writeHead(200, {
-      "content-type": CONTENT_TYPES[path.extname(file)] ?? "application/octet-stream",
-      "content-length": st.size,
-      // Vite puts a content hash in every asset name; index.html must always be fresh.
-      "cache-control": rel.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache",
-      "x-content-type-options": "nosniff",
+/**
+ * The bridge for `config`, not started: `listen()` adds the floors and opens
+ * the port, and resolves with the office's URL (null when there is no built
+ * page to serve); it rejects when the port cannot be opened, after saying why.
+ * `close()` stops the floors at once (their SSH tunnels and remote helpers are
+ * child processes) and then closes the port. `floors` is id → Machine, in
+ * floor order, empty until `listen()`.
+ */
+export function createBridge(config: BridgeConfig) {
+  const bridge = new Bridge(config);
+  const floors: ReadonlyMap<string, Machine> = bridge.machines;
+  return { listen: () => bridge.listen(), close: () => bridge.close(), floors };
+}
+
+/** Ops for one pane from one connection, merged while they wait; `id` is the last message's. */
+interface InputBatch {
+  ws: WebSocket;
+  ops: InputOp[];
+  id: number | undefined;
+}
+
+class Bridge {
+  config: BridgeConfig;
+  /** id → Machine, in floor order. */
+  machines: Map<string, Machine>;
+  /** id → ContextTracker */
+  contexts: Map<string, ContextTracker>;
+  /** id → DiffTracker */
+  diffs: Map<string, DiffTracker>;
+  /** "machine/pane" → promise chain (see queueInput) */
+  inputQueues: Map<string, Promise<void>>;
+  /** "machine/pane" → batch still waiting for its turn */
+  openBatches: Map<string, InputBatch>;
+  /** The built page's folder, ending in a separator so nothing beside it can pass for a file in it; null for none. */
+  pageDir: string | null;
+  hasPage: boolean;
+  allowedOrigins: Set<string>;
+  server: http.Server;
+  wss: WebSocketServer;
+  closing: Promise<void> | null;
+
+  constructor(config: BridgeConfig) {
+    this.config = config;
+    this.machines = new Map();
+    this.contexts = new Map();
+    this.diffs = new Map();
+    this.inputQueues = new Map();
+    this.openBatches = new Map();
+    this.pageDir = config.pageDir === null ? null : path.resolve(config.pageDir) + path.sep;
+    this.hasPage = this.pageDir !== null && fs.existsSync(path.join(this.pageDir, "index.html"));
+    this.allowedOrigins = new Set(config.origins);
+    this.server = http.createServer((req, res) => this.servePage(req, res));
+    this.wss = new WebSocketServer({
+      server: this.server,
+      // Browsers let any web page open a WebSocket to 127.0.0.1; only accept our own page.
+      verifyClient: ({ origin }: { origin: string }) => {
+        if (!origin) return true; // not a browser
+        try {
+          return this.allowedOrigins.has(new URL(origin).hostname);
+        } catch {
+          return false;
+        }
+      },
     });
-    if (req.method === "HEAD") return res.end();
-    fs.createReadStream(file).pipe(res);
-  });
-}
-
-// ---------------------------------------------------------------- WS server
-
-const server = http.createServer(servePage);
-
-const wss = new WebSocketServer({
-  server,
-  // Browsers let any web page open a WebSocket to 127.0.0.1; only accept our own page.
-  verifyClient: ({ origin }: { origin: string }) => {
-    if (!origin) return true; // not a browser
-    try {
-      return ALLOWED_ORIGIN_HOSTS.has(new URL(origin).hostname);
-    } catch {
-      return false;
-    }
-  },
-});
-
-function broadcast(msg: object) {
-  const data = JSON.stringify(msg);
-  for (const client of wss.clients) if (client.readyState === 1) client.send(data);
-}
-
-function broadcastMachines() {
-  broadcast({ type: "machines", machines: machineInfos() });
-}
-
-wss.on("connection", (ws) => {
-  console.log(`[bridge] client connected (${wss.clients.size})`);
-  ws.send(JSON.stringify({ type: "machines", machines: machineInfos() }));
-  for (const m of machines.values()) {
-    if (m.snapshot) ws.send(JSON.stringify(snapshotMessage(m)));
-    ws.send(JSON.stringify({ type: "prints", machine: m.id, sheets: diffs.get(m.id)?.history() ?? [] }));
+    this.wss.on("connection", (ws) => this.connected(ws));
+    this.closing = null;
   }
 
-  ws.on("message", async (raw) => {
-    let msg: ClientMessage | null;
+  // -------------------------------------------------------------- machines
+
+  /** The saved floors, as saveConfig writes them; each is checked before it is used. */
+  loadConfig(): MachineConfig[] {
+    const file = this.config.machinesFile;
     try {
-      msg = parseClientMessage(JSON.parse(raw.toString()));
+      const cfg = JSON.parse(fs.readFileSync(file, "utf8"));
+      return Array.isArray(cfg.machines) ? cfg.machines : [];
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") console.error(`[bridge] ignoring ${file}: ${(err as Error).message}`);
+      return [];
+    }
+  }
+
+  saveConfig() {
+    const list = [...this.machines.values()].filter((m) => m.id !== "local").map((m) => m.config);
+    fs.mkdirSync(path.dirname(this.config.machinesFile), { recursive: true });
+    fs.writeFileSync(this.config.machinesFile, `${JSON.stringify({ machines: list }, null, 2)}\n`);
+  }
+
+  /** This machine's floor, then the saved ones. */
+  addFloors() {
+    this.addMachine({ id: "local", label: "local", socket: this.config.herdrSocket });
+    for (const c of this.loadConfig()) {
+      if (typeof c?.label !== "string" || (c.ssh ? !SSH_TARGET.test(c.ssh) : typeof c.socket !== "string")) {
+        console.error(`[bridge] skipping machine in ${this.config.machinesFile}: ${JSON.stringify(c)}`);
+        continue;
+      }
+      this.addMachine({ ...c, id: typeof c.id === "string" && !this.machines.has(c.id) ? c.id : this.uniqueId(c.label) });
+    }
+  }
+
+  addMachine(cfg: MachineConfig) {
+    const m = new Machine(cfg, this.config);
+    this.machines.set(m.id, m);
+    const c = new ContextTracker(m, this.config);
+    this.contexts.set(m.id, c);
+    c.on("change", () => this.broadcast(this.snapshotMessage(m)));
+    const d = new DiffTracker(m, this.config);
+    this.diffs.set(m.id, d);
+    d.on("change", () => this.broadcast(this.snapshotMessage(m)));
+    d.on("print", (sheet) => this.broadcast({ type: "print", machine: m.id, sheet }));
+    m.on("status", () => this.broadcastMachines());
+    m.on("snapshot", () => this.broadcast(this.snapshotMessage(m)));
+    m.start();
+    return m;
+  }
+
+  removeMachine(m: Machine) {
+    m.stop();
+    this.contexts.get(m.id)?.stop();
+    this.contexts.delete(m.id);
+    this.diffs.get(m.id)?.stop();
+    this.diffs.delete(m.id);
+    this.machines.delete(m.id);
+  }
+
+  uniqueId(base: string) {
+    const slug =
+      base
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || "machine";
+    let id = slug,
+      n = 2;
+    while (this.machines.has(id)) id = `${slug}-${n++}`;
+    return id;
+  }
+
+  machineInfos() {
+    return [...this.machines.values()].map((m) => m.info);
+  }
+
+  snapshotMessage(m: Machine) {
+    const snapshot = this.contexts.get(m.id)?.annotate(m.snapshot) ?? m.snapshot;
+    return { type: "snapshot", machine: m.id, snapshot: this.diffs.get(m.id)?.annotate(snapshot) ?? snapshot };
+  }
+
+  // -------------------------------------------------------------- page
+
+  /** Static files from the built page. Nothing here is secret; the WebSocket is what needs guarding. */
+  servePage(req: http.IncomingMessage, res: http.ServerResponse) {
+    if (req.method !== "GET" && req.method !== "HEAD") return res.writeHead(405).end();
+    let rel: string;
+    try {
+      rel = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
     } catch {
-      return;
+      return res.writeHead(400).end();
     }
-    if (!msg) return;
+    if (rel.endsWith("/")) rel += "index.html";
+    const notFound = () => {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      res.end(this.hasPage ? "Not found\n" : "The office page is not built. Run `pnpm build`, or `pnpm dev` for the Vite dev server.\n");
+    };
+    if (this.pageDir === null) return notFound();
+    const file = path.resolve(this.pageDir, `.${rel}`);
+    if (!file.startsWith(this.pageDir)) return res.writeHead(404).end();
+    fs.stat(file, (err, st) => {
+      if (err || !st.isFile()) return notFound();
+      res.writeHead(200, {
+        "content-type": CONTENT_TYPES[path.extname(file)] ?? "application/octet-stream",
+        "content-length": st.size,
+        // Vite puts a content hash in every asset name; index.html must always be fresh.
+        "cache-control": rel.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache",
+        "x-content-type-options": "nosniff",
+      });
+      if (req.method === "HEAD") return res.end();
+      fs.createReadStream(file).pipe(res);
+    });
+  }
 
-    if (msg.type === "add_machine") {
-      const ssh = msg.ssh;
-      if (!SSH_TARGET.test(ssh)) {
-        ws.send(JSON.stringify({ type: "machine_error", message: "Use an SSH host, user@host, or a Host alias from ~/.ssh/config." }));
+  // -------------------------------------------------------------- WS server
+
+  broadcast(msg: object) {
+    const data = JSON.stringify(msg);
+    for (const client of this.wss.clients) if (client.readyState === 1) client.send(data);
+  }
+
+  broadcastMachines() {
+    this.broadcast({ type: "machines", machines: this.machineInfos() });
+  }
+
+  connected(ws: WebSocket) {
+    console.log(`[bridge] client connected (${this.wss.clients.size})`);
+    ws.send(JSON.stringify({ type: "machines", machines: this.machineInfos() }));
+    for (const m of this.machines.values()) {
+      if (m.snapshot) ws.send(JSON.stringify(this.snapshotMessage(m)));
+      ws.send(JSON.stringify({ type: "prints", machine: m.id, sheets: this.diffs.get(m.id)?.history() ?? [] }));
+    }
+
+    ws.on("message", async (raw) => {
+      let msg: ClientMessage | null;
+      try {
+        msg = parseClientMessage(JSON.parse(raw.toString()));
+      } catch {
         return;
       }
-      if ([...machines.values()].some((m) => m.ssh === ssh)) {
-        ws.send(JSON.stringify({ type: "machine_error", message: `${ssh} already has a floor.` }));
+      if (!msg) return;
+
+      if (msg.type === "add_machine") {
+        const ssh = msg.ssh;
+        if (!SSH_TARGET.test(ssh)) {
+          ws.send(JSON.stringify({ type: "machine_error", message: "Use an SSH host, user@host, or a Host alias from ~/.ssh/config." }));
+          return;
+        }
+        if ([...this.machines.values()].some((m) => m.ssh === ssh)) {
+          ws.send(JSON.stringify({ type: "machine_error", message: `${ssh} already has a floor.` }));
+          return;
+        }
+        const label = msg.label || ssh.split("@").pop()!;
+        const m = this.addMachine({ id: this.uniqueId(label), label: label.slice(0, 40), ssh });
+        this.saveConfig();
+        this.broadcastMachines();
+        ws.send(JSON.stringify({ type: "machine_added", machine: m.id }));
         return;
       }
-      const label = msg.label || ssh.split("@").pop()!;
-      const m = addMachine({ id: uniqueId(label), label: label.slice(0, 40), ssh });
-      saveConfig();
-      broadcastMachines();
-      ws.send(JSON.stringify({ type: "machine_added", machine: m.id }));
-      return;
-    }
-    if (msg.type === "remove_machine") {
-      const m = machines.get(msg.machine);
-      if (!m || m.id === "local") return;
-      m.stop();
-      contexts.get(m.id)?.stop();
-      contexts.delete(m.id);
-      diffs.get(m.id)?.stop();
-      diffs.delete(m.id);
-      machines.delete(m.id);
-      saveConfig();
-      broadcastMachines();
-      return;
-    }
+      if (msg.type === "remove_machine") {
+        const m = this.machines.get(msg.machine);
+        if (!m || m.id === "local") return;
+        this.removeMachine(m);
+        this.saveConfig();
+        this.broadcastMachines();
+        return;
+      }
 
-    const m = machines.get(msg.machine);
-    if (!m) return;
-    if (msg.type === "focus") {
-      try {
-        await m.focusPane(msg.pane_id);
-      } catch (err) {
-        ws.send(JSON.stringify({ type: "error", machine: m.id, message: (err as Error).message }));
+      const m = this.machines.get(msg.machine);
+      if (!m) return;
+      if (msg.type === "focus") {
+        try {
+          await m.focusPane(msg.pane_id);
+        } catch (err) {
+          ws.send(JSON.stringify({ type: "error", machine: m.id, message: (err as Error).message }));
+        }
+      } else if (msg.type === "read") {
+        // Terminal view: the pane's screen, or with `lines` the last `lines`
+        // rows of its history and screen. Reads run in parallel (each Herdr
+        // request takes ~100 ms); `seq` is echoed so the client can drop
+        // replies that arrive out of order.
+        try {
+          const text = await m.readPane(msg.pane_id, msg.lines);
+          ws.send(JSON.stringify({ type: "pane_output", machine: m.id, pane_id: msg.pane_id, text, seq: msg.seq }));
+        } catch (err) {
+          ws.send(JSON.stringify({ type: "error", machine: m.id, pane_id: msg.pane_id, message: (err as Error).message }));
+        }
+      } else if (msg.type === "input") {
+        // Keystrokes from the browser terminal. `ops` is an ordered list of
+        // { text } (literal bytes) and { keys } (named keys such as "enter" or
+        // "ctrl+c").
+        this.queueInput(ws, m, msg.pane_id, msg.ops, msg.id);
+      } else if (msg.type === "commands") {
+        // The message box's "/" menu. The agent and its folder come from the
+        // snapshot, not the page; only this machine's files are read.
+        const pane = m.snapshot?.panes.find((p) => p.pane_id === msg.pane_id);
+        if (!pane) return;
+        const commands = await slashCommands(pane.agent, pane.cwd, !m.ssh, this.config);
+        ws.send(JSON.stringify({ type: "commands", machine: m.id, pane_id: msg.pane_id, agent: pane.agent, commands }));
+      } else if (msg.type === "uncommitted") {
+        // A printer's uncommitted view. Only checkouts a room is in are read (diffs.ts).
+        const reply = (o: object) => ws.send(JSON.stringify({ type: "uncommitted", machine: m.id, root: msg.root, id: msg.id, ...o }));
+        reply(await this.diffs.get(m.id)!.uncommitted(msg.root));
+      } else if (msg.type === "refresh") {
+        m.scheduleRefresh();
+      } else if (msg.type === "create_desk" || msg.type === "create_room") {
+        build(ws, m, msg);
       }
-    } else if (msg.type === "read") {
-      // Terminal view: the pane's screen, or with `lines` the last `lines`
-      // rows of its history and screen. Reads run in parallel (each Herdr
-      // request takes ~100 ms); `seq` is echoed so the client can drop
-      // replies that arrive out of order.
-      try {
-        const text = await m.readPane(msg.pane_id, msg.lines);
-        ws.send(JSON.stringify({ type: "pane_output", machine: m.id, pane_id: msg.pane_id, text, seq: msg.seq }));
-      } catch (err) {
-        ws.send(JSON.stringify({ type: "error", machine: m.id, pane_id: msg.pane_id, message: (err as Error).message }));
-      }
-    } else if (msg.type === "input") {
-      // Keystrokes from the browser terminal. `ops` is an ordered list of
-      // { text } (literal bytes) and { keys } (named keys such as "enter" or
-      // "ctrl+c").
-      queueInput(ws, m, msg.pane_id, msg.ops, msg.id);
-    } else if (msg.type === "commands") {
-      // The message box's "/" menu. The agent and its folder come from the
-      // snapshot, not the page; only this machine's files are read.
-      const pane = m.snapshot?.panes.find((p) => p.pane_id === msg.pane_id);
-      if (!pane) return;
-      const commands = await slashCommands(pane.agent, pane.cwd, !m.ssh);
-      ws.send(JSON.stringify({ type: "commands", machine: m.id, pane_id: msg.pane_id, agent: pane.agent, commands }));
-    } else if (msg.type === "uncommitted") {
-      // A printer's uncommitted view. Only checkouts a room is in are read (diffs.ts).
-      const reply = (o: object) => ws.send(JSON.stringify({ type: "uncommitted", machine: m.id, root: msg.root, id: msg.id, ...o }));
-      reply(await diffs.get(m.id)!.uncommitted(msg.root));
-    } else if (msg.type === "refresh") {
-      m.scheduleRefresh();
-    } else if (msg.type === "create_desk" || msg.type === "create_room") {
-      build(ws, m, msg);
+    });
+  }
+
+  // -------------------------------------------------------------- input
+  //
+  // Input is serialized per pane so fast typing cannot reorder across
+  // connections. Every Herdr request takes ~100 ms, so keystrokes that arrive
+  // while a batch is in flight are merged into the next one ("hello" typed fast
+  // becomes one send_text). `input_ack` carries the id of the last message sent.
+  // The ops come checked and trimmed from parseClientMessage.
+
+  enqueueInput(key: string, job: () => Promise<void>) {
+    const prev = this.inputQueues.get(key) ?? Promise.resolve();
+    const next = prev.then(job, job).finally(() => {
+      if (this.inputQueues.get(key) === next) this.inputQueues.delete(key);
+    });
+    this.inputQueues.set(key, next);
+  }
+
+  queueInput(ws: WebSocket, machine: Machine, paneId: string, ops: InputOp[], id: number | undefined) {
+    const key = `${machine.id}/${paneId}`;
+    let batch = this.openBatches.get(key);
+    if (!batch || batch.ws !== ws) {
+      batch = { ws, ops: [], id };
+      this.openBatches.set(key, batch);
+      const b = batch;
+      this.enqueueInput(key, async () => {
+        if (this.openBatches.get(key) === b) this.openBatches.delete(key); // closed to merging once it runs
+        try {
+          for (const op of b.ops) {
+            if ("text" in op) await machine.sendText(paneId, op.text);
+            else await machine.sendKeys(paneId, op.keys);
+          }
+          b.ws.send(JSON.stringify({ type: "input_ack", machine: machine.id, pane_id: paneId, id: b.id }));
+        } catch (err) {
+          b.ws.send(JSON.stringify({ type: "error", machine: machine.id, pane_id: paneId, id: b.id, message: (err as Error).message }));
+        }
+      });
     }
-  });
-});
+    batch.id = id;
+    for (const op of ops) {
+      const last = batch.ops[batch.ops.length - 1];
+      if ("text" in op) {
+        if (last && "text" in last && last.text.length + op.text.length <= MAX_INPUT_TEXT) last.text += op.text;
+        else batch.ops.push({ text: op.text });
+      } else if (last && "keys" in last) last.keys.push(...op.keys);
+      else batch.ops.push({ keys: [...op.keys] });
+    }
+  }
+
+  // -------------------------------------------------------------- listen and close
+
+  listen() {
+    this.addFloors();
+    const { port, host } = this.config;
+    return new Promise<string | null>((resolve, reject) => {
+      // ws re-emits the HTTP server's errors (EADDRINUSE…) on the WebSocket server.
+      this.wss.once("error", (err: NodeJS.ErrnoException) => {
+        console.error(
+          err.code === "EADDRINUSE"
+            ? `[bridge] port ${port} is already in use. Is the office already running? Pick another port with --port or KAUAK_PORT.`
+            : `[bridge] cannot listen on ${host}:${port}: ${err.message}`,
+        );
+        reject(err);
+      });
+      this.server.listen(port, host, () => {
+        const shown = host.includes(":") ? `[${host}]` : host;
+        const floors = `${this.machines.size} floor${this.machines.size === 1 ? "" : "s"} (${this.config.machinesFile})`;
+        console.log(`[bridge] websocket listening on ws://${shown}:${port} · ${floors}`);
+        resolve(this.hasPage ? `http://${shown === "0.0.0.0" || shown === "[::]" ? "127.0.0.1" : shown}:${port}/` : null);
+      });
+    });
+  }
+
+  // The floors stop before the first await, so a process "exit" handler that
+  // cannot wait still takes the SSH tunnels and remote helpers down with it.
+  close() {
+    if (this.closing) return this.closing;
+    for (const m of this.machines.values()) m.stop();
+    for (const c of this.contexts.values()) c.stop();
+    for (const d of this.diffs.values()) d.stop();
+    for (const ws of this.wss.clients) ws.terminate();
+    this.closing = new Promise<void>((resolve) => {
+      this.wss.close();
+      // Resolves on an error too: a port that never opened has nothing to close.
+      this.server.close(() => resolve());
+      this.server.closeAllConnections();
+    });
+    return this.closing;
+  }
+}
 
 // ---------------------------------------------------------------- build mode
 //
@@ -350,94 +472,3 @@ function roomPath(m: Machine, raw: string) {
   if (!m.ssh && !fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`There is no folder at ${p}.`);
   return p;
 }
-
-// Input is serialized per pane so fast typing cannot reorder across
-// connections. Every Herdr request takes ~100 ms, so keystrokes that arrive
-// while a batch is in flight are merged into the next one ("hello" typed fast
-// becomes one send_text). `input_ack` carries the id of the last message sent.
-// The ops come checked and trimmed from parseClientMessage.
-const inputQueues = new Map<string, Promise<void>>(); // "machine/pane" → promise chain
-const openBatches = new Map<string, InputBatch>(); // "machine/pane" → batch still waiting for its turn
-
-/** Ops for one pane from one connection, merged while they wait; `id` is the last message's. */
-interface InputBatch {
-  ws: WebSocket;
-  ops: InputOp[];
-  id: number | undefined;
-}
-
-function enqueueInput(key: string, job: () => Promise<void>) {
-  const prev = inputQueues.get(key) ?? Promise.resolve();
-  const next = prev.then(job, job).finally(() => {
-    if (inputQueues.get(key) === next) inputQueues.delete(key);
-  });
-  inputQueues.set(key, next);
-}
-
-function queueInput(ws: WebSocket, machine: Machine, paneId: string, ops: InputOp[], id: number | undefined) {
-  const key = `${machine.id}/${paneId}`;
-  let batch = openBatches.get(key);
-  if (!batch || batch.ws !== ws) {
-    batch = { ws, ops: [], id };
-    openBatches.set(key, batch);
-    const b = batch;
-    enqueueInput(key, async () => {
-      if (openBatches.get(key) === b) openBatches.delete(key); // closed to merging once it runs
-      try {
-        for (const op of b.ops) {
-          if ("text" in op) await machine.sendText(paneId, op.text);
-          else await machine.sendKeys(paneId, op.keys);
-        }
-        b.ws.send(JSON.stringify({ type: "input_ack", machine: machine.id, pane_id: paneId, id: b.id }));
-      } catch (err) {
-        b.ws.send(JSON.stringify({ type: "error", machine: machine.id, pane_id: paneId, id: b.id, message: (err as Error).message }));
-      }
-    });
-  }
-  batch.id = id;
-  for (const op of ops) {
-    const last = batch.ops[batch.ops.length - 1];
-    if ("text" in op) {
-      if (last && "text" in last && last.text.length + op.text.length <= MAX_INPUT_TEXT) last.text += op.text;
-      else batch.ops.push({ text: op.text });
-    } else if (last && "keys" in last) last.keys.push(...op.keys);
-    else batch.ops.push({ keys: [...op.keys] });
-  }
-}
-
-// ---------------------------------------------------------------- shutdown
-
-// SSH tunnels and remote context readers are child processes; take them down with the bridge.
-function stopAll() {
-  for (const m of machines.values()) m.stop();
-  for (const c of contexts.values()) c.stop();
-  for (const d of diffs.values()) d.stop();
-}
-function shutdown(code = 0) {
-  stopAll();
-  process.exit(code);
-}
-process.on("SIGINT", () => shutdown());
-process.on("SIGTERM", () => shutdown());
-process.on("exit", stopAll);
-
-// ---------------------------------------------------------------- listen
-
-/** Resolves with the office's URL once the port is open (null when dist/ is not built). */
-export const ready = new Promise<string | null>((resolve) => {
-  // ws re-emits the HTTP server's errors (EADDRINUSE…) on the WebSocket server.
-  wss.once("error", (err: NodeJS.ErrnoException) => {
-    console.error(
-      err.code === "EADDRINUSE"
-        ? `[bridge] port ${WS_PORT} is already in use. Is the office already running? Pick another port with --port or KAUAK_PORT.`
-        : `[bridge] cannot listen on ${WS_HOST}:${WS_PORT}: ${err.message}`,
-    );
-    shutdown(1);
-  });
-  server.listen(WS_PORT, WS_HOST, () => {
-    const host = WS_HOST.includes(":") ? `[${WS_HOST}]` : WS_HOST;
-    const floors = `${machines.size} floor${machines.size === 1 ? "" : "s"} (${CONFIG_PATH})`;
-    console.log(`[bridge] websocket listening on ws://${host}:${WS_PORT} · ${floors}`);
-    resolve(HAS_PAGE ? `http://${host === "0.0.0.0" || host === "[::]" ? "127.0.0.1" : host}:${WS_PORT}/` : null);
-  });
-});

@@ -11,7 +11,7 @@ goes in:
 - `bin/kauak.js`, the `kauak` executable (package.json `bin`), and `cli/`, the
   commands it runs
 - `bridge/`, the bridge `kauak serve` starts, as a bundle: `server.js` and
-  `machine.js`, the two modules the CLI loads, built by Vite from
+  `config.js`, the two modules the CLI loads, built by Vite from
   `packages/bridge/src` into plain JavaScript for Node 22 (not minified, no
   source maps), with the two Python helpers it runs on remote floors over SSH
   beside them. It is bundled rather than copied because the bridge imports the
@@ -35,7 +35,7 @@ since npm cannot install one. A new directory that the CLI loads at runtime has
 to be added to `files`.
 
 The package exposes no module: `exports` only lets tools read its
-package.json, because importing the bridge would start a server.
+package.json.
 
 ## Checking the package
 

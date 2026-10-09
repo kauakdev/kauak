@@ -1,18 +1,23 @@
-// The bridge as a page sees it: the real server.ts, run against a fake Herdr
-// (fixtures/fake-herdr.mjs), with a WebSocket client in the page's place.
-// What crosses the WebSocket must be the Kauak protocol and nothing of Herdr's.
+// The bridge as a page sees it: the real server.ts, started in this process
+// with createBridge against a fake Herdr (fixtures/fake-herdr.mjs), with a
+// WebSocket client in the page's place. What crosses the WebSocket must be
+// the Kauak protocol and nothing of Herdr's. main.ts, which runs the bridge as
+// a process of its own, is started as one.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
+import { resolveConfig } from "./config.ts";
 import { FIXTURE, fakeHerdr, herdrError } from "./fixtures/fake-herdr.mjs";
 import { toSnapshot } from "./herdr.ts";
+import { createBridge } from "./server.ts";
 
 // Every message type the bridge may send (BridgeMessage in @kauak/protocol).
 const BRIDGE_TYPES = new Set([
@@ -61,39 +66,29 @@ function freePort() {
   });
 }
 
-/** The bridge on a free port, with this floor only, and nothing read from the user's own config or agents. */
-async function startBridge(t, herdr) {
+/** The settings for a bridge on a free port, with this floor only, and nothing read from the user's own config or agents. */
+async function testEnv(t, herdrSocket) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "kauak-bridge-test-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const port = await freePort();
-  const child = spawn(process.execPath, [fileURLToPath(new URL("./server.ts", import.meta.url))], {
-    env: {
-      PATH: process.env.PATH,
-      HOME: home,
-      KAUAK_PORT: String(port),
-      KAUAK_HOST: "127.0.0.1",
-      HERDR_SOCKET_PATH: herdr.socketPath,
-      KAUAK_CONFIG: path.join(home, "machines.json"),
-      CLAUDE_CONFIG_DIR: path.join(home, ".claude"),
-      CODEX_HOME: path.join(home, ".codex"),
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let log = "";
-  child.stdout.on("data", (d) => {
-    log += d;
-  });
-  child.stderr.on("data", (d) => {
-    log += d;
-  });
-  t.after(() => {
-    child.kill("SIGTERM");
-    fs.rmSync(home, { recursive: true, force: true });
-  });
-  await waitFor(
-    () => log.includes("websocket listening"),
-    () => `the bridge did not start:\n${log}`,
-  );
-  return `ws://127.0.0.1:${port}`;
+  const env = {
+    KAUAK_PORT: String(port),
+    KAUAK_HOST: "127.0.0.1",
+    HERDR_SOCKET_PATH: herdrSocket,
+    KAUAK_CONFIG: path.join(home, "machines.json"),
+    CLAUDE_CONFIG_DIR: path.join(home, ".claude"),
+    CODEX_HOME: path.join(home, ".codex"),
+  };
+  return { home, env, url: `ws://127.0.0.1:${port}` };
+}
+
+/** The bridge, in this process, until the test ends. */
+async function startBridge(t, herdr) {
+  const { env, url } = await testEnv(t, herdr.socketPath);
+  const bridge = createBridge(resolveConfig(env));
+  t.after(() => bridge.close());
+  await bridge.listen();
+  return url;
 }
 
 /** A page's connection: every message it got, and a way to wait for the next one that matches. */
@@ -223,4 +218,35 @@ test("a page's requests reach Herdr as Herdr requests, and only Kauak comes back
   );
   assert.equal(herdr.calls("pane.send_text").length, 1);
   for (const msg of page.got) assertKauak(msg);
+});
+
+test("pnpm bridge (main.ts) serves pages, and stops with exit 0 on SIGINT and SIGTERM", { timeout: 20_000 }, async (t) => {
+  for (const signal of ["SIGINT", "SIGTERM"]) {
+    const { home, env, url } = await testEnv(t, "/nonexistent/kauak-test/herdr.sock");
+    const child = spawn(process.execPath, [fileURLToPath(new URL("./main.ts", import.meta.url))], {
+      env: { PATH: process.env.PATH, HOME: home, ...env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    t.after(() => child.kill("SIGKILL"));
+    let log = "";
+    child.stdout.on("data", (d) => {
+      log += d;
+    });
+    child.stderr.on("data", (d) => {
+      log += d;
+    });
+    const exit = once(child, "exit");
+    await waitFor(
+      () => log.includes("websocket listening"),
+      () => `the bridge did not start:\n${log}`,
+    );
+    const page = await connect(t, url);
+    const machines = await page.next((m) => m.type === "machines");
+    assert.deepEqual(
+      machines.machines.map((m) => m.id),
+      ["local"],
+    );
+    child.kill(signal);
+    assert.deepEqual(await exit, [0, null], log);
+  }
 });

@@ -22,6 +22,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import type { DiffSheet, FileDiff, Snapshot, Uncommitted } from "@kauak/protocol";
+import type { BridgeConfig } from "./config.ts";
 import { RemoteScript } from "./remote.ts";
 
 const POLL_MS = 2000;
@@ -85,6 +86,9 @@ interface Floor {
   on(event: "snapshot", listener: () => void): unknown;
 }
 
+/** What the tracker uses of the bridge's config: the ssh executable, for a remote floor. */
+type DiffSettings = Pick<BridgeConfig, "sshCommand">;
+
 /**
  * Emits "print" with each new sheet and "change" when rooms move to another
  * checkout (`annotate` then gives the snapshot each room's `git_root`).
@@ -105,10 +109,10 @@ export class DiffTracker extends EventEmitter {
   stopped: boolean;
   timer: NodeJS.Timeout;
 
-  constructor(machine: Floor) {
+  constructor(machine: Floor, settings: DiffSettings) {
     super();
     this.m = machine;
-    this.host = machine.ssh ? new RemoteHost(machine) : new LocalHost();
+    this.host = machine.ssh ? new RemoteHost(machine, settings.sshCommand) : new LocalHost();
     this.folders = new Map();
     this.checkouts = new Map();
     this.sheets = new Map();
@@ -452,8 +456,8 @@ class LocalHost {
 class RemoteHost {
   script: RemoteScript;
 
-  constructor(machine: Floor) {
-    this.script = new RemoteScript(machine, "./diffs_remote.py", "printers");
+  constructor(machine: Floor, sshCommand: string) {
+    this.script = new RemoteScript(machine, sshCommand, "./diffs_remote.py", "printers");
   }
 
   stop() {

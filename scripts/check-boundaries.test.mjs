@@ -16,15 +16,18 @@ const CLEAN = {
   "packages/bridge/src/remote.ts": 'import { SSH } from "./machine.ts";\n',
   "packages/bridge/src/context.ts":
     '// Herdr reports no token counts, so read them from the transcript.\nimport { RemoteScript } from "./remote.ts";\n',
-  "packages/bridge/src/diffs.ts": 'import { RemoteScript } from "./remote.ts";\n',
+  "packages/bridge/src/diffs.ts": 'import { RemoteScript } from "./remote.ts";\nconst env = { ...process.env, GIT_OPTIONAL_LOCKS: "0" };\n',
   "packages/bridge/src/commands.ts": 'import fs from "node:fs";\n',
   "packages/bridge/src/server.ts": 'import { Machine } from "./machine.ts";\nimport { parseClientMessage } from "@kauak/protocol";\n',
+  "packages/bridge/src/config.ts": "export const resolveConfig = (env) => ({ port: Number(env.KAUAK_PORT ?? 7788) });\n",
+  "packages/bridge/src/main.ts": 'import { resolveConfig } from "./config.ts";\nconst config = resolveConfig(process.env);\n',
   "packages/bridge/src/server.test.mjs": 'import { toSnapshot } from "./herdr.ts";\nconst calls = ["pane.read", "tab.create"];\n',
   "packages/bridge/src/fixtures/fake-herdr.mjs": 'export const METHOD = "session.snapshot";\n',
   "packages/protocol/src/index.ts":
     'export type AgentStatus = "idle" | "working";\nexport const AGENT_STATUSES: readonly AgentStatus[] = ["idle", "working"];\n',
   "packages/protocol/src/protocol.test.mjs": 'import test from "node:test";\nimport { parseClientMessage } from "./index.ts";\n',
   "packages/kauak/cli/main.js": 'export async function serve() {\n  await import("../../bridge/src/server.ts");\n}\n',
+  "packages/kauak/cli/commands/serve.js": "export const run = (resolveConfig) => resolveConfig(process.env, { port: 7788 });\n",
   "packages/kauak/bin/kauak.js": 'import { main } from "../cli/main.js";\n',
   "packages/appearance/src/contracts.ts": "export interface Theme {\n  name: string;\n}\n",
   "packages/appearance/src/registry.ts":
@@ -225,6 +228,24 @@ test("a rule whose files are gone fails instead of passing on nothing", () => {
 test("dot folders such as .claude/worktrees are not read", () => {
   const { status, lines } = check({
     ".claude/worktrees/feature/packages/bridge/src/server.ts": 'import { toSnapshot } from "./herdr.ts";\n',
+  });
+  assert.equal(status, 0, lines.join("\n"));
+});
+
+test("only the entry points read process.env; passing it whole to a child process is not reading it", () => {
+  const rule = /only the entry points \(main\.ts, the CLI's serve\.js\) read process\.env/;
+  assertViolation(
+    { "packages/bridge/src/server.ts": "const port = Number(process.env.KAUAK_PORT ?? 7788);\n" },
+    /^packages\/bridge\/src\/server\.ts:1: reads process\.env: only the entry points/,
+  );
+  assertViolation({ "packages/bridge/src/config.ts": "export const config = resolve(process.env);\n" }, rule);
+  assertViolation({ "packages/bridge/src/context.ts": 'const dir = process.env["CLAUDE_CONFIG_DIR"];\n' }, rule);
+  assertViolation({ "packages/bridge/src/machine.ts": "const ssh = process?.env.KAUAK_SSH;\n" }, rule);
+  assertViolation({ "packages/bridge/src/diffs.ts": "const env = { ...process.env.GIT_DIR };\n" }, rule);
+  assertViolation({ "packages/kauak/cli/main.js": "export const port = () => process.env.KAUAK_PORT;\n" }, rule);
+  const { status, lines } = check({
+    "packages/bridge/src/context.ts":
+      'execFile("ps", [], { env: { ...process.env, LC_ALL: "C" } });\n// process.env.HOME is the entry point\'s to read.\n',
   });
   assert.equal(status, 0, lines.join("\n"));
 });

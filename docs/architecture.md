@@ -29,15 +29,29 @@ code around them.
 `packages/kauak/bin/kauak.js` is the `kauak` executable. It hands its arguments
 to `packages/kauak/cli/main.js`, which finds the command in `COMMANDS`, parses
 its options and runs it; a new command is one module in
-`packages/kauak/cli/commands/` and one entry there. `kauak serve`
-(`packages/kauak/cli/commands/serve.js`) loads `packages/bridge/src/server.ts`,
-which starts listening as it is loaded and serves the built page
+`packages/kauak/cli/commands/` and one entry there.
+
+Loading the bridge starts nothing. Its settings are one frozen object that
+`resolveConfig(env, flags)` (`packages/bridge/src/config.ts`) makes from the
+environment (the variables in [configuration.md](configuration.md), with their
+`AGENT_OFFICE_*` fallbacks) and from what the entry point knows itself: the
+`--port` option and where the built page is. No other module reads
+`process.env`. `createBridge(config)` (`packages/bridge/src/server.ts`) returns
+`{ listen(), close(), floors }`: `listen()` adds the floors and opens the port,
+and resolves with the office's URL, or null when there is no built page;
+`close()` stops the floors, whose SSH tunnels and remote helpers are child
+processes, then closes the port. The entry point owns the process: it calls
+`close()` on Ctrl+C, SIGTERM and exit, and picks the exit code.
+
+There are two entry points. `kauak serve`
+(`packages/kauak/cli/commands/serve.js`) serves the built page
 (`packages/kauak/dist/`) on the same port as the WebSocket, so the office is one
-process and one URL. The npm package ships it as `dist/`, already built, with
-the bridge bundled beside the CLI (`prepack` does both), so an installed
+process and one URL. The npm package ships the page as `dist/`, already built,
+with the bridge bundled beside the CLI (`prepack` does both), so an installed
 `kauak serve` needs no build. From a checkout the bridge runs from its
-TypeScript source, protocol included, on Node's type stripping. `pnpm dev`
-runs the bridge on its own and serves the page from Vite instead.
+TypeScript source, protocol included, on Node's type stripping.
+`packages/bridge/src/main.ts` runs the bridge on its own, for `pnpm bridge`
+and `pnpm dev`, which serves the page from Vite instead.
 
 ## The Herdr adapter
 
@@ -89,9 +103,10 @@ Three trackers add what Herdr does not report:
 - `packages/bridge/src/commands.ts` lists a pane's slash commands. The agent and
   its folder come from the snapshot, not from the page.
 
-The tests run the real server against a stand-in Herdr
-(`packages/bridge/src/fixtures/fake-herdr.mjs`, answering from a scrubbed real
-snapshot), and check that nothing of Herdr's reaches the WebSocket.
+The tests start the real server in their own process with `createBridge`,
+against a stand-in Herdr (`packages/bridge/src/fixtures/fake-herdr.mjs`,
+answering from a scrubbed real snapshot), and check that nothing of Herdr's
+reaches the WebSocket.
 
 ## The page
 

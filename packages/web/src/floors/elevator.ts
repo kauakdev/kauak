@@ -1,13 +1,14 @@
 // Elevator panel: one button per floor (machine), top floor first, with
 // the floor's connection state and how many of its agents need attention.
-// Also owns the "add floor" form. Re-rendered on bridge pushes only.
+// Also owns the "add floor" form. Reads the floors and the floor on screen
+// from the page's state (app/state.ts), re-rendering when they change.
 
-import { floorProblem, runtimeOf, type Floor } from "./floors";
+import type { AppState } from "../app/state";
+import { floorProblem, runtimeOf } from "./floors";
 import type { AgentStatus } from "@kauak/protocol";
 import "./elevator.css";
 
 export interface ElevatorHandlers {
-  onPick(floor: string): void;
   onAdd(ssh: string, label: string): boolean;
   onRemove(floor: string): void;
 }
@@ -19,12 +20,13 @@ export class Elevator {
   private err = this.form.querySelector<HTMLElement>(".err")!;
   private submit = this.form.querySelector<HTMLButtonElement>("button[type=submit]")!;
   private input = this.form.querySelector<HTMLInputElement>("input[name=ssh]")!;
-  private floors: Floor[] = [];
-  private current = "";
   /** Set by main: true while the terminal panel owns the keyboard. */
   isTyping: () => boolean = () => false;
 
-  constructor(private h: ElevatorHandlers) {
+  constructor(
+    private state: AppState,
+    private h: ElevatorHandlers,
+  ) {
     document.getElementById("floor-add-btn")!.addEventListener("click", () => this.toggleForm(this.form.hidden));
     this.form.querySelector("[data-cancel]")!.addEventListener("click", () => this.toggleForm(false));
     // Capture phase, so Esc closes the form before it can close the terminal panel.
@@ -55,13 +57,13 @@ export class Elevator {
       const target = e.target as HTMLElement;
       const rm = target.closest<HTMLElement>("[data-rm]");
       if (rm) {
-        const f = this.floors.find((x) => x.info.id === rm.dataset.rm);
+        const f = this.state.floors().find((x) => x.info.id === rm.dataset.rm);
         if (f && confirm(`Remove floor ${f.number} (${f.info.label})? The machine and its agents are not touched.`))
           this.h.onRemove(f.info.id);
         return;
       }
       const go = target.closest<HTMLElement>("[data-floor]");
-      if (go) this.h.onPick(go.dataset.floor!);
+      if (go) this.state.goToFloor(go.dataset.floor!);
     });
     addEventListener("keydown", (e) => {
       if (
@@ -73,21 +75,25 @@ export class Elevator {
         e.altKey
       )
         return;
+      const floors = this.state.floors();
       if (/^[1-9]$/.test(e.key)) {
-        const f = this.floors[Number(e.key) - 1];
-        if (f) this.h.onPick(f.info.id);
+        const f = floors[Number(e.key) - 1];
+        if (f) this.state.goToFloor(f.info.id);
       } else if (e.key === "PageUp" || e.key === "PageDown") {
         e.preventDefault();
-        const i = this.floors.findIndex((f) => f.info.id === this.current);
-        const next = this.floors[i + (e.key === "PageUp" ? 1 : -1)];
-        if (next) this.h.onPick(next.info.id);
+        const i = floors.findIndex((f) => f.info.id === this.state.current);
+        const next = floors[i + (e.key === "PageUp" ? 1 : -1)];
+        if (next) this.state.goToFloor(next.info.id);
       }
+    });
+    state.subscribe((change) => {
+      if (change.type !== "selection") this.render();
     });
   }
 
-  render(floors: Floor[], current: string) {
-    this.floors = floors;
-    this.current = current;
+  private render() {
+    const floors = this.state.floors(),
+      current = this.state.current;
     this.list.innerHTML = [...floors]
       .reverse()
       .map((f) => {

@@ -15,12 +15,17 @@
 // The box borrows two things from agents' own prompts: a "/" menu of the
 // agent's commands (slash.ts), and Claude Code's shadow text, the dim
 // suggestion in its empty prompt, which Tab takes (shadow.ts).
+//
+// The panel shows the selected pane of the page's state (app/state.ts): it
+// opens when a pane is selected, and closing it clears the selection.
 
 import { Terminal } from "@xterm/xterm";
 // Before xterm's stylesheet, as when these rules were inline in index.html.
 import "./panel.css";
 import "@xterm/xterm/css/xterm.css";
 import { contextLevel, contextPercent, contextText } from "../app/context";
+import type { AppState } from "../app/state";
+import { mergeSnapshots } from "../floors/floors";
 import { promptShadow, type Shadow } from "./shadow";
 import { SlashMenu } from "./slash";
 import type { InputOp, PaneInfo, SlashCommand, Snapshot } from "@kauak/protocol";
@@ -93,10 +98,9 @@ export class TerminalPanel {
   onInput: (paneId: string, ops: InputOp[], id: number) => boolean = () => false;
   onListCommands: (paneId: string) => void = () => {};
   onFocus: (paneId: string) => void = () => {};
-  onClose: () => void = () => {};
   onResize: () => void = () => {};
 
-  constructor() {
+  constructor(private state: AppState) {
     this.term = new Terminal({
       disableStdin: true,
       cursorBlink: false,
@@ -164,6 +168,11 @@ export class TerminalPanel {
       if (e.key === "Escape" && !this.isTyping()) this.close();
     });
     this.changed();
+    state.subscribe((change) => {
+      if (change.type !== "selection") this.setSnapshot(mergeSnapshots(state.floors()));
+      else if (state.selected) this.open(state.pane(state.selected)!);
+      else if (this.pane) this.close();
+    });
   }
 
   /** True while keyboard focus is in the message box, so global shortcuts must stay out of the way. */
@@ -171,7 +180,7 @@ export class TerminalPanel {
     return this.pane !== null && document.activeElement === this.box;
   }
 
-  setSnapshot(s: Snapshot) {
+  private setSnapshot(s: Snapshot) {
     if (!this.pane) return;
     const fresh = s.panes.find((p) => p.pane_id === this.pane!.pane_id);
     if (!fresh) {
@@ -184,7 +193,7 @@ export class TerminalPanel {
     this.askCommands(); // an agent may have started or quit in the pane
   }
 
-  open(pane: PaneInfo) {
+  private open(pane: PaneInfo) {
     const switching = this.pane?.pane_id !== pane.pane_id;
     if (switching) this.saveDraft();
     this.pane = pane;
@@ -223,15 +232,11 @@ export class TerminalPanel {
     this.pane = null;
     this.commandsFor = "";
     this.box.blur();
-    if (wasOpen) this.onClose();
+    if (wasOpen) this.state.deselect();
     if (this.timer !== null) {
       clearInterval(this.timer);
       this.timer = null;
     }
-  }
-
-  get selectedPaneId(): string | null {
-    return this.pane?.pane_id ?? null;
   }
 
   /** The "/" menu's commands for a pane, from the bridge. */

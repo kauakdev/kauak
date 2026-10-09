@@ -2,7 +2,8 @@
 import "./main.css";
 import { BuildMode } from "../office/build";
 import { Elevator } from "../floors/elevator";
-import { EMPTY_SNAPSHOT, floorOf, keyOf, mergeSnapshots, namespaceSnapshot, type Floor } from "../floors/floors";
+import { EMPTY_SNAPSHOT } from "../floors/floors";
+import { AppState } from "./state";
 import { Hud } from "../hud/hud";
 import { TerminalPanel } from "../terminal/panel";
 import { Prints } from "../printers/prints";
@@ -11,10 +12,7 @@ import { Radio } from "../radio/radio";
 import { AppearanceSettings } from "../appearance/settings";
 import { OfficeBackground } from "../appearance/background";
 import { OfficeScene } from "../office/scene";
-import type { MachineInfo, Snapshot } from "@kauak/protocol";
 import { Bridge, type BridgeApi, type BridgeHandlers } from "../bridge/ws";
-
-const FLOOR_KEY = "agent-office.floor";
 
 async function main() {
   const scene = new OfficeScene();
@@ -22,99 +20,49 @@ async function main() {
   const background = new OfficeBackground(document.getElementById("app")!);
   const appearance = new AppearanceSettings(scene, background);
   await appearance.restoreBanner();
-  const panel = new TerminalPanel();
+  const params = new URLSearchParams(location.search);
+  // Simulated floors and agents instead of the bridge: `?demo`, or the static demo build (`pnpm build:demo`).
+  const demo = import.meta.env.MODE === "demo" || params.has("demo");
+  const state = new AppState(params);
+  const banner = document.getElementById("floor-banner")!;
+
+  // The office subscribes before the panel, the HUD and the elevator (they do in their constructors),
+  // so it is drawn, and fitted between the roster and the elevator, before they re-render, as before.
+  // Its half for the selection is subscribed last.
+  state.subscribe((change) => {
+    if (change.type === "selection" || (change.type === "floors" && !change.current)) return;
+    const dir = change.type === "floor" ? change.dir : 0;
+    scene.showFloor(state.current, state.snapshot(state.current) ?? EMPTY_SNAPSHOT, dir);
+    if (dir !== 0) {
+      const to = state.floors().find((f) => f.info.id === state.current)!;
+      banner.innerHTML = `<b>${to.number}F</b>${escapeHtml(to.info.label)}`;
+      banner.classList.remove("show");
+      void banner.offsetWidth; // restart the animation
+      banner.classList.add("show");
+    }
+  });
+
+  const panel = new TerminalPanel(state);
   // Every room's printer: a sheet per file edit, picked up and read in the printout.
   const prints = new Prints();
   scene.prints = prints;
   const printout = new Printout(prints);
   scene.onOpenPrinter = (key, room, label) => printout.open(key, label, () => scene.printerTray(key, room));
   printout.request = (key, id) => bridge.requestUncommitted(key, id);
-  const banner = document.getElementById("floor-banner")!;
 
-  // Floors in bridge order (1F first); snapshots are namespaced (see floors.ts).
-  let machines: MachineInfo[] = [];
-  const snapshots = new Map<string, Snapshot>();
-  const params = new URLSearchParams(location.search);
-  // Simulated floors and agents instead of the bridge: `?demo`, or the static demo build (`pnpm build:demo`).
-  const demo = import.meta.env.MODE === "demo" || params.has("demo");
-  let current = params.get("floor") ?? load(FLOOR_KEY) ?? "local";
-  // Deep link: ?pane=w1:p1 (this machine) or ?pane=<machine>/w1:p1 opens that pane's terminal on load.
-  let wantPane = params.get("pane");
-  if (wantPane && !wantPane.includes("/")) wantPane = keyOf("local", wantPane);
-  if (wantPane) current = floorOf(wantPane);
-
-  function floors(): Floor[] {
-    return machines.map((info, i) => ({ info, number: i + 1, snapshot: snapshots.get(info.id) ?? null }));
-  }
-
-  function refreshHud() {
-    const all = floors();
-    elevator.render(all, current);
-    hud.setFloors(all, current);
-    panel.setSnapshot(mergeSnapshots(all));
-  }
-
-  function goToFloor(id: string) {
-    const all = floors();
-    const from = all.find((f) => f.info.id === current),
-      to = all.find((f) => f.info.id === id);
-    if (!to) return;
-    const dir = from && from !== to ? Math.sign(to.number - from.number) : 0;
-    current = id;
-    save(FLOOR_KEY, id);
-    scene.showFloor(id, to.snapshot ?? EMPTY_SNAPSHOT, dir);
-    if (dir !== 0) {
-      banner.innerHTML = `<b>${to.number}F</b>${escapeHtml(to.info.label)}`;
-      banner.classList.remove("show");
-      void banner.offsetWidth; // restart the animation
-      banner.classList.add("show");
-    }
-    refreshHud();
-  }
-
-  function select(paneKey: string) {
-    const floor = floorOf(paneKey);
-    const p = snapshots.get(floor)?.panes.find((x) => x.pane_id === paneKey);
-    if (!p) return;
-    if (floor !== current) goToFloor(floor);
-    panel.open(p);
-    scene.setSelected(paneKey);
-    scene.focusPane(paneKey);
-    hud.setSelected(paneKey);
-  }
-
-  const hud = new Hud({
-    onSelect: select,
+  const hud = new Hud(state, {
     onFit: () => scene.fit(),
     onZoom: (f) => scene.zoomAt(f),
   });
 
-  const elevator = new Elevator({
-    onPick: goToFloor,
+  const elevator = new Elevator(state, {
     onAdd: (ssh, label) => bridge.addMachine(ssh, label),
     onRemove: (id) => bridge.removeMachine(id),
   });
 
   const handlers: BridgeHandlers = {
-    onMachines: (list) => {
-      machines = list;
-      const ids = new Set(list.map((m) => m.id));
-      for (const id of [...snapshots.keys()]) if (!ids.has(id)) snapshots.delete(id);
-      if (!ids.has(current) && list.length > 0) goToFloor(list[0]!.id);
-      else {
-        scene.showFloor(current, snapshots.get(current) ?? EMPTY_SNAPSHOT);
-        refreshHud();
-      }
-    },
-    onSnapshot: (machine, s) => {
-      snapshots.set(machine, namespaceSnapshot(machine, s));
-      if (machine === current) scene.showFloor(current, snapshots.get(machine)!);
-      refreshHud();
-      if (wantPane && floorOf(wantPane) === machine) {
-        if (snapshots.get(machine)!.panes.some((x) => x.pane_id === wantPane)) select(wantPane);
-        wantPane = null;
-      }
-    },
+    onMachines: (list) => state.setMachines(list),
+    onSnapshot: (machine, s) => state.setSnapshot(machine, s),
     onStatus: (ok) => hud.setBridge(ok),
     onPaneOutput: (id, text, seq) => panel.receive(id, text, seq),
     onInputAck: (id, inputId) => panel.inputAcked(id, inputId),
@@ -124,7 +72,7 @@ async function main() {
     },
     onMachineAdded: (id) => {
       elevator.added();
-      goToFloor(id);
+      state.goToFloor(id);
     },
     onMachineError: (message) => elevator.showError(message),
     onCreated: (pane, id) => build.created(pane, id),
@@ -140,13 +88,13 @@ async function main() {
     onToggle: (on) => scene.setBuildMode(on),
     createDesk: (workspace, agent, id) => bridge.createDesk(workspace, agent, id),
     createRoom: (machine, room, agent, id) => bridge.createRoom(machine, room, agent, id),
-    onCreated: select,
+    onCreated: (pane) => state.select(pane),
   });
   scene.onBuild = (target, x, y) => {
-    const info = machines.find((m) => m.id === current);
+    const info = state.floors().find((f) => f.info.id === state.current)?.info;
     if (info) build.open(target, { id: info.id, label: info.label, remote: info.ssh !== null }, x, y);
   };
-  scene.onSelectPane = (pane) => select(pane.pane_id);
+  scene.onSelectPane = (pane) => state.select(pane.pane_id);
   scene.onEmptyClick = () => {
     panel.close();
     build.close();
@@ -162,28 +110,16 @@ async function main() {
   const radio = new Radio();
   radio.isTyping = typing;
   panel.onFocus = (id) => bridge.focusPane(id);
-  panel.onClose = () => {
-    scene.setSelected(null);
-    hud.setSelected(null);
-  };
   // A wider panel can cover the desk: bring it back into the office's visible part.
   panel.onResize = () => {
-    if (panel.selectedPaneId) scene.focusPane(panel.selectedPaneId);
+    if (state.selected) scene.focusPane(state.selected);
   };
-}
-
-// localStorage can be missing or throw (private windows, blocked site data).
-function load(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-function save(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {}
+  // After the panel's subscription: the camera centres the desk in what the open panel leaves visible.
+  state.subscribe((change) => {
+    if (change.type !== "selection") return;
+    scene.setSelected(state.selected);
+    if (state.selected) scene.focusPane(state.selected);
+  });
 }
 
 function escapeHtml(s: string): string {

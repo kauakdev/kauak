@@ -145,6 +145,16 @@ only through them. `packages/web/src/bridge/ws.ts` is the connection to the
 bridge and `packages/web/src/bridge/demo.ts` a simulated bridge with the same
 interface, producing Kauak snapshots of made-up agents.
 
+`packages/web/src/app/state.ts` holds the page's state: the floors (the bridge's
+machines and their latest snapshots), the floor on screen (from `?floor=`, else
+the one saved in `localStorage`), the selected pane, and a `?pane=` deep link
+until its floor's first snapshot. It changes only through its methods (the
+bridge's pushes, and the clicks and keys that change floor or select a pane),
+and each tells its subscribers once what changed. The elevator, the HUD and the
+terminal panel subscribe and read it; `packages/web/src/app/main.ts` builds the
+page, connects the bridge to the store, and passes the store's changes on to the
+office scene.
+
 Pane and workspace ids are only unique within one machine, so the client
 prefixes them with their machine (`devbox/w1:p1`,
 `packages/web/src/floors/floors.ts`) and the rest of the UI works with those
@@ -159,7 +169,7 @@ procedurally today so sprites can replace the helpers one at a time.
 there round the furniture (A* on a quarter-tile grid per room), in room-local
 positions so a walk carries on when a snapshot rebuilds the office.
 `packages/web/src/hud/hud.ts` owns the HTML roster, stats and activity feed, and
-only updates when the bridge pushes something new.
+only updates when the store changes or the bridge connects or drops.
 `packages/web/src/printers/prints.ts` holds every printer's sheets and queues
 new ones for the scene to print one at a time;
 `packages/web/src/printers/printout.ts` is the page you read them on, which

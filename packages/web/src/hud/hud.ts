@@ -1,9 +1,11 @@
 // HTML HUD around the canvas: top bar stats, roster, activity feed. Everything
-// here is driven by bridge pushes (no per-frame polling); only the relative
-// timestamps are refreshed on a slow timer. Stats, roster and feed span every
-// floor; the connection chip and the empty state describe the floor on screen.
+// here is driven by changes to the page's state (app/state.ts) and the bridge
+// connection (no per-frame polling); only the relative timestamps are
+// refreshed on a slow timer. Stats, roster and feed span every floor; the
+// connection chip and the empty state describe the floor on screen.
 
 import { contextLevel, contextPercent, contextText } from "../app/context";
+import type { AppState } from "../app/state";
 import { floorOf, floorProblem, runtimeOf, type Floor } from "../floors/floors";
 import type { AgentStatus, PaneInfo, Snapshot } from "@kauak/protocol";
 import "./hud.css";
@@ -27,7 +29,6 @@ interface FeedItem {
 }
 
 export interface HudHandlers {
-  onSelect(paneId: string): void;
   onFit(): void;
   onZoom(factor: number): void;
 }
@@ -47,10 +48,12 @@ export class Hud {
   private bridgeUp = false;
   /** Floors whose first snapshot arrived; panes already there at start are not news. */
   private seen = new Set<string>();
-  private selected: string | null = null;
   private order: string[] = [];
 
-  constructor(private h: HudHandlers) {
+  constructor(
+    private state: AppState,
+    h: HudHandlers,
+  ) {
     document.getElementById("btn-fit")!.addEventListener("click", () => h.onFit());
     document.getElementById("btn-zoom-in")!.addEventListener("click", () => h.onZoom(1.25));
     document.getElementById("btn-zoom-out")!.addEventListener("click", () => h.onZoom(0.8));
@@ -90,6 +93,10 @@ export class Hud {
     tickClock();
     setInterval(tickClock, 15_000);
     setInterval(() => this.refreshTimes(), 10_000);
+    state.subscribe((change) => {
+      if (change.type === "selection") this.markSelected();
+      else this.render();
+    });
   }
 
   /** Whether the WebSocket to the bridge is up. */
@@ -98,14 +105,15 @@ export class Hud {
     this.renderConn();
   }
 
-  setSelected(paneId: string | null) {
-    this.selected = paneId;
+  private markSelected() {
+    const paneId = this.state.selected;
     for (const el of this.roster.querySelectorAll<HTMLElement>(".pane")) el.classList.toggle("selected", el.dataset.pane === paneId);
   }
 
-  setFloors(floors: Floor[], current: string) {
+  private render() {
+    const floors = this.state.floors();
     this.floors = floors;
-    this.current = current;
+    this.current = this.state.current;
     const now = Date.now();
     const live = new Set<string>();
     const present = new Set(floors.map((f) => f.info.id));
@@ -246,7 +254,7 @@ export class Hud {
     }
     this.roster.innerHTML = html.join("");
     for (const el of this.roster.querySelectorAll<HTMLElement>(".pane"))
-      el.addEventListener("click", () => this.h.onSelect(el.dataset.pane!));
+      el.addEventListener("click", () => this.state.select(el.dataset.pane!));
   }
 
   private rosterGroups(s: Snapshot): string {
@@ -266,7 +274,7 @@ export class Hud {
         const t = this.tracked.get(p.pane_id);
         const title = p.title || p.cwd?.split("/").pop() || p.pane_id;
         g.rows.push(
-          `<button class="pane st-${p.agent_status} ${p.pane_id === this.selected ? "selected" : ""}" data-pane="${esc(p.pane_id)}">` +
+          `<button class="pane st-${p.agent_status} ${p.pane_id === this.state.selected ? "selected" : ""}" data-pane="${esc(p.pane_id)}">` +
             `<i class="dot"></i><span class="kind">${esc(p.agent ?? "shell")}</span><span class="title">${esc(title)}</span>${contextMeter(p)}` +
             `<span class="age" data-since="${t?.since ?? Date.now()}">${ago(t?.since ?? Date.now())}</span></button>`,
         );
@@ -293,7 +301,7 @@ export class Hud {
       .join("");
     for (const el of this.feed.querySelectorAll<HTMLElement>(".ev"))
       el.addEventListener("click", () => {
-        if (this.tracked.has(el.dataset.pane!)) this.h.onSelect(el.dataset.pane!);
+        if (this.tracked.has(el.dataset.pane!)) this.state.select(el.dataset.pane!);
       });
   }
 
@@ -303,9 +311,9 @@ export class Hud {
 
   private step(dir: number) {
     if (this.order.length === 0) return;
-    const i = this.order.indexOf(this.selected ?? "");
+    const i = this.order.indexOf(this.state.selected ?? "");
     const next = i === -1 ? (dir > 0 ? 0 : this.order.length - 1) : (i + dir + this.order.length) % this.order.length;
-    this.h.onSelect(this.order[next]!);
+    this.state.select(this.order[next]!);
   }
 }
 

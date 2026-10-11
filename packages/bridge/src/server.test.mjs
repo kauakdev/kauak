@@ -1,7 +1,8 @@
 // The bridge as a page sees it: the real server.ts, started in this process
-// with createBridge against a fake Herdr (runtimes/herdr/fixtures/fake-herdr.mjs),
+// with createBridge against a fake Herdr (runtimes/herdr/fixtures/fake-herdr.mjs)
+// and, for a T3 Code floor, a fake T3 Code (runtimes/t3/fixtures/fake-t3.mjs),
 // with a WebSocket client in the page's place. What crosses the WebSocket must
-// be the Kauak protocol and nothing of Herdr's. The core is also run with a
+// be the Kauak protocol and nothing of Herdr's or T3 Code's. The core is also run with a
 // stand-in runtime and stand-in enrichers, as a second runtime would be.
 // main.ts, which runs the bridge as a process of its own, is started as one.
 
@@ -20,6 +21,7 @@ import { WebSocket } from "ws";
 import { resolveConfig } from "./config.ts";
 import { FIXTURE, fakeHerdr, herdrError } from "./runtimes/herdr/fixtures/fake-herdr.mjs";
 import { toSnapshot } from "./runtimes/herdr/herdr.ts";
+import { T3_FIELDS, TOKEN, fakeT3 } from "./runtimes/t3/fixtures/fake-t3.mjs";
 import { createBridge } from "./server.ts";
 
 // Every message type the bridge may send (BridgeMessage in @kauak/protocol).
@@ -33,6 +35,7 @@ const BRIDGE_TYPES = new Set([
   "uncommitted",
   "pane_output",
   "input_ack",
+  "answered",
   "commands",
   "created",
   "create_error",
@@ -140,7 +143,14 @@ test("a page gets the floors and their snapshots in the Kauak protocol", async (
 
   const machines = await page.next((m) => m.type === "machines" && m.machines[0]?.state === "live");
   assert.deepEqual(machines.machines, [
-    { id: "local", label: "local", ssh: null, state: "live", message: "", runtime: { name: "Herdr", version: "0.9.3" } },
+    {
+      id: "local",
+      label: "local",
+      ssh: null,
+      state: "live",
+      message: "",
+      runtime: { name: "Herdr", version: "0.9.3", features: { focus: true, shells: true, agent_kinds: null } },
+    },
   ]);
   const snapshot = await page.next((m) => m.type === "snapshot");
   assert.equal(snapshot.machine, "local");
@@ -237,6 +247,7 @@ const DESK = {
   screen: null,
   scrollback: false,
   context: null,
+  request: null,
 };
 
 class StandInRuntime extends EventEmitter {
@@ -246,7 +257,14 @@ class StandInRuntime extends EventEmitter {
     Object.assign(this, { id, label, ssh, config, state: "connecting", snapshot: null, started: false, stopped: false });
   }
   get info() {
-    return { id: this.id, label: this.label, ssh: this.ssh, state: this.state, message: "", runtime: { name: "Stand-in", version: null } };
+    return {
+      id: this.id,
+      label: this.label,
+      ssh: this.ssh,
+      state: this.state,
+      message: "",
+      runtime: { name: "Stand-in", version: null, features: { focus: false, shells: true, agent_kinds: null } },
+    };
   }
   start() {
     this.started = true;
@@ -259,6 +277,10 @@ class StandInRuntime extends EventEmitter {
   }
   stop() {
     this.stopped = true;
+  }
+  forget() {
+    this.forgotten = true;
+    this.stop();
   }
   async readPane(paneId, lines) {
     return `${lines} rows of ${paneId}`;
@@ -512,4 +534,83 @@ test("the appearance packages installed on this machine are served as /appearanc
   assert.equal(await status({ host: `evil.example:${port}` }), 403);
   assert.equal(await status({ host: `localhost:${port}`, origin: "https://evil.example" }), 403);
   assert.equal(await status({ host: `localhost:${port}`, origin: `http://localhost:5178` }), 200);
+});
+
+test("a page adds a T3 Code floor with its token, sees its desks, and answers what an agent asks", async (t) => {
+  const herdr = await fakeHerdr();
+  t.after(() => herdr.close());
+  const t3 = await fakeT3();
+  t.after(() => t3.close());
+  const { env, home, url } = await testEnv(t, herdr.socketPath);
+  const bridge = createBridge(resolveConfig(env));
+  t.after(() => bridge.close());
+  await bridge.listen();
+  const page = await connect(t, url);
+  await page.next((m) => m.type === "snapshot" && m.machine === "local");
+
+  // Only a server on this machine: the printers and meters read this machine's files.
+  page.send({ type: "add_machine", runtime: "t3", url: "http://example.com:3773", token: TOKEN, label: "" });
+  assert.deepEqual(await page.next((m) => m.type === "machine_error"), {
+    type: "machine_error",
+    message: "Use a server on this machine, at http://127.0.0.1 and its port.",
+  });
+  page.send({ type: "add_machine", runtime: "t3", url: `${t3.url}/`, token: TOKEN, label: "" });
+  assert.deepEqual(await page.next((m) => m.type === "machine_added"), { type: "machine_added", machine: "t3-code" });
+  // Saved without its token, which has a file of its own.
+  assert.deepEqual(JSON.parse(fs.readFileSync(env.KAUAK_CONFIG, "utf8")), {
+    machines: [{ id: "t3-code", label: "T3 Code", runtime: "t3", url: t3.url }],
+  });
+  const tokenFile = path.join(home, "tokens", "t3-code.token");
+  assert.equal(fs.readFileSync(tokenFile, "utf8").trim(), TOKEN);
+  page.send({ type: "add_machine", runtime: "t3", url: t3.url, token: TOKEN, label: "again" });
+  assert.equal(
+    (await page.next((m) => m.type === "machine_error" && m.message.includes("already"))).message,
+    `${t3.url} already has a floor.`,
+  );
+
+  const machines = await page.next((m) => m.type === "machines" && m.machines.some((x) => x.id === "t3-code" && x.state === "live"));
+  assert.deepEqual(machines.machines.find((x) => x.id === "t3-code").runtime, {
+    name: "T3 Code",
+    version: "0.0.45",
+    features: { focus: false, shells: false, agent_kinds: ["claude", "codex"] },
+  });
+  await page.next(
+    (m) => m.type === "snapshot" && m.machine === "t3-code" && m.snapshot.panes.find((p) => p.pane_id === "t-approve")?.request,
+  );
+
+  page.send({
+    type: "answer",
+    machine: "t3-code",
+    pane_id: "t-approve",
+    request_id: "r-push",
+    answers: [{ question_id: "r-push", options: ["decline"] }],
+    id: 4,
+  });
+  assert.deepEqual(await page.next((m) => m.type === "answered"), { type: "answered", machine: "t3-code", pane_id: "t-approve", id: 4 });
+  assert.equal(t3.commands("thread.approval.respond")[0].decision, "decline");
+  // Herdr's agents are answered in the terminal.
+  page.send({ type: "answer", machine: "local", pane_id: "w1:p1", request_id: "x", answers: [], id: 5 });
+  assert.match((await page.next((m) => m.type === "error" && m.id === 5)).message, /answer in the terminal/);
+
+  page.send({ type: "read", machine: "t3-code", pane_id: "t-work", lines: 100, seq: 9 });
+  assert.match((await page.next((m) => m.type === "pane_output" && m.machine === "t3-code")).text, /Add refunds to the ledger/);
+  page.send({ type: "input", machine: "t3-code", pane_id: "t-done", ops: [{ text: "Once more" }, { keys: ["enter"] }], id: 6 });
+  await page.next((m) => m.type === "input_ack" && m.id === 6);
+  assert.equal(t3.commands("thread.turn.start")[0].message.text, "Once more");
+
+  // Removing the floor removes its token.
+  page.send({ type: "remove_machine", machine: "t3-code" });
+  await waitFor(
+    () => !fs.existsSync(tokenFile),
+    () => "the token is still there",
+  );
+  for (const msg of page.got) {
+    assertKauak(msg);
+    const keys = new Set();
+    JSON.stringify(msg, (k, v) => {
+      keys.add(k);
+      return v;
+    });
+    for (const f of T3_FIELDS) assert.ok(!keys.has(f), `"${f}" reached the page in ${JSON.stringify(msg)}`);
+  }
 });

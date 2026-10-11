@@ -28,6 +28,7 @@ test("with nothing set: this computer only, the kauak folder, Herdr's own socket
       host: "127.0.0.1",
       origins: ["localhost", "127.0.0.1", "[::1]"],
       machinesFile: path.join(home, ".config", "kauak", "machines.json"),
+      tokenDir: path.join(home, ".config", "kauak", "tokens"),
       herdrSocket: path.join(home, ".config", "herdr", "herdr.sock"),
       sshCommand: "ssh",
       tunnelDir: path.join(os.tmpdir(), `kauak-${process.getuid?.() ?? "user"}`),
@@ -56,6 +57,8 @@ test("each variable sets its field", () => {
   assert.equal(config.host, "0.0.0.0");
   assert.deepEqual(config.origins, ["localhost", "127.0.0.1", "[::1]", "office.lan", "box.local"]);
   assert.equal(config.machinesFile, "/srv/kauak/floors.json");
+  // The floors' tokens go beside the floors that use them.
+  assert.equal(config.tokenDir, "/srv/kauak/tokens");
   assert.equal(config.herdrSocket, "/run/herdr.sock");
   assert.equal(config.sshCommand, "/usr/local/bin/ssh");
   assert.equal(config.claudeDir, "/srv/claude");

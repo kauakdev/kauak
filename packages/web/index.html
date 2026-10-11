@@ -64,11 +64,18 @@
     </aside>
 
     <nav id="floors" class="card" aria-label="Floors">
-      <header><span>Floors</span><button id="floor-add-btn" class="mini" title="Add a machine running Herdr as a new floor">+ Add floor</button></header>
+      <header><span>Floors</span><button id="floor-add-btn" class="mini" title="Add a machine running Herdr, or T3 Code on this machine, as a new floor">+ Add floor</button></header>
       <form id="floor-add" hidden autocomplete="off">
-        <label>SSH target<input name="ssh" placeholder="devbox or user@host" spellcheck="false" autocapitalize="off" required></label>
+        <div class="kinds" role="radiogroup" aria-label="What runs the floor">
+          <label><input type="radio" name="runtime" value="herdr" checked>Herdr over SSH</label>
+          <label><input type="radio" name="runtime" value="t3">T3 Code</label>
+        </div>
+        <label data-runtime="herdr">SSH target<input name="ssh" placeholder="devbox or user@host" spellcheck="false" autocapitalize="off" data-required></label>
+        <label data-runtime="t3" hidden>Address<input name="url" value="http://127.0.0.1:3773" spellcheck="false" autocapitalize="off" data-required></label>
+        <label data-runtime="t3" hidden>Token<input name="token" type="password" placeholder="paste the token" spellcheck="false" autocapitalize="off" data-required></label>
         <label><span>Name <span class="opt">optional</span></span><input name="label" placeholder="shown on the elevator" spellcheck="false"></label>
-        <p class="note">Connects with your SSH keys and ~/.ssh/config. The machine must log in without a password prompt and run Herdr.</p>
+        <p class="note" data-runtime="herdr">Connects with your SSH keys and ~/.ssh/config. The machine must log in without a password prompt and run Herdr.</p>
+        <p class="note" data-runtime="t3" hidden>T3 Code on this machine. Make a token with <code>npx t3 auth session issue --token-only --label kauak</code>; Kauak keeps it in ~/.config/kauak/tokens, readable only by you.</p>
         <p class="err" hidden></p>
         <div class="row"><button type="submit" class="btn primary">Add floor</button><button type="button" class="btn" data-cancel>Cancel</button></div>
       </form>
@@ -133,6 +140,7 @@
         <button id="panel-close" title="Close (Esc)">✕</button>
       </header>
       <div id="panel-term"></div>
+      <section id="panel-request" hidden aria-live="polite"></section>
       <form id="panel-input" autocomplete="off">
         <ul id="panel-slash" role="listbox" aria-label="Commands" hidden></ul>
         <button type="button" id="panel-live" title="Back to the latest output" hidden>Jump to bottom ↓</button>

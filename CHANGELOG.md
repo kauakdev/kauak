@@ -11,6 +11,18 @@ turns Unreleased into the new version's section, as
 
 ## [Unreleased]
 
+### Added
+
+- T3 Code floors: "+ Add floor" takes a T3 Code server on this machine and a
+  token it issued (`npx t3@0.0.45 auth session issue --token-only`). Its
+  projects and worktrees are rooms, its threads still in play are desks, the
+  panel shows a thread's transcript and sends messages, build mode makes
+  threads, worktrees and projects, and context meters come from T3 Code. The
+  token is kept in `~/.config/kauak/tokens/`, readable only by you, never in
+  `machines.json`. Kauak speaks T3 Code 0.0.45's orchestration protocol 1.
+- When an agent asks for approval or asks a question, and its runtime reports
+  it (T3 Code does), the terminal panel shows its answers as buttons.
+
 ## [0.1.1] - 2026-10-09
 
 ### Changed

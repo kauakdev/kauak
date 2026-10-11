@@ -1,5 +1,18 @@
 import { keyOf, splitKey } from "../floors/floors";
-import type { BridgeMessage, DiffSheet, InputOp, MachineInfo, RoomSpec, SlashCommand, Snapshot, Uncommitted } from "@kauak/protocol";
+import type {
+  BridgeMessage,
+  DiffSheet,
+  InputOp,
+  MachineInfo,
+  RequestAnswer,
+  RoomSpec,
+  SlashCommand,
+  Snapshot,
+  Uncommitted,
+} from "@kauak/protocol";
+
+/** A floor to add: Herdr on another machine over SSH, or a T3 Code server on this one with its token. */
+export type NewFloor = { ssh: string; label: string } | { runtime: "t3"; url: string; token: string; label: string };
 
 /** Pane arguments and callbacks use floor keys ("machine/pane_id", see floors.ts). */
 export interface BridgeHandlers {
@@ -8,6 +21,8 @@ export interface BridgeHandlers {
   onStatus(connected: boolean): void;
   onPaneOutput(pane: string, text: string, seq: number): void;
   onInputAck?(pane: string, id: number | undefined): void;
+  /** The answer to a pane's request (`answer`) reached its runtime. */
+  onAnswered?(pane: string, id: number | undefined): void;
   /** The "/" menu's commands for a pane, answering listCommands. */
   onCommands?(pane: string, commands: SlashCommand[]): void;
   onError?(message: string, pane?: string, id?: number): void;
@@ -30,9 +45,11 @@ export interface BridgeApi {
   focusPane(pane: string): void;
   readPane(pane: string, seq: number, lines: number): void;
   sendInput(pane: string, ops: InputOp[], id: number): boolean;
+  /** Answer the pane's request; `id` comes back on onAnswered, or on onError when it failed. */
+  answer(pane: string, requestId: string, answers: RequestAnswer[], id: number): boolean;
   /** Ask which slash commands the pane's agent has; answered with onCommands. */
   listCommands(pane: string): void;
-  addMachine(ssh: string, label: string): boolean;
+  addMachine(floor: NewFloor): boolean;
   removeMachine(machine: string): void;
   /** A new desk in a room (`workspace` is a floor key), with an optional agent kind. */
   createDesk(workspace: string, agent: string | null, id: number): boolean;
@@ -69,6 +86,8 @@ export class Bridge implements BridgeApi {
         this.handlers.onPaneOutput(keyOf(msg.machine, msg.pane_id), msg.text, msg.seq ?? 0);
       } else if (msg.type === "input_ack") {
         this.handlers.onInputAck?.(keyOf(msg.machine, msg.pane_id), msg.id);
+      } else if (msg.type === "answered") {
+        this.handlers.onAnswered?.(keyOf(msg.machine, msg.pane_id), msg.id);
       } else if (msg.type === "commands") {
         this.handlers.onCommands?.(keyOf(msg.machine, msg.pane_id), msg.commands);
       } else if (msg.type === "machine_added") {
@@ -123,14 +142,19 @@ export class Bridge implements BridgeApi {
     return this.send({ type: "input", machine, pane_id: paneId, ops, id });
   }
 
+  answer(pane: string, requestId: string, answers: RequestAnswer[], id: number): boolean {
+    const { machine, id: paneId } = splitKey(pane);
+    return this.send({ type: "answer", machine, pane_id: paneId, request_id: requestId, answers, id });
+  }
+
   listCommands(pane: string) {
     const { machine, id } = splitKey(pane);
     this.send({ type: "commands", machine, pane_id: id });
   }
 
-  /** Add a machine as a new floor; answered with onMachineAdded or onMachineError. */
-  addMachine(ssh: string, label: string): boolean {
-    return this.send({ type: "add_machine", ssh, label });
+  /** Add a floor; answered with onMachineAdded or onMachineError. */
+  addMachine(floor: NewFloor): boolean {
+    return this.send({ type: "add_machine", ...floor });
   }
 
   removeMachine(machine: string) {

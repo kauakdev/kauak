@@ -1,19 +1,20 @@
 # How Kauak works
 
 Kauak has two halves. The bridge (`packages/bridge/`, Node) runs on your
-machine, talks to every Herdr server it knows about and sends what it learns to
-the page over a WebSocket. The page (`packages/web/`, TypeScript and PixiJS)
-turns that into the office and sends your clicks and keystrokes back. Between
-them is the Kauak protocol (`packages/protocol/`, TypeScript, imported by
-both), which belongs to Kauak, not to Herdr: Herdr's methods, fields, events
-and errors stop at the bridge's Herdr adapter.
+machine, talks to every Herdr server and T3 Code server it knows about and
+sends what it learns to the page over a WebSocket. The page (`packages/web/`,
+TypeScript and PixiJS) turns that into the office and sends your clicks and
+keystrokes back. Between them is the Kauak protocol (`packages/protocol/`,
+TypeScript, imported by both), which belongs to Kauak, not to Herdr or T3
+Code: their methods, fields, events and errors stop at the bridge's adapters.
 
 ```
-Herdr on this machine (unix socket)     Herdr on another machine (through an SSH tunnel)
-   │  Herdr's API: session.snapshot, events.subscribe, pane.read…
-   ▼
-Herdr adapter    packages/bridge/src/runtimes/herdr/ (machine.ts + herdr.ts), one Machine per floor
-   │  Kauak terms, the Runtime port: info, snapshot, readPane, createRoom…
+Herdr on this machine (unix socket)     Herdr on another machine (SSH tunnel)     T3 Code on this machine (HTTP, WebSocket)
+   │  Herdr's API: session.snapshot, events.subscribe, pane.read…                  │  T3 Code's: subscribeShell, dispatchCommand…
+   ▼                                                                               ▼
+Herdr adapter    runtimes/herdr/ (machine.ts + herdr.ts)            T3 Code adapter    runtimes/t3/ (floor.ts + t3.ts + rpc.ts)
+   │  one Machine per floor                                             │  one T3Floor per floor
+   │  Kauak terms, the Runtime port: info, snapshot, readPane, createRoom, answer…
    ▼
 Bridge core      packages/bridge/src/core/, with enrichers/ through the Enricher port
    │  the Kauak protocol (packages/protocol), over a WebSocket (packages/bridge/src/transport/ws.ts)
@@ -94,7 +95,7 @@ source when it is not, so an installed `kauak serve` needs no build.
 ## The bridge
 
 ```
-server.ts    createBridge: the core, with Herdr for every floor and the enrichers
+server.ts    createBridge: the core, with each floor's runtime (Herdr or T3 Code) and the enrichers
 core/        ──▶ ports/, transport/ws.ts       never a runtime or an enricher
 runtimes/    ──▶ ports/, ssh/                  never the core or an enricher
 enrichers/   ──▶ ports/, ssh/                  never the core or a runtime
@@ -128,10 +129,10 @@ The core knows a floor only through two ports, in `packages/bridge/src/ports/`:
 
 - `Runtime` (`runtime.ts`) is what the core and the enrichers ask of one floor:
   its `id`, `label`, `ssh`, `config`, `info`, `state` and `snapshot`; the
-  `status` and `snapshot` events; `start`, `stop`, `refresh` and
+  `status` and `snapshot` events; `start`, `stop`, `forget`, `refresh` and
   `scheduleRefresh`; and the operations (`focusPane`, `readPane`, `sendText`,
-  `sendKeys`, `createDesk`, `createRoom`, `startAgent`, `paneSession`,
-  `paneProcesses`).
+  `sendKeys`, `createDesk`, `createRoom`, `startAgent`, `answer`,
+  `paneSession`, `paneProcesses`).
 - `Enricher` (`enricher.ts`) is what the bridge adds to a floor that its
   runtime does not report: each enricher decorates the floor's snapshots, in
   turn, and says when what it adds changes. Beside it are two narrower faces
@@ -139,15 +140,17 @@ The core knows a floor only through two ports, in `packages/bridge/src/ports/`:
   when it connects, the uncommitted view) and `SlashCommands`.
 
 `packages/bridge/src/server.ts` is the one module that names what implements
-them. `createBridge` hands the core (`BridgeDeps` in `core/bridge.ts`) Herdr's
-`Machine` for every floor, the context and diff enrichers, and the slash
-commands; a test can pass its own instead. Making any of them starts nothing.
+them. `createBridge` hands the core (`BridgeDeps` in `core/bridge.ts`) a
+factory that makes Herdr's `Machine` for a floor, or a `T3Floor` for one whose
+`runtime` is `"t3"`, the context and diff enrichers, and the slash commands; a
+test can pass its own instead. Making any of them starts nothing.
 
 Besides the layers drawn above, `pnpm check:boundaries` keeps the transport
 from importing a runtime or an enricher, and the ports and `ssh/` from
 importing the core, a runtime or an enricher. Only `runtimes/herdr/` imports
-`herdr.ts` or names Herdr's methods and events, and only the entry points
-(`main.ts`, the CLI's `serve.js`) read `process.env`.
+`herdr.ts` or names Herdr's methods and events, only `runtimes/t3/` imports
+`t3.ts` and `rpc.ts` or names T3 Code's methods and commands, and only the
+entry points (`main.ts`, the CLI's `serve.js`) read `process.env`.
 
 ### The Herdr adapter
 
@@ -164,6 +167,28 @@ each Kauak field and operation to Herdr's, and a second runtime would be
 another adapter implementing the same port (see
 [Another runtime](protocol.md#another-runtime)).
 
+### The T3 Code adapter
+
+`packages/bridge/src/runtimes/t3/floor.ts` (`T3Floor`) is one T3 Code server
+on this machine, shown as one floor. It reads the server's version and
+orchestration protocol from `/.well-known/t3/environment`, opens one
+WebSocket to `/ws` with the floor's bearer token, and speaks Effect RPC over
+it (`rpc.ts`: JSON frames, every streamed chunk acknowledged): `server.getConfig`
+for the providers it has, `orchestration.subscribeShell` for its projects and
+threads and every change to them, and `orchestration.dispatchCommand` for what
+Kauak asks. A thread's messages and activities come over HTTP: its latest turn
+when the shell says the thread changed (for its status, its open request and
+its context meter), and its last four while a page reads it. `t3.ts` turns all
+of that into a Kauak snapshot (a room per checkout, a desk per thread in play),
+an open approval or question into the pane's `request`, and a thread's turns
+into a transcript drawn as a terminal screen; it also makes the commands, so
+T3 Code's protocol 2 would be another `t3.ts`. A thread has no terminal, so
+what is typed waits in a draft until Enter sends it as a message, and Esc stops
+the agent's turn. The token is kept in `tokens/<floor>.token` beside
+`machines.json` (mode 600, in a folder only you can open), never in
+`machines.json`, and removing the floor deletes it. A T3 Code floor has to be
+on this machine: the enrichers read its rooms' files here.
+
 ### The enrichers
 
 What Herdr does not report, the bridge adds itself, in
@@ -171,7 +196,8 @@ What Herdr does not report, the bridge adds itself, in
 
 - `context/context.ts` adds `context: { used, max }` to the Claude Code and
   Codex panes in each snapshot, from the last token count in the agent's
-  transcript, and sends the snapshot again when that count changes.
+  transcript, and sends the snapshot again when that count changes. A pane
+  whose runtime reports its context already (T3 Code's) keeps that.
 - `diffs/diffs.ts` adds `git_root` to every room in a git checkout, prints a
   sheet for each file edit there (path, change, counts and unified hunks),
   keeps the last 50 for pages that connect later, and answers a printer's
@@ -227,7 +253,7 @@ floors only through them. Its code is in feature folders under
 | `bridge/` | `ws.ts`, the connection to the bridge, and `demo.ts`, a simulated bridge. |
 | `office/` | The office: `layout.ts`, `iso.ts`, `scene.ts` and its parts, `props.ts`, `character.ts`, `roam.ts`, and build mode's form (`build.ts`). |
 | `floors/` | Floor keys and why a floor is down (`floors.ts`), and the elevator (`elevator.ts`). |
-| `terminal/` | The terminal panel (`panel.ts`), its "/" menu (`slash.ts`) and Claude Code's suggestion (`shadow.ts`). |
+| `terminal/` | The terminal panel (`panel.ts`) with the buttons that answer an agent's request, its "/" menu (`slash.ts`) and Claude Code's suggestion (`shadow.ts`). |
 | `printers/` | The printers' sheets (`prints.ts`) and the printout you read them on (`printout.ts`). |
 | `hud/` | The top bar, roster, stats and activity feed (`hud.ts`). |
 | `radio/` | The radio (`radio.ts`) and its stations (`stations.ts`). |
@@ -328,9 +354,10 @@ browser under `kauak.appearance.v1`. See the
   the page's `packages/web/src/bridge/`: `ws.ts`, and `demo.ts` so the demo
   keeps working. Then [protocol.md](protocol.md).
 - **A new runtime**: an adapter in `packages/bridge/src/runtimes/<name>/` that
-  implements `Runtime`, which `server.ts` makes for the floors it runs. Neither
-  the core nor the page changes, and `pnpm check:boundaries` fails if the core
-  imports it, or it imports the core or an enricher. See
+  implements `Runtime`, as `runtimes/herdr/` and `runtimes/t3/` do, which
+  `server.ts` makes for the floors whose `runtime` names it. Neither the core
+  nor the page changes, beyond its `features`, and `pnpm check:boundaries`
+  fails if the core imports it, or it imports the core or an enricher. See
   [Another runtime](protocol.md#another-runtime).
 - **A new office look**: a JSON file in `packages/appearance/packages/`, added
   to `bundledPackages` in `packages/web/src/appearance/catalog.ts`. The scene
@@ -348,8 +375,10 @@ runner, `node:test`. `pnpm test` runs every package's tests, then those in
 The bridge's tests start the real bridge in their own process with
 `createBridge`, against a stand-in Herdr
 (`packages/bridge/src/runtimes/herdr/fixtures/fake-herdr.mjs`, answering from a
-scrubbed real snapshot), and check that nothing of Herdr's reaches the
-WebSocket. They also run the core with a stand-in runtime and stand-in
+scrubbed real snapshot) and a stand-in T3 Code
+(`packages/bridge/src/runtimes/t3/fixtures/fake-t3.mjs`, its routes and RPC
+methods over a small made-up state), and check that nothing of either reaches
+the WebSocket. They also run the core with a stand-in runtime and stand-in
 enrichers, as a second runtime would be.
 
 `pnpm check` runs Biome (`pnpm lint`), the boundary check

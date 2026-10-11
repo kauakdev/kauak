@@ -148,7 +148,8 @@ export class ContextTracker extends EventEmitter implements Enricher {
       if (pane.agent === "codex" && !sessionOf(pane)) codexFolders.set(folderOf(pane), (codexFolders.get(folderOf(pane)) ?? 0) + 1);
     }
     for (const pane of snap.panes) {
-      if (!KINDS.has(pane.agent)) continue;
+      // A runtime that reports the pane's context itself (T3 Code) knows it better than a transcript read here.
+      if (!KINDS.has(pane.agent) || pane.context) continue;
       const session = sessionOf(pane);
       let pids: number[] = [];
       if (!session && (pane.agent === "claude" || codexFolders.get(folderOf(pane)) === 1)) {

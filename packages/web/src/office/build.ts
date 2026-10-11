@@ -1,15 +1,17 @@
 // Build mode: the top-bar Build button (B) shows "+" slots in the office
-// (floor-renderer.ts), and clicking one opens this form. It asks Herdr,
-// through the bridge, for a new desk (a new tab in the room) or a new room (a
-// git worktree on a new branch, or a workspace in a folder), with an optional
-// agent. Once the pane exists the office opens it like any other desk.
+// (floor-renderer.ts), and clicking one opens this form. It asks the floor's
+// runtime, through the bridge, for a new desk (a new tab in the room, or a new
+// thread) or a new room (a git worktree on a new branch, or a folder), with an
+// agent, optional where the runtime has plain shells. Once the pane exists the
+// office opens it like any other desk.
 
+import { escapeHtml } from "../app/html";
 import { load, save } from "../app/storage";
 import type { BuildTarget } from "./scene";
-import type { RoomSpec } from "@kauak/protocol";
+import type { RoomSpec, RuntimeFeatures } from "@kauak/protocol";
 import "./build.css";
 
-// Herdr's agent kinds (`herdr agent`, 0.9.1), the usual ones first.
+// Herdr's agent kinds (`herdr agent`, 0.9.1), the usual ones first: the list for a runtime that names none.
 const COMMON_AGENTS = ["claude", "codex", "gemini", "cursor", "copilot", "opencode"];
 const MORE_AGENTS = [
   "amp",
@@ -38,6 +40,15 @@ const TOAST_MS = 8000;
 
 type Mode = "desk" | "worktree" | "folder";
 
+/** The floor a slot is on, as the form needs it. */
+export interface BuildFloor {
+  id: string;
+  label: string;
+  remote: boolean;
+  runtime: string;
+  features: RuntimeFeatures;
+}
+
 export interface BuildHandlers {
   onToggle(on: boolean): void;
   createDesk(workspace: string, agent: string | null, id: number): boolean;
@@ -58,8 +69,8 @@ export class BuildMode {
   private toast = document.getElementById("toast")!;
   private on = false;
   private target: BuildTarget | null = null;
-  /** The floor the form adds to; `runtime` names what runs it ("Herdr"). */
-  private floor = { id: "", label: "", remote: false, runtime: "" };
+  /** The floor the form adds to; `runtime` names what runs it ("Herdr"), and `features` what it can do. */
+  private floor: BuildFloor = { id: "", label: "", remote: false, runtime: "", features: { focus: true, shells: true, agent_kinds: null } };
   private mode: Mode = "desk";
   private reqId = 0;
   private pending: number | null = null;
@@ -69,12 +80,7 @@ export class BuildMode {
   isTyping: () => boolean = () => false;
 
   constructor(private h: BuildHandlers) {
-    this.agent.innerHTML =
-      `<option value="">None (just a shell)</option>` +
-      COMMON_AGENTS.map((k) => `<option>${k}</option>`).join("") +
-      `<optgroup label="More agents">${MORE_AGENTS.map((k) => `<option>${k}</option>`).join("")}</optgroup>`;
-    this.agent.value = load(AGENT_KEY) ?? "";
-    if (this.agent.selectedIndex < 0) this.agent.value = "";
+    this.fillAgents(this.floor.features);
     this.btn.addEventListener("click", () => this.toggle(!this.on));
     for (const b of this.form.querySelectorAll("[data-cancel]")) b.addEventListener("click", () => this.close());
     for (const r of this.form.querySelectorAll<HTMLInputElement>("input[name=kind]"))
@@ -128,13 +134,12 @@ export class BuildMode {
   }
 
   /** Open the form for a slot clicked at screen point (x, y) on `floor`. */
-  open(target: BuildTarget, floor: { id: string; label: string; remote: boolean; runtime: string }, x: number, y: number) {
+  open(target: BuildTarget, floor: BuildFloor, x: number, y: number) {
     if (this.pending !== null) return; // one request at a time
     this.target = target;
     this.floor = floor;
     this.form.reset();
-    this.agent.value = load(AGENT_KEY) ?? "";
-    if (this.agent.selectedIndex < 0) this.agent.value = "";
+    this.fillAgents(floor.features);
     if (target.kind === "desk") {
       this.title.textContent = `New desk · ${target.room.workspace.label || target.room.workspace.workspace_id}`;
       this.setMode("desk");
@@ -181,6 +186,19 @@ export class BuildMode {
 
   // ------------------------------------------------------------ form
 
+  /** The agents the floor's runtime offers (Herdr's list when it names none), and "None" where a desk may be a plain shell. */
+  private fillAgents(features: RuntimeFeatures) {
+    const common = features.agent_kinds ?? COMMON_AGENTS;
+    const more = features.agent_kinds ? [] : MORE_AGENTS;
+    const option = (k: string) => `<option>${escapeHtml(k)}</option>`;
+    this.agent.innerHTML =
+      (features.shells ? `<option value="">None (just a shell)</option>` : "") +
+      common.map(option).join("") +
+      (more.length ? `<optgroup label="More agents">${more.map(option).join("")}</optgroup>` : "");
+    this.agent.value = load(AGENT_KEY) ?? "";
+    if (this.agent.selectedIndex < 0) this.agent.selectedIndex = 0;
+  }
+
   private setMode(mode: Mode) {
     this.mode = mode;
     const tokens = mode === "desk" ? ["desk"] : ["room", mode];
@@ -192,12 +210,18 @@ export class BuildMode {
     for (const r of this.form.querySelectorAll<HTMLInputElement>("input[name=kind]")) r.checked = r.value === mode;
     this.field("cwd").previousElementSibling!.textContent = mode === "worktree" ? "Repository" : "Folder";
     this.field("cwd").placeholder = this.floor.remote ? "/home/you/code/project" : "~/code/project";
+    // A runtime with plain shells has terminals for desks (Herdr's tabs); one without, conversations (T3 Code's threads).
+    const { runtime, label, remote, features } = this.floor;
     this.note.textContent =
       mode === "desk"
-        ? `Opens a new tab in this room in ${this.floor.runtime}. An agent must be installed on ${this.floor.label} to start.`
+        ? features.shells
+          ? `Opens a new tab in this room in ${runtime}. An agent must be installed on ${label} to start.`
+          : `Starts a new thread in this room in ${runtime}; your first message sets it to work.`
         : mode === "worktree"
-          ? "Creates a git worktree on a new branch (in ~/.herdr/worktrees) and opens it as a room."
-          : `Opens a ${this.floor.runtime} workspace in that folder${this.floor.remote ? ` on ${this.floor.label} (absolute path)` : ""}.`;
+          ? `Creates a git worktree on a new branch (in ${runtime}'s worktrees folder) and opens it as a room.`
+          : features.shells
+            ? `Opens a ${runtime} workspace in that folder${remote ? ` on ${label} (absolute path)` : ""}.`
+            : `Adds that folder to ${runtime} as a project, with a new thread in it.`;
   }
 
   private send() {

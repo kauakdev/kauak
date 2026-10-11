@@ -1,5 +1,6 @@
-// Build mode: new desks (a new tab in a room) and new rooms (a workspace in a
-// folder, or a git worktree on a new branch), each with an optional agent.
+// Build mode: new desks (a new tab in a room, or a T3 Code thread) and new
+// rooms (a workspace in a folder, or a git worktree on a new branch), each
+// with an agent, optional where the runtime has plain shells.
 // `created` goes out as soon as the pane exists, after a fresh snapshot, so
 // the page can open it right away; the agent starts afterwards (Herdr waits
 // until it is ready, which can take seconds), and a failure there is a
@@ -22,7 +23,7 @@ export async function build(page: Connection, m: Runtime, msg: Extract<ClientMes
   let paneId: string;
   try {
     if (agent && !AGENT_KIND.test(agent)) throw new Error(`Unknown agent kind "${agent}".`);
-    paneId = msg.type === "create_desk" ? await m.createDesk(msg.workspace_id) : await m.createRoom(roomSpec(m, msg.room));
+    paneId = msg.type === "create_desk" ? await m.createDesk(msg.workspace_id, agent) : await m.createRoom(roomSpec(m, msg.room), agent);
     await m.refresh();
   } catch (err) {
     page.send({ machine: m.id, id: msg.id, type: "create_error", message: (err as Error).message });

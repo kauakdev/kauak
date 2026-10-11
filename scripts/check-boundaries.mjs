@@ -1,6 +1,6 @@
 // Checks the boundaries docs/architecture.md and docs/protocol.md state in
 // prose, so a change cannot quietly cross them: Herdr's API is spoken only in
-// the bridge's Herdr adapter, the bridge's core knows a runtime and the
+// the bridge's Herdr adapter and T3 Code's only in its T3 Code adapter, the bridge's core knows a runtime and the
 // enrichers only through the ports they implement (and the ports, the
 // runtimes and the enrichers know nothing of each other but the ports), the
 // bridge's transport knows neither, the protocol imports nothing (the bridge
@@ -32,9 +32,16 @@ const RUNTIMES = ["packages/bridge/src/runtimes/**", "@kauak/bridge/runtimes/**"
 const ENRICHERS = ["packages/bridge/src/enrichers/**", "@kauak/bridge/enrichers/**"];
 // The Herdr adapter: the only code that speaks Herdr's API.
 const HERDR_ADAPTER = ["packages/bridge/src/runtimes/herdr/**"];
-// Tests drive a stand-in Herdr and check that nothing of it leaks, so they name it. The page's
+// The T3 Code adapter: the only code that speaks T3 Code's.
+const T3_ADAPTER = ["packages/bridge/src/runtimes/t3/**"];
+// Tests drive a stand-in Herdr or T3 Code and check that nothing of it leaks, so they name it. The page's
 // tests are TypeScript run by Vitest (*.test.ts), the rest JavaScript run by node:test (*.test.mjs).
-const TESTS = ["**/*.test.mjs", "**/*.test.ts", "packages/bridge/src/runtimes/herdr/fixtures/**"];
+const TESTS = [
+  "**/*.test.mjs",
+  "**/*.test.ts",
+  "packages/bridge/src/runtimes/herdr/fixtures/**",
+  "packages/bridge/src/runtimes/t3/fixtures/**",
+];
 // Workspace packages are imported by relative path or by name, and a name is checked as written.
 const BRIDGE = ["packages/bridge/**", "@kauak/bridge", "@kauak/bridge/**"];
 // The CLI, bin/kauak.js, and the bundle of the bridge the npm package carries.
@@ -56,6 +63,17 @@ const RULES = [
     files: ["**"],
     except: [...HERDR_ADAPTER, ...TESTS],
     forbid: ["packages/bridge/src/runtimes/herdr/herdr.ts", "@kauak/bridge/runtimes/herdr/herdr.ts"],
+  },
+  {
+    rule: "only the T3 Code adapter (runtimes/t3/) imports t3.ts and its RPC client",
+    files: ["**"],
+    except: [...T3_ADAPTER, ...TESTS],
+    forbid: [
+      "packages/bridge/src/runtimes/t3/t3.ts",
+      "packages/bridge/src/runtimes/t3/rpc.ts",
+      "@kauak/bridge/runtimes/t3/t3.ts",
+      "@kauak/bridge/runtimes/t3/rpc.ts",
+    ],
   },
   {
     rule: "the bridge's core imports the ports, never a runtime or an enricher (server.ts puts them together)",
@@ -90,6 +108,14 @@ const RULES = [
     // The demo's made-up terminals show code that calls Herdr.
     except: [...HERDR_ADAPTER, ...TESTS, "packages/web/src/bridge/demo.ts"],
     strings: /^(session|events|workspace|worktree|tab|pane|agent|layout)\.[a-z][a-z_]*$/,
+  },
+  {
+    rule: "T3 Code's method and command names stay in the T3 Code adapter",
+    files: ["**"],
+    except: [...T3_ADAPTER, ...TESTS],
+    // T3 Code's commands: thread.create, thread.turn.start, thread.user-input.respond…; not a file name like thread.json.
+    strings:
+      /^(orchestration\.[a-zA-Z]+|thread\.((un)?archive|create|delete|(un)?settle|[a-z-]+\.[a-z-]+)|project\.(create|delete|meta\.update)|vcs\.[a-zA-Z]+|server\.getConfig)$/,
   },
   {
     rule: "the protocol imports nothing, as the bridge and the page both load it: no workspace package, Node or DOM",

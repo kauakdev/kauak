@@ -1,7 +1,8 @@
 // The bridge's core: the floors, and what the pages connected to it say.
 //
-// Each floor is a runtime (a Herdr server, for now): this machine is always
-// floor 1, and remote machines (reached over SSH) are saved in
+// Each floor is a runtime (a Herdr server, or a T3 Code server): this
+// machine's Herdr is always floor 1, and the others (Herdr on remote machines,
+// reached over SSH, and T3 Code servers) are saved in
 // ~/.config/kauak/machines.json. The bridge keeps things simple and robust:
 // every time a floor has a new snapshot (the whole floor, a few KB), it
 // broadcasts it to all clients, decorated by the floor's enrichers: each
@@ -93,11 +94,12 @@ export class Bridge {
     fs.writeFileSync(this.config.machinesFile, `${JSON.stringify({ machines: list }, null, 2)}\n`);
   }
 
-  /** This machine's floor (its runtime's default socket), then the saved ones. */
+  /** This machine's floor (Herdr's default socket), then the saved ones. */
   addFloors() {
     this.addMachine({ id: "local", label: "local" });
     for (const c of this.loadConfig()) {
-      if (typeof c?.label !== "string" || (c.ssh ? !SSH_TARGET.test(c.ssh) : typeof c.socket !== "string")) {
+      const reached = c?.runtime === "t3" ? typeof c.url === "string" : c?.ssh ? SSH_TARGET.test(c.ssh) : typeof c?.socket === "string";
+      if (typeof c?.label !== "string" || !reached || (c.runtime !== undefined && c.runtime !== "t3" && c.runtime !== "herdr")) {
         console.error(`[bridge] skipping machine in ${this.config.machinesFile}: ${JSON.stringify(c)}`);
         continue;
       }
@@ -132,8 +134,9 @@ export class Bridge {
     m.start();
   }
 
+  /** Removed for good: the runtime drops what it keeps for the floor (forget), and stops. */
   removeMachine(m: Runtime) {
-    m.stop();
+    m.forget();
     for (const e of this.enriched.get(m.id)?.enrichers ?? []) e.stop();
     this.enriched.delete(m.id);
     this.machines.delete(m.id);

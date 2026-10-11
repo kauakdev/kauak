@@ -7,6 +7,8 @@
 // Claude panes suggest a next message when they finish, and "/" lists a few
 // made-up commands.
 // Build mode works too: new desks and rooms appear on the simulated floors.
+// One floor stands in for a T3 Code server: every desk there has an agent, and
+// a blocked one raises a request that the panel answers with buttons.
 // Claude and Codex desks fill their context windows as they work and compact
 // when full, as the real bridge reports them. Printers print made-up edits
 // while their room's agents work, over a few sheets already on the tray, and
@@ -14,8 +16,20 @@
 
 import { kindColor } from "../office/character";
 import { keyOf, splitKey } from "../floors/floors";
-import type { AgentStatus, DiffSheet, FileDiff, InputOp, MachineInfo, PaneInfo, RoomSpec, SlashCommand, Snapshot } from "@kauak/protocol";
-import type { BridgeApi, BridgeHandlers } from "./ws";
+import type {
+  AgentStatus,
+  DiffSheet,
+  FileDiff,
+  InputOp,
+  MachineInfo,
+  PaneInfo,
+  PaneRequest,
+  RequestAnswer,
+  RoomSpec,
+  SlashCommand,
+  Snapshot,
+} from "@kauak/protocol";
+import type { BridgeApi, BridgeHandlers, NewFloor } from "./ws";
 import "./demo.css";
 
 const COLS = 100;
@@ -33,7 +47,14 @@ const GIT_REF = /^[A-Za-z0-9_.][A-Za-z0-9_./-]{0,199}$/;
 
 type RoomSeed = { repo: string; branch: string; panes: [agent: string | null, status?: AgentStatus][] };
 
-const FLOORS: { id: string; label: string; ssh: string | null; host: string; rooms: RoomSeed[] }[] = [
+/** What runs a demo floor: Herdr, or a T3 Code server, whose desks are all agents' and whose agents' requests are reported. */
+type DemoRuntime = "herdr" | "t3";
+const RUNTIMES: Record<DemoRuntime, MachineInfo["runtime"]> = {
+  herdr: { name: "Herdr", version: "demo", features: { focus: true, shells: true, agent_kinds: null } },
+  t3: { name: "T3 Code", version: "demo", features: { focus: false, shells: false, agent_kinds: ["claude", "codex"] } },
+};
+
+const FLOORS: { id: string; label: string; ssh: string | null; host: string; runtime?: DemoRuntime; rooms: RoomSeed[] }[] = [
   {
     id: "local",
     label: "local",
@@ -78,6 +99,25 @@ const FLOORS: { id: string; label: string; ssh: string | null; host: string; roo
           ["gemini", "done"],
         ],
       },
+    ],
+  },
+  {
+    id: "t3",
+    label: "T3 Code",
+    ssh: null,
+    host: "laptop",
+    runtime: "t3",
+    rooms: [
+      {
+        repo: "kauak",
+        branch: "main",
+        panes: [
+          ["claude", "blocked"],
+          ["codex", "working"],
+        ],
+      },
+      { repo: "kauak", branch: "feat/t3-runtime", panes: [["claude", "working"]] },
+      { repo: "notes", branch: "main", panes: [["codex", "done"]] },
     ],
   },
 ];
@@ -305,6 +345,8 @@ interface DemoPane {
   log: string[];
   input: string;
   ask: [string, string] | null;
+  /** Counts the asks, so each request has an id of its own. */
+  asks: number;
   startedAt: number;
   /** When the pane may change status on its own. */
   next: number;
@@ -326,6 +368,8 @@ interface DemoRoom {
 
 interface DemoFloor {
   info: MachineInfo;
+  /** Its runtime reports what blocked agents ask (T3 Code), instead of leaving it to the terminal. */
+  requests: boolean;
   host: string;
   rooms: DemoRoom[];
   focused: string | null;
@@ -360,7 +404,7 @@ export class DemoBridge implements BridgeApi {
   constructor(private h: BridgeHandlers) {
     const now = Date.now();
     for (const f of FLOORS) {
-      this.floors.push(this.makeFloor(f.id, f.label, f.ssh, f.host, f.rooms, now));
+      this.floors.push(this.makeFloor(f.id, f.label, f.ssh, f.host, f.rooms, now, f.runtime));
     }
     showCard();
     // Answer the way the bridge does: right after "connecting".
@@ -411,7 +455,23 @@ export class DemoBridge implements BridgeApi {
     return true;
   }
 
-  addMachine(ssh: string, label: string): boolean {
+  answer(key: string, requestId: string, answers: RequestAnswer[], id: number): boolean {
+    const found = this.find(key);
+    if (!found) return false;
+    const { floor, pane } = found;
+    setTimeout(() => {
+      if (pane.status !== "blocked" || !pane.ask || requestOf(pane)?.id !== requestId)
+        return this.h.onError?.("That was already answered.", key, id);
+      answer(pane, answers[0]?.options[0]?.startsWith("accept") ?? false, Date.now());
+      this.pushSnapshot(floor);
+      this.h.onAnswered?.(key, id);
+    }, 120);
+    return true;
+  }
+
+  addMachine(floor: NewFloor): boolean {
+    if ("runtime" in floor) return this.addServer(floor.url, floor.token, floor.label);
+    const { ssh, label } = floor;
     setTimeout(() => {
       if (!SSH_TARGET.test(ssh)) return this.h.onMachineError?.("Use an SSH host, user@host, or a Host alias from ~/.ssh/config.");
       if (this.floors.some((f) => f.info.ssh === ssh)) return this.h.onMachineError?.(`${ssh} already has a floor.`);
@@ -443,6 +503,34 @@ export class DemoBridge implements BridgeApi {
     return true;
   }
 
+  /** A pretend T3 Code server: the address must be on this machine, as the bridge has it. */
+  private addServer(url: string, token: string, label: string): boolean {
+    setTimeout(() => {
+      let host = "";
+      try {
+        host = new URL(url).hostname;
+      } catch {}
+      if (!["127.0.0.1", "localhost", "[::1]"].includes(host))
+        return this.h.onMachineError?.("Use a server on this machine, at http://127.0.0.1 and its port.");
+      if (/\s/.test(token))
+        return this.h.onMachineError?.("Paste the token as one line, as `t3 auth session issue --token-only` prints it.");
+      const name = (label || "T3 Code").slice(0, 40);
+      let id = "t3-code";
+      for (let n = 2; this.floors.some((f) => f.info.id === id); n++) id = `t3-code-${n}`;
+      const seeds = randomRooms().map((r) => ({
+        ...r,
+        panes: r.panes.map(([agent, status]): RoomSeed["panes"][number] => [agent === "codex" ? "codex" : "claude", status ?? "idle"]),
+      }));
+      const floor = this.makeFloor(id, name, null, "laptop", seeds, Date.now(), "t3");
+      this.floors.push(floor);
+      this.pushMachines();
+      this.h.onMachineAdded?.(id);
+      this.pushSnapshot(floor);
+      this.pushPrints(floor);
+    }, 250);
+    return true;
+  }
+
   removeMachine(id: string) {
     if (id === "local") return;
     this.floors = this.floors.filter((f) => f.info.id !== id);
@@ -455,6 +543,7 @@ export class DemoBridge implements BridgeApi {
       const floor = this.floors.find((f) => f.info.id === machine);
       const room = floor?.rooms.find((r) => r.id === roomId);
       if (!floor || !room) return this.h.onCreateError?.("That room is gone.", id);
+      if (!agent && !floor.info.runtime.features.shells) return this.h.onCreateError?.(noAgent(floor), id);
       const n = Math.max(0, ...room.panes.map((p) => Number(p.id.split(":p")[1]) || 0)) + 1;
       this.addPane(floor, room, `${room.id}:p${n}`, agent, id);
     }, 300);
@@ -466,6 +555,7 @@ export class DemoBridge implements BridgeApi {
       const fail = (message: string) => this.h.onCreateError?.(message, id);
       const floor = this.floors.find((f) => f.info.id === machine);
       if (!floor) return fail("That floor is gone.");
+      if (!agent && !floor.info.runtime.features.shells) return fail(noAgent(floor));
       const cwd = spec.cwd.trim().replace(/(.)\/+$/, "$1");
       if (!cwd.startsWith("/")) return fail("Use an absolute path, like /home/dev/code/project.");
       const checkout = floor.rooms.find((r) => !r.plain && repoRoot(r) === cwd);
@@ -566,7 +656,15 @@ export class DemoBridge implements BridgeApi {
     return null;
   }
 
-  private makeFloor(id: string, label: string, ssh: string | null, host: string, seeds: RoomSeed[], now: number): DemoFloor {
+  private makeFloor(
+    id: string,
+    label: string,
+    ssh: string | null,
+    host: string,
+    seeds: RoomSeed[],
+    now: number,
+    runtime: DemoRuntime = "herdr",
+  ): DemoFloor {
     const rooms = seeds.map((s, i): DemoRoom => {
       const n = i + 1;
       const room: DemoRoom = {
@@ -581,7 +679,8 @@ export class DemoBridge implements BridgeApi {
       return room;
     });
     return {
-      info: { id, label, ssh, state: "live", message: "", runtime: { name: "Herdr", version: "demo" } },
+      info: { id, label, ssh, state: "live", message: "", runtime: RUNTIMES[runtime] },
+      requests: runtime === "t3",
       host,
       rooms,
       focused: rooms[0]?.panes[0]?.id ?? null,
@@ -684,6 +783,7 @@ function newPane(id: string, agent: string | null, status: AgentStatus, room: De
     log: [],
     input: "",
     ask: null,
+    asks: 0,
     startedAt: now - between(3000, 90_000),
     next: 0,
     context: Math.round(((WINDOW[agent ?? ""] ?? 0) * between(4, 75)) / 100),
@@ -770,6 +870,7 @@ function startTask(p: DemoPane, task: string, now: number) {
 
 function block(p: DemoPane, now: number) {
   p.ask = pick(ASKS);
+  p.asks++;
   const [what, detail] = p.ask;
   const call = what === "Bash command" ? `Bash(${detail})` : what === "Edit file" ? `Update(${detail})` : `Fetch(${detail})`;
   addLog(p, ["", `${bullet(p, true)} ${call}`]);
@@ -978,7 +1079,24 @@ function agentScreen(p: DemoPane, now: number): string[] {
 
 /** What the snapshot shows of a pane; the floor is re-sent only when this changes. */
 function snapshotKey(p: DemoPane): string {
-  return `${p.agent}|${p.status}|${p.task}|${p.context}`;
+  return `${p.agent}|${p.status}|${p.task}|${p.context}|${p.asks}`;
+}
+
+/** What a blocked agent asks, as a runtime that reports it would: an approval, with T3 Code's answers. */
+function requestOf(p: DemoPane): PaneRequest | null {
+  if (p.status !== "blocked" || !p.ask) return null;
+  const [what, detail] = p.ask;
+  const title = what === "Bash command" ? "Run a command" : what === "Edit file" ? "Change files" : "Fetch a page";
+  const options = [
+    { id: "accept", label: "Approve", description: "" },
+    { id: "acceptForSession", label: "Always allow this session", description: "" },
+    { id: "decline", label: "Decline", description: "" },
+  ];
+  return {
+    id: `${p.id}#${p.asks}`,
+    kind: "approval",
+    questions: [{ id: "approval", title, text: detail, options, multiple: false, typed: false }],
+  };
 }
 
 /** The floor as the bridge would send it: a Kauak snapshot, made without any runtime behind it. */
@@ -996,6 +1114,7 @@ function snapshotOf(f: DemoFloor): Snapshot {
       screen: { rows: ROWS, cols: COLS, exact: true },
       scrollback: false,
       context: p.agent && WINDOW[p.agent] ? { used: p.context, max: WINDOW[p.agent]! } : null,
+      request: f.requests ? requestOf(p) : null,
     })),
   );
   return {
@@ -1047,6 +1166,10 @@ function fakeSheet(room: DemoRoom, at: number): DiffSheet {
 }
 
 /** Rooms for a floor added from the elevator. */
+function noAgent(floor: DemoFloor) {
+  return `Pick an agent: each desk in ${floor.info.runtime.name} is an agent's thread.`;
+}
+
 function randomRooms(): RoomSeed[] {
   const repos = [...EXTRA_REPOS].sort(() => Math.random() - 0.5).slice(0, 2);
   const status = (): AgentStatus => pick(["working", "working", "idle", "blocked", "done"]);

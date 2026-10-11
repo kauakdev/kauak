@@ -36,6 +36,7 @@ function onFloor<T extends FloorType>(
 
 const HANDLERS: { [T in Type]: Handler<T> } = {
   add_machine: (msg, page, bridge) => {
+    if ("runtime" in msg) return addServedFloor(msg, page, bridge);
     const ssh = msg.ssh;
     if (!SSH_TARGET.test(ssh)) {
       page.send({ type: "machine_error", message: "Use an SSH host, user@host, or a Host alias from ~/.ssh/config." });
@@ -86,6 +87,16 @@ const HANDLERS: { [T in Type]: Handler<T> } = {
   // "ctrl+c"), queued per pane (core/input.ts).
   input: onFloor((m, msg, page, bridge) => bridge.input.queue(page, m, msg.pane_id, msg.ops, msg.id)),
 
+  // The buttons under the terminal that answer what an agent asked.
+  answer: onFloor(async (m, msg, page) => {
+    try {
+      await m.answer(msg.pane_id, msg.request_id, msg.answers);
+      page.send({ type: "answered", machine: m.id, pane_id: msg.pane_id, id: msg.id });
+    } catch (err) {
+      page.send({ type: "error", machine: m.id, pane_id: msg.pane_id, id: msg.id, message: (err as Error).message });
+    }
+  }),
+
   // The message box's "/" menu. The agent and its folder come from the
   // snapshot, not the page; only this machine's files are read.
   commands: onFloor(async (m, msg, page, bridge) => {
@@ -107,6 +118,49 @@ const HANDLERS: { [T in Type]: Handler<T> } = {
   create_desk: onFloor((m, msg, page) => build(page, m, msg)),
   create_room: onFloor((m, msg, page) => build(page, m, msg)),
 };
+
+// The hosts a runtime served over HTTP may be on: this machine only, as the
+// bridge has no way to reach another machine's files for the printers and
+// context meters but SSH, which a URL floor does not use.
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/** A floor run by a server on this machine that the bridge reaches by URL, with a token it issued (T3 Code). */
+function addServedFloor(msg: Extract<ClientMessage, { type: "add_machine"; runtime: string }>, page: Connection, bridge: Bridge) {
+  let url: URL | null = null;
+  try {
+    url = new URL(msg.url);
+  } catch {}
+  if (!url || (url.protocol !== "http:" && url.protocol !== "https:")) {
+    page.send({ type: "machine_error", message: "Enter the server's address, like http://127.0.0.1:3773." });
+    return;
+  }
+  if (!LOOPBACK.has(url.hostname)) {
+    page.send({ type: "machine_error", message: "Use a server on this machine, at http://127.0.0.1 and its port." });
+    return;
+  }
+  if (/\s/.test(msg.token)) {
+    page.send({ type: "machine_error", message: "Paste the token as one line, as `t3 auth session issue --token-only` prints it." });
+    return;
+  }
+  const address = url.origin;
+  if ([...bridge.machines.values()].some((m) => m.config.url === address)) {
+    page.send({ type: "machine_error", message: `${address} already has a floor.` });
+    return;
+  }
+  const label = msg.label || "T3 Code";
+  let m: Runtime;
+  try {
+    // The runtime keeps the token itself, in a file that may not be writable.
+    m = bridge.addMachine({ id: bridge.uniqueId(label), label: label.slice(0, 40), runtime: msg.runtime, url: address, token: msg.token });
+  } catch (err) {
+    page.send({ type: "machine_error", message: `Could not keep the token: ${(err as Error).message}` });
+    return;
+  }
+  bridge.startMachine(m);
+  bridge.saveConfig();
+  bridge.broadcastMachines();
+  page.send({ type: "machine_added", machine: m.id });
+}
 
 /** Runs the handler for the message's type. */
 export function handle(msg: ClientMessage, page: Connection, bridge: Bridge) {

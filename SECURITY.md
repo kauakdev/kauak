@@ -14,7 +14,8 @@ time. The advisory can credit you once it is published, if you want.
 Fixes land on `main` and go out in the next release. Before 1.0 only the
 latest release is supported.
 
-Vulnerabilities in Herdr itself belong to the [Herdr project](https://github.com/herdrdev/herdr).
+Vulnerabilities in Herdr itself belong to the [Herdr project](https://github.com/herdrdev/herdr),
+and those in T3 Code to the [T3 Code project](https://github.com/pingdotgg/t3code).
 
 ## What the bridge can do
 
@@ -28,6 +29,15 @@ rights. On every Herdr server it is connected to, it can:
   (`packages/bridge/src/enrichers/context/context_remote.py`,
   `packages/bridge/src/enrichers/diffs/diffs_remote.py`) that read agent
   transcripts, git status and file contents
+
+On every T3 Code server it is connected to, with the token you gave it, it can
+read every project and thread, send messages to agents and stop their turns,
+answer their approvals and questions, and create threads, projects and git
+worktrees. A token from `t3 auth session issue` has every scope, so whoever
+holds it can do the same, and more, until it expires or you revoke it in T3
+Code. The bridge keeps it in `~/.config/kauak/tokens/` (the folder mode 700,
+the file 600), sends it only to the T3 Code server on this machine it was given
+for, never to a page, and deletes it when you remove the floor.
 
 On this machine it also reads agent transcripts (`~/.claude/projects`,
 `~/.codex/sessions`), agent command, skill and plugin files, and git status
@@ -48,6 +58,9 @@ Whoever controls the bridge can therefore run commands in your terminals.
   short list of names (`enter`, `ctrl+c`…) are dropped, and text sent to a pane
   is cut at 64 KB per piece. The format is in
   [docs/protocol.md](docs/protocol.md).
+- A T3 Code floor's address must be on this machine (`127.0.0.1`,
+  `localhost` or `[::1]`), so a page cannot point the bridge, and its token,
+  at another host.
 - An SSH target typed in the page must look like `host`, `user@host` or an
   `~/.ssh/config` alias, and a branch name typed in build mode must look like
   one; neither can start with `-`, so they cannot pass options to `ssh` or

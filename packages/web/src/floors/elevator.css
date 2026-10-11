@@ -232,6 +232,44 @@ body.panel-open #floors:not(.adding) .floor .go {
   color: var(--muted);
   line-height: 1.4;
 }
+#floor-add .note code {
+  font-size: 10.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+#floor-add [hidden] {
+  display: none;
+}
+#floor-add .kinds {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--card-2);
+  border: 1px solid var(--line-2);
+}
+#floor-add .kinds label {
+  flex: 1;
+  flex-direction: row;
+  justify-content: center;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+}
+#floor-add .kinds input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+#floor-add .kinds label:has(input:checked) {
+  background: #3b4470;
+  color: var(--text);
+}
+#floor-add .kinds label:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+}
 #floor-add .err {
   margin: 0;
   font-size: 11px;

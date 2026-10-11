@@ -1,16 +1,18 @@
 // Elevator panel: one button per floor (machine), top floor first, with
 // the floor's connection state and how many of its agents need attention.
-// Also owns the "add floor" form. Reads the floors and the floor on screen
+// Also owns the "add floor" form: Herdr on another machine over SSH, or a T3
+// Code server on this one with a token it issued. Reads the floors and the floor on screen
 // from the page's state (app/state.ts), re-rendering when they change.
 
 import type { AppState } from "../app/state";
 import { escapeHtml } from "../app/html";
 import { floorProblem, runtimeOf } from "./floors";
+import type { NewFloor } from "../bridge/ws";
 import type { AgentStatus } from "@kauak/protocol";
 import "./elevator.css";
 
 export interface ElevatorHandlers {
-  onAdd(ssh: string, label: string): boolean;
+  onAdd(floor: NewFloor): boolean;
   onRemove(floor: string): void;
 }
 
@@ -20,7 +22,7 @@ export class Elevator {
   private form = document.getElementById("floor-add") as HTMLFormElement;
   private err = this.form.querySelector<HTMLElement>(".err")!;
   private submit = this.form.querySelector<HTMLButtonElement>("button[type=submit]")!;
-  private input = this.form.querySelector<HTMLInputElement>("input[name=ssh]")!;
+  private runtime: "herdr" | "t3" = "herdr";
   /** Set by main: true while the terminal panel owns the keyboard. */
   isTyping: () => boolean = () => false;
 
@@ -41,13 +43,18 @@ export class Elevator {
       },
       true,
     );
+    for (const r of this.form.querySelectorAll<HTMLInputElement>("input[name=runtime]"))
+      r.addEventListener("change", () => this.setRuntime(r.value === "t3" ? "t3" : "herdr"));
     this.form.addEventListener("submit", (e) => {
       e.preventDefault();
       const data = new FormData(this.form);
-      const ssh = String(data.get("ssh") ?? "").trim();
-      if (!ssh) return;
-      this.input.focus(); // the submit button is about to be disabled and would drop focus
-      if (!this.h.onAdd(ssh, String(data.get("label") ?? "").trim())) {
+      const field = (name: string) => String(data.get(name) ?? "").trim();
+      const label = field("label");
+      const floor: NewFloor =
+        this.runtime === "t3" ? { runtime: "t3", url: field("url"), token: field("token"), label } : { ssh: field("ssh"), label };
+      if ("ssh" in floor ? !floor.ssh : !floor.url || !floor.token) return;
+      this.input().focus(); // the submit button is about to be disabled and would drop focus
+      if (!this.h.onAdd(floor)) {
         this.showError("The bridge is offline. Try again once it reconnects.");
         return;
       }
@@ -132,6 +139,7 @@ export class Elevator {
   /** The bridge accepted the new machine. */
   added() {
     this.form.reset();
+    this.runtime = "herdr";
     this.toggleForm(false);
   }
 
@@ -139,13 +147,29 @@ export class Elevator {
     this.submit.disabled = false;
     this.err.textContent = message;
     this.err.hidden = !message;
-    if (message) this.input.select();
+    if (message) this.input().select();
+  }
+
+  /** The field a floor of the chosen runtime is reached by: its SSH target, or the server's token. */
+  private input(): HTMLInputElement {
+    return this.form.querySelector<HTMLInputElement>(this.runtime === "t3" ? "input[name=token]" : "input[name=ssh]")!;
+  }
+
+  /** Show the chosen runtime's fields and note; only those are required. */
+  private setRuntime(runtime: "herdr" | "t3") {
+    this.runtime = runtime;
+    for (const el of this.form.querySelectorAll<HTMLElement>("[data-runtime]")) {
+      el.hidden = el.dataset.runtime !== runtime;
+      for (const input of el.querySelectorAll<HTMLInputElement>("input[data-required]")) input.required = !el.hidden;
+    }
+    this.showError("");
   }
 
   private toggleForm(open: boolean) {
     this.form.hidden = !open;
     this.el.classList.toggle("adding", open);
+    if (open) this.setRuntime(this.runtime);
     this.showError("");
-    if (open) this.input.focus();
+    if (open) this.input().focus();
   }
 }

@@ -33,6 +33,11 @@ const CLEAN = {
   "packages/bridge/src/server.test.mjs":
     'import { toSnapshot } from "./runtimes/herdr/herdr.ts";\nconst calls = ["pane.read", "tab.create"];\n',
   "packages/bridge/src/runtimes/herdr/fixtures/fake-herdr.mjs": 'export const METHOD = "session.snapshot";\n',
+  "packages/bridge/src/runtimes/t3/floor.ts":
+    'import { RpcSocket } from "./rpc.ts";\nimport { turnStart } from "./t3.ts";\nimport type { Runtime } from "../../ports/runtime.ts";\nexport const subscribe = (s) => s.stream("orchestration.subscribeShell");\n',
+  "packages/bridge/src/runtimes/t3/t3.ts": 'export const turnStart = (id) => ({ type: "thread.turn.start", threadId: id });\n',
+  "packages/bridge/src/runtimes/t3/rpc.ts": 'import WebSocket from "ws";\n',
+  "packages/bridge/src/runtimes/t3/fixtures/fake-t3.mjs": 'export const METHODS = ["server.getConfig", "vcs.createWorktree"];\n',
   "packages/protocol/src/index.ts":
     'export type AgentStatus = "idle" | "working";\nexport const AGENT_STATUSES: readonly AgentStatus[] = ["idle", "working"];\n',
   "packages/protocol/src/protocol.test.mjs": 'import test from "node:test";\nimport { parseClientMessage } from "./index.ts";\n',
@@ -331,5 +336,31 @@ test("only the entry points read process.env; passing it whole to a child proces
     "packages/bridge/src/enrichers/context/context.ts":
       'execFile("ps", [], { env: { ...process.env, LC_ALL: "C" } });\n// process.env.HOME is the entry point\'s to read.\n',
   });
+  assert.equal(status, 0, lines.join("\n"));
+});
+
+test("T3 Code's API stays in its adapter: t3.ts and its RPC client, its method and command names", () => {
+  assertViolation(
+    {
+      "packages/bridge/src/server.ts":
+        'import { T3Floor } from "./runtimes/t3/floor.ts";\nimport { turnStart } from "./runtimes/t3/t3.ts";\n',
+    },
+    /^packages\/bridge\/src\/server\.ts:2: imports "\.\/runtimes\/t3\/t3\.ts" .*: only the T3 Code adapter/,
+  );
+  assertViolation({ "packages/kauak/cli/main.js": 'await import("../../bridge/src/runtimes/t3/rpc.ts");\n' }, /only the T3 Code adapter/);
+  for (const name of [
+    "orchestration.dispatchCommand",
+    "thread.turn.start",
+    "thread.approval.respond",
+    "project.create",
+    "vcs.createWorktree",
+    "server.getConfig",
+  ])
+    assertViolation(
+      { "packages/bridge/src/core/handlers.ts": `export const NAME = "${name}";\n` },
+      new RegExp(`^packages/bridge/src/core/handlers\\.ts:1: names "${name.replace(/\./g, "\\.")}": T3 Code's method and command names`),
+    );
+  // Words that only look like one are not.
+  const { status, lines } = check({ "packages/bridge/src/core/handlers.ts": 'export const FILES = ["server.ts", "thread.json"];\n' });
   assert.equal(status, 0, lines.join("\n"));
 });

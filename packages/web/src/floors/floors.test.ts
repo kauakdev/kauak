@@ -8,7 +8,7 @@ const machine = (over: Partial<MachineInfo> = {}): MachineInfo => ({
   ssh: "devbox",
   state: "down",
   message: "",
-  runtime: { name: "Herdr", version: null },
+  runtime: { name: "Herdr", version: null, features: { focus: true, shells: true, agent_kinds: null } },
   ...over,
 });
 const workspace = (workspace_id: string): WorkspaceInfo => ({
@@ -30,6 +30,7 @@ const pane = (pane_id: string, workspace_id: string): PaneInfo => ({
   screen: null,
   scrollback: false,
   context: null,
+  request: null,
 });
 const floor = (id: string, number: number, snapshot: Snapshot | null): Floor => ({ info: machine({ id }), number, snapshot });
 
@@ -102,7 +103,11 @@ describe("floorProblem", () => {
     expect(problem("ssh: connect to host devbox port 22: Connection refused")).toBe("ssh refused the connection");
     expect(problem("Herdr is not running on devbox")).toBe("Herdr is not running");
     expect(problem("no reply from Herdr after 5s")).toBe("Herdr is not answering");
-    expect(problem("no reply from Herdr", { runtime: { name: "Tmux", version: null } })).toBe("no reply from Herdr");
+    expect(
+      problem("no reply from Herdr", {
+        runtime: { name: "Tmux", version: null, features: { focus: true, shells: true, agent_kinds: null } },
+      }),
+    ).toBe("no reply from Herdr");
   });
 
   test("falls back to the whole message, or to unreachable without one", () => {
@@ -117,6 +122,10 @@ describe("floorProblem", () => {
 
 test("runtimeOf names what runs the floor, with its version once known", () => {
   expect(runtimeOf(machine())).toBe("Herdr");
-  expect(runtimeOf(machine({ runtime: { name: "Herdr", version: "0.9.3" } }))).toBe("Herdr 0.9.3");
-  expect(runtimeOf(machine({ runtime: { name: "Herdr", version: "" } }))).toBe("Herdr");
+  expect(
+    runtimeOf(machine({ runtime: { name: "Herdr", version: "0.9.3", features: { focus: true, shells: true, agent_kinds: null } } })),
+  ).toBe("Herdr 0.9.3");
+  expect(runtimeOf(machine({ runtime: { name: "Herdr", version: "", features: { focus: true, shells: true, agent_kinds: null } } }))).toBe(
+    "Herdr",
+  );
 });

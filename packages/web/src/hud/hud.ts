@@ -212,7 +212,9 @@ export class Hud {
       if (f.snapshot.panes.length === 0)
         this.showEmpty(
           `Floor ${f.number} is empty`,
-          `Open a workspace or pane in ${f.info.runtime.name}${f.info.ssh ? ` on ${f.info.label}` : ""} and it will appear here.`,
+          f.info.runtime.features.shells
+            ? `Open a workspace or pane in ${f.info.runtime.name}${f.info.ssh ? ` on ${f.info.label}` : ""} and it will appear here.`
+            : `Start a thread in ${f.info.runtime.name}, or one here in build mode (B), and it will appear here.`,
         );
       else this.empty.hidden = true;
     }

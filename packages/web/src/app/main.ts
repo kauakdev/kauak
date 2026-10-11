@@ -59,7 +59,7 @@ async function main() {
   });
 
   const elevator = new Elevator(state, {
-    onAdd: (ssh, label) => bridge.addMachine(ssh, label),
+    onAdd: (floor) => bridge.addMachine(floor),
     onRemove: (id) => bridge.removeMachine(id),
   });
 
@@ -69,6 +69,7 @@ async function main() {
     onStatus: (ok) => hud.setBridge(ok),
     onPaneOutput: (id, text, seq) => panel.receive(id, text, seq),
     onInputAck: (id, inputId) => panel.inputAcked(id, inputId),
+    onAnswered: (id, answerId) => panel.answered(id, answerId),
     onCommands: (id, cmds) => panel.setCommands(id, cmds),
     onError: (message, id, inputId) => {
       if (id) panel.inputFailed(id, message, inputId);
@@ -95,7 +96,13 @@ async function main() {
   });
   scene.onBuild = (target, x, y) => {
     const info = state.floors().find((f) => f.info.id === state.current)?.info;
-    if (info) build.open(target, { id: info.id, label: info.label, remote: info.ssh !== null, runtime: info.runtime.name }, x, y);
+    if (info)
+      build.open(
+        target,
+        { id: info.id, label: info.label, remote: info.ssh !== null, runtime: info.runtime.name, features: info.runtime.features },
+        x,
+        y,
+      );
   };
   scene.onSelectPane = (pane) => state.select(pane.pane_id);
   scene.onEmptyClick = () => {
@@ -104,6 +111,7 @@ async function main() {
   };
   panel.onRead = (id, seq, lines) => bridge.readPane(id, seq, lines);
   panel.onInput = (id, ops, inputId) => bridge.sendInput(id, ops, inputId);
+  panel.onAnswer = (id, requestId, answers, answerId) => bridge.answer(id, requestId, answers, answerId);
   panel.onListCommands = (id) => bridge.listCommands(id);
   // Global shortcuts stay off while the terminal or the build form has the keyboard.
   const typing = () => panel.isTyping() || build.hasFocus() || appearance.isOpen() || printout.isOpen();

@@ -29,6 +29,7 @@ const pane = (pane_id: string, workspace_id: string, over: Partial<PaneInfo> = {
   screen: null,
   scrollback: false,
   context: null,
+  request: null,
   ...over,
 });
 /** `n` panes in workspace `ws`. */

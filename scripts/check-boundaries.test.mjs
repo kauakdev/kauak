@@ -358,7 +358,7 @@ test("T3 Code's API stays in its adapter: t3.ts and its RPC client, its method a
   ])
     assertViolation(
       { "packages/bridge/src/core/handlers.ts": `export const NAME = "${name}";\n` },
-      new RegExp(`^packages/bridge/src/core/handlers\\.ts:1: names "${name.replace(/\./g, "\\.")}": T3 Code's method and command names`),
+      new RegExp(`^packages/bridge/src/core/handlers\\.ts:1: names "${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}": T3 Code's method and command names`),
     );
   // Words that only look like one are not.
   const { status, lines } = check({ "packages/bridge/src/core/handlers.ts": 'export const FILES = ["server.ts", "thread.json"];\n' });

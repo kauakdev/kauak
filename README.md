@@ -6,7 +6,8 @@ Kauak is a Sims-style isometric office that shows what your coding agents are
 doing, live. It connects to [Herdr](https://herdr.dev), a terminal multiplexer
 for coding agents, and turns each machine into a floor, each repository into a
 wing, each workspace into a room and each pane into a desk, with someone at it
-when an agent runs there. You see at a glance who is working, who is on a break
+when an agent runs there. It can show a [T3 Code](https://github.com/pingdotgg/t3code)
+server the same way, its threads as desks. You see at a glance who is working, who is on a break
 and who is waiting for you, and you click a desk to read that agent's terminal
 and answer it.
 
@@ -23,7 +24,9 @@ tab.
 
 ## Quick start
 
-You need Node.js 22 or newer, and Herdr (0.9.x) running on this machine.
+You need Node.js 22 or newer, and Herdr (0.9.x) running on this machine. To
+show T3 Code (0.0.45) as well, or instead, see
+[T3 Code floors](docs/configuration.md#t3-code-floors).
 
 ```sh
 npx @kauakdev/kauak serve
@@ -73,6 +76,8 @@ which reloads as you edit. Add `?demo` to the URL for simulated agents.
   (new git worktrees or folders) from the office.
 - **Go remote**: add other machines that run Herdr as floors, over SSH.
   Nothing is installed on them.
+- **Bring T3 Code in**: add a T3 Code server on this machine as a floor. Its
+  agents' approvals and questions show up as buttons under the transcript.
 - **Make it yours**: pick the Classic office, the Orbital workshop or the
   Alpine basecamp, a background, and a company banner for the wall.
 
@@ -93,6 +98,18 @@ works. Other machines are reached through an SSH tunnel to their Herdr socket.
 Kauak is an independent project. It is not affiliated with or endorsed by
 Herdr, and it would not exist without it.
 
+## Kauak and T3 Code
+
+[T3 Code](https://github.com/pingdotgg/t3code) runs coding agents as
+conversations (threads) in projects and git worktrees. A T3 Code server on this
+machine can be a floor: Kauak reaches it at its address with a token it issued,
+follows its projects and threads, draws each thread's latest turns as a
+transcript, sends your messages, stops turns, answers approvals and questions,
+and makes threads, worktrees and projects from build mode. Kauak speaks T3 Code
+0.0.45's orchestration protocol 1. Kauak is not affiliated with or endorsed by
+T3 Code either. [Configuration](docs/configuration.md#t3-code-floors) has the
+steps.
+
 ## Architecture
 
 ```
@@ -112,6 +129,10 @@ Page             packages/web/
   `packages/bridge/src/runtimes/herdr/herdr.ts`): one per floor. It talks to
   Herdr's socket, here or through an SSH tunnel, and translates Herdr's
   snapshots and errors into Kauak's own. Herdr-specific code lives only here.
+- **T3 Code adapter** (`packages/bridge/src/runtimes/t3/`): one per T3 Code
+  floor, the same Runtime port. It talks to the server's WebSocket (Effect RPC)
+  and HTTP routes with its token, and translates its projects, threads and
+  requests into Kauak's own. T3 Code-specific code lives only here.
 - **Kauak protocol** (`packages/protocol/src/index.ts`, TypeScript): the JSON
   messages between the page and the bridge, described in
   [docs/protocol.md](docs/protocol.md). The bridge checks every message from a

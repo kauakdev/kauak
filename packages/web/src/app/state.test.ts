@@ -19,7 +19,7 @@ const machine = (id: string): MachineInfo => ({
   ssh: id === "local" ? null : id,
   state: "live",
   message: "",
-  runtime: { name: "Herdr", version: null },
+  runtime: { name: "Herdr", version: null, features: { focus: true, shells: true, agent_kinds: null } },
 });
 // Only the ids: the store reads nothing else of a snapshot.
 const snapshot = (...panes: string[]) =>

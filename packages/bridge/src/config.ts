@@ -16,6 +16,8 @@ export interface BridgeConfig {
   readonly origins: readonly string[];
   /** The saved floors (KAUAK_CONFIG). */
   readonly machinesFile: string;
+  /** The floors' tokens (a T3 Code floor's), one file each, in a folder beside machinesFile that only you can read. */
+  readonly tokenDir: string;
   /** This machine's Herdr socket (HERDR_SOCKET_PATH). */
   readonly herdrSocket: string;
   /** The ssh executable that reaches remote floors (KAUAK_SSH). */
@@ -43,6 +45,7 @@ export interface ConfigFlags {
 
 export function resolveConfig(env: Readonly<Record<string, string | undefined>>, flags: ConfigFlags = {}): BridgeConfig {
   const home = os.homedir();
+  const machinesFile = env.KAUAK_CONFIG ?? defaultMachinesFile(home);
   return Object.freeze({
     port: Number(flags.port ?? env.KAUAK_PORT ?? 7788),
     // The bridge can type into terminals, create panes and worktrees, and open SSH
@@ -58,7 +61,8 @@ export function resolveConfig(env: Readonly<Record<string, string | undefined>>,
         .map((h) => h.trim())
         .filter(Boolean),
     ]),
-    machinesFile: env.KAUAK_CONFIG ?? defaultMachinesFile(home),
+    machinesFile,
+    tokenDir: path.join(path.dirname(machinesFile), "tokens"),
     herdrSocket: env.HERDR_SOCKET_PATH ?? env.HERDR_SOCKET ?? path.join(home, ".config", "herdr", "herdr.sock"),
     sshCommand: env.KAUAK_SSH ?? "ssh",
     tunnelDir: path.join(os.tmpdir(), `kauak-${process.getuid?.() ?? "user"}`),

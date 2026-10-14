@@ -3,10 +3,13 @@
 // on what comes back; nothing past the bridge sees a Herdr field, method or
 // error. Verified against Herdr 0.9.x, protocol 22 (`herdr api schema`).
 
-import { AGENT_STATUSES, type AgentStatus, type PaneInfo, type RepoInfo, type Snapshot } from "@kauak/protocol";
+import { AGENT_STATUSES, type AgentStatus, type PaneInfo, type RepoInfo, type RuntimeFeatures, type Snapshot } from "@kauak/protocol";
 import type { AgentSession } from "../../ports/runtime.ts";
 
 export const RUNTIME = "Herdr";
+
+/** Herdr focuses panes in its own window and runs plain shells; build mode's agent kinds are the page's list, which is Herdr's. */
+export const FEATURES: RuntimeFeatures = Object.freeze({ focus: true, shells: true, agent_kinds: null });
 
 const STATUSES: ReadonlySet<string> = new Set(AGENT_STATUSES);
 
@@ -113,6 +116,8 @@ export function toSnapshot(raw: HerdrSnapshot | null): Snapshot {
       screen: screenOf(p.scroll, rects.get(p.pane_id)),
       scrollback: (p.scroll?.max_offset_from_bottom ?? 0) > 0,
       context: null,
+      // Herdr's agents ask in the terminal, and are answered there.
+      request: null,
     })),
   };
 }

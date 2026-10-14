@@ -16,6 +16,11 @@
 // agent's commands (slash.ts), and Claude Code's shadow text, the dim
 // suggestion in its empty prompt, which Tab takes (shadow.ts).
 //
+// A runtime that reports what its agent waits for (PaneInfo.request; T3 Code
+// does, Herdr's agents ask in the terminal) gets it as buttons between the
+// mirror and the box: an approval's answers send at once, questions are
+// picked or typed and then sent together.
+//
 // The panel shows the selected pane of the page's state (app/state.ts): it
 // opens when a pane is selected, and closing it clears the selection.
 
@@ -29,7 +34,7 @@ import { load, save } from "../app/storage";
 import { floorOf, mergeSnapshots } from "../floors/floors";
 import { promptShadow, type Shadow } from "./shadow";
 import { SlashMenu } from "./slash";
-import type { InputOp, PaneInfo, SlashCommand, Snapshot } from "@kauak/protocol";
+import type { InputOp, PaneInfo, PaneRequest, RequestAnswer, RequestQuestion, SlashCommand, Snapshot } from "@kauak/protocol";
 
 const POLL_MS = 400;
 // Rows of history read above the pane's screen. Every poll carries them
@@ -44,6 +49,8 @@ const WHEEL_LINE_PX = 16;
 // Once Herdr has the input, read right away, then again once the program has
 // had time to react.
 const AFTER_INPUT_READS_MS = [0, 120];
+// An answer the runtime took but the agent has not: after this long, its request can be answered again.
+const ANSWER_WAIT_MS = 10_000;
 // The pane is mirrored at its real size; the font shrinks so its full width
 // fits the panel, and a pane taller than the panel scrolls.
 const FONT_MAX = 13;
@@ -74,6 +81,7 @@ export class TerminalPanel {
   private liveBtn = document.getElementById("panel-live") as HTMLButtonElement;
   private focusBtn = document.getElementById("panel-focus") as HTMLButtonElement;
   private menu = new SlashMenu(document.getElementById("panel-slash")!, this.box);
+  private requestEl = document.getElementById("panel-request")!;
   private term: Terminal;
   private pane: PaneInfo | null = null;
   private lastText: string | null = null;
@@ -95,9 +103,17 @@ export class TerminalPanel {
   private inputId = 0;
   private timer: number | null = null;
   private hintTimer: number | null = null;
+  // The request on screen ("pane|request"), what is picked and typed for each of its questions, and the answer on its way.
+  private requestKey = "";
+  private picked = new Map<string, string[]>();
+  private typed = new Map<string, string>();
+  private answerId = 0;
+  private answering: number | null = null;
+  private answerTimer: number | null = null;
 
   onRead: (paneId: string, seq: number, lines: number) => void = () => {};
   onInput: (paneId: string, ops: InputOp[], id: number) => boolean = () => false;
+  onAnswer: (paneId: string, requestId: string, answers: RequestAnswer[], id: number) => boolean = () => false;
   onListCommands: (paneId: string) => void = () => {};
   onFocus: (paneId: string) => void = () => {};
   onResize: () => void = () => {};
@@ -291,9 +307,31 @@ export class TerminalPanel {
     for (const ms of AFTER_INPUT_READS_MS) window.setTimeout(() => this.poll(), ms);
   }
 
-  inputFailed(paneId: string, message: string, _id?: number) {
+  inputFailed(paneId: string, message: string, id?: number) {
     if (!this.pane || paneId !== this.pane.pane_id) return;
+    if (id !== undefined && id === this.answering) {
+      this.answering = null;
+      this.updateRequest();
+      this.flashHint(`not answered: ${message}`);
+      return;
+    }
     this.flashHint(`input failed: ${message}`);
+  }
+
+  /** The answer reached the runtime: the request goes once the agent takes it, with the next snapshot. */
+  answered(paneId: string, id: number | undefined) {
+    if (!this.pane || paneId !== this.pane.pane_id || id !== this.answering) return;
+    this.requestEl.querySelector(".state")!.textContent = "Sent. Waiting for the agent…";
+    for (const ms of AFTER_INPUT_READS_MS) window.setTimeout(() => this.poll(), ms);
+    // A request still open by then (the agent did not take the answer) gets its buttons back.
+    if (this.answerTimer !== null) clearTimeout(this.answerTimer);
+    this.answerTimer = window.setTimeout(() => {
+      this.answerTimer = null;
+      if (this.answering !== id) return;
+      this.answering = null;
+      this.updateRequest();
+      this.flashHint("the agent has not taken the answer · you can answer again");
+    }, ANSWER_WAIT_MS);
   }
 
   private onKey(e: KeyboardEvent) {
@@ -472,9 +510,10 @@ export class TerminalPanel {
     kind.textContent = p.agent ?? "shell";
     kind.dataset.kind = p.agent ?? "";
     document.getElementById("panel-status")!.textContent = p.agent ? p.agent_status : "no agent";
-    const runtime = this.state.floors().find((f) => f.info.id === floorOf(p.pane_id))?.info.runtime.name ?? "";
-    this.focusBtn.textContent = `Focus in ${runtime}`;
-    this.focusBtn.title = `Switch ${runtime} to this pane`;
+    const runtime = this.state.floors().find((f) => f.info.id === floorOf(p.pane_id))?.info.runtime;
+    this.focusBtn.textContent = `Focus in ${runtime?.name ?? ""}`;
+    this.focusBtn.title = `Switch ${runtime?.name ?? ""} to this pane`;
+    this.focusBtn.hidden = runtime?.features.focus === false;
     const ctx = document.getElementById("panel-ctx")!;
     ctx.hidden = !p.context;
     if (p.context) {
@@ -485,6 +524,125 @@ export class TerminalPanel {
     }
     this.el.dataset.status = p.agent_status;
     this.renderPlaceholder();
+    this.renderRequest();
+  }
+
+  // ------------------------------------------------------------ requests
+
+  /** The pane's request as buttons, rebuilt only when it is a new one, so what is picked and typed stays. */
+  private renderRequest() {
+    const p = this.pane;
+    const req = p?.request ?? null;
+    const key = p && req ? `${p.pane_id}|${req.id}` : "";
+    if (key !== this.requestKey) {
+      this.requestKey = key;
+      this.picked.clear();
+      this.typed.clear();
+      this.answering = null;
+      this.buildRequest(req);
+    }
+    this.requestEl.hidden = !req;
+  }
+
+  private buildRequest(req: PaneRequest | null) {
+    const el = this.requestEl;
+    el.replaceChildren();
+    if (!req) return;
+    const approval = req.kind === "approval";
+    for (const q of req.questions) {
+      const box = append(el, "div", "q");
+      if (q.title) append(box, "div", "title").textContent = q.title;
+      if (q.text) append(box, "pre", "text").textContent = q.text;
+      const options = append(box, "div", "options");
+      q.options.forEach((o, i) => {
+        const b = append(options, "button");
+        b.type = "button";
+        b.textContent = o.label;
+        if (o.description) append(b, "small").textContent = o.description;
+        b.dataset.question = q.id;
+        b.dataset.option = o.id;
+        if (approval) {
+          if (i === 0) b.classList.add("primary");
+          b.addEventListener("click", () => this.sendAnswer(req, [{ question_id: q.id, options: [o.id] }]));
+        } else b.addEventListener("click", () => this.pick(q, o.id));
+      });
+      if (q.typed && !approval) {
+        const input = append(box, "input");
+        input.placeholder = q.options.length ? "Or type an answer" : "Type an answer";
+        input.spellcheck = false;
+        input.dataset.question = q.id;
+        input.addEventListener("input", () => {
+          this.typed.set(q.id, input.value);
+          this.updateRequest();
+        });
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.isComposing) {
+            e.preventDefault();
+            if (this.allAnswered(req)) this.sendAnswer(req, this.answersOf(req));
+          }
+        });
+      }
+    }
+    const row = append(el, "div", "row");
+    if (!approval) {
+      const send = append(row, "button", "primary send");
+      send.type = "button";
+      send.textContent = req.questions.length > 1 ? "Send answers" : "Send answer";
+      send.addEventListener("click", () => this.sendAnswer(req, this.answersOf(req)));
+    }
+    append(row, "span", "state");
+    for (const b of el.querySelectorAll("button")) b.addEventListener("mousedown", (e) => e.preventDefault());
+    this.updateRequest();
+  }
+
+  /** One option of a question: added to or taken from a multiple choice, else the one answer. */
+  private pick(q: RequestQuestion, option: string) {
+    const now = this.picked.get(q.id) ?? [];
+    this.picked.set(q.id, q.multiple ? (now.includes(option) ? now.filter((o) => o !== option) : [...now, option]) : [option]);
+    this.updateRequest();
+  }
+
+  private answersOf(req: PaneRequest): RequestAnswer[] {
+    return req.questions.map((q) => {
+      const text = this.typed.get(q.id)?.trim();
+      return { question_id: q.id, options: this.picked.get(q.id) ?? [], ...(text ? { text } : {}) };
+    });
+  }
+
+  /** Every question has an option picked or an answer typed. */
+  private allAnswered(req: PaneRequest): boolean {
+    return req.questions.every((q) => (this.picked.get(q.id)?.length ?? 0) > 0 || !!this.typed.get(q.id)?.trim());
+  }
+
+  private updateRequest() {
+    const req = this.pane?.request;
+    if (!req) return;
+    const busy = this.answering !== null;
+    for (const b of this.requestEl.querySelectorAll<HTMLButtonElement>("button[data-option]")) {
+      b.disabled = busy;
+      if (req.kind === "question")
+        b.setAttribute("aria-pressed", String(this.picked.get(b.dataset.question!)?.includes(b.dataset.option!) ?? false));
+    }
+    for (const input of this.requestEl.querySelectorAll<HTMLInputElement>("input")) input.disabled = busy;
+    const send = this.requestEl.querySelector<HTMLButtonElement>(".send");
+    if (send) send.disabled = busy || !this.allAnswered(req);
+    const state = this.requestEl.querySelector(".state")!;
+    state.textContent = busy
+      ? "Sending…"
+      : req.kind === "approval"
+        ? `${this.pane?.agent ?? "The agent"} is waiting for your approval`
+        : "";
+  }
+
+  private sendAnswer(req: PaneRequest, answers: RequestAnswer[]) {
+    if (!this.pane || this.answering !== null) return;
+    const id = ++this.answerId;
+    if (!this.onAnswer(this.pane.pane_id, req.id, answers, id)) {
+      this.flashHint("bridge offline · nothing was sent");
+      return;
+    }
+    this.answering = id;
+    this.updateRequest();
   }
 
   private renderPlaceholder() {
@@ -633,6 +791,12 @@ export class TerminalPanel {
     this.wheel -= pages * page;
     this.send([{ text: (pages < 0 ? PAGE_UP : PAGE_DOWN).repeat(Math.min(Math.abs(pages), 5)) }]);
   }
+}
+
+function append<K extends keyof HTMLElementTagNameMap>(parent: HTMLElement, tag: K, className = ""): HTMLElementTagNameMap[K] {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  return parent.appendChild(el);
 }
 
 function finePointer(): boolean {

@@ -85,6 +85,7 @@ test("a Herdr session.snapshot becomes a Kauak snapshot", () => {
         screen: { rows: 40, cols: 120, exact: true },
         scrollback: false,
         context: null,
+        request: null,
       },
       // The foreground program's folder wins over the shell's; history above the screen is scrollback.
       {
@@ -98,6 +99,7 @@ test("a Herdr session.snapshot becomes a Kauak snapshot", () => {
         screen: { rows: 40, cols: 120, exact: true },
         scrollback: true,
         context: null,
+        request: null,
       },
       // The layout rect is not the pane's real size when its height disagrees with the viewport's.
       {
@@ -111,6 +113,7 @@ test("a Herdr session.snapshot becomes a Kauak snapshot", () => {
         screen: { rows: 52, cols: 120, exact: false },
         scrollback: false,
         context: null,
+        request: null,
       },
       // Herdr may leave the folder, title, scroll state and layout out.
       {
@@ -124,6 +127,7 @@ test("a Herdr session.snapshot becomes a Kauak snapshot", () => {
         screen: null,
         scrollback: false,
         context: null,
+        request: null,
       },
     ],
   });
@@ -196,7 +200,7 @@ test("a floor subscribes to Herdr and emits Kauak snapshots, another one after e
     ssh: null,
     state: "live",
     message: "",
-    runtime: { name: "Herdr", version: "0.9.3" },
+    runtime: { name: "Herdr", version: "0.9.3", features: { focus: true, shells: true, agent_kinds: null } },
   });
 
   herdr.snapshot = structuredClone(FIXTURE);
@@ -289,5 +293,5 @@ test("a floor whose Herdr is not running is down, and says so", async (t) => {
   const [info] = await status;
   assert.equal(info.state, "down");
   assert.match(info.message, /^Herdr is not running/);
-  assert.deepEqual(info.runtime, { name: "Herdr", version: null });
+  assert.deepEqual(info.runtime, { name: "Herdr", version: null, features: { focus: true, shells: true, agent_kinds: null } });
 });

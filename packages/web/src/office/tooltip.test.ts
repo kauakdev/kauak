@@ -19,6 +19,7 @@ const pane = (focused: boolean): PaneInfo => ({
   screen: null,
   scrollback: false,
   context: null,
+  request: null,
 });
 
 test("a focused desk's tooltip names what runs its floor, escaped", () => {

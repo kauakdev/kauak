@@ -7,13 +7,13 @@ What everything in the office means and how to work with it. For setup see the
 
 ## The office
 
-| Herdr object | In the office |
-|---|---|
-| Machine running Herdr | Floor (this machine is 1F) |
-| Repository (grouped by `worktree.repo_key`) | Wing (a row of rooms) |
-| Workspace / worktree | Room |
-| Pane | Desk (with or without someone at it) |
-| Agent | Person at the desk, colored by agent kind |
+| Herdr object | T3 Code object | In the office |
+|---|---|---|
+| Machine running Herdr | T3 Code server | Floor (this machine's Herdr is 1F) |
+| Repository (grouped by `worktree.repo_key`) | Project's repository | Wing (a row of rooms) |
+| Workspace / worktree | Project folder / worktree | Room |
+| Pane | Thread | Desk (with or without someone at it) |
+| Agent | The thread's agent | Person at the desk, colored by agent kind |
 
 Agent lifecycle states drive the animation:
 
@@ -94,7 +94,9 @@ the machine's `python3`, like the context meters; nothing is installed there).
   first, with its connection state and how many agents there are blocked or
   done, so you notice activity on floors you are not looking at. Click one
   (or press its number) to take the elevator there. "+ Add floor" adds a
-  machine by SSH target; hover a floor for its full status and a remove button.
+  machine running Herdr by SSH target, or a T3 Code server on this machine
+  with a token it issued ([configuration](configuration.md#t3-code-floors));
+  hover a floor for its full status and a remove button.
 - **Roster** (left): every pane on every floor, grouped by floor, repository and
   workspace, with the time spent in its current status. Click a row to jump to
   that desk, on whatever floor it is.
@@ -139,7 +141,16 @@ mode, keeps its history to itself, so for an agent there the wheel sends
 Page Up and Page Down to scroll its own transcript. Drag the
 panel's left edge to widen it, so a wide pane gets bigger text (the width is
 remembered; double-click the edge for the default). "Focus
-in Herdr" switches your Herdr window to the pane. `?pane=w1:p1` in the URL
+in Herdr" switches your Herdr window to the pane.
+
+A T3 Code desk is a thread, not a terminal: the panel shows a transcript of
+its latest turns (your messages, the agent's replies, its tools one line each),
+the message box sends a message on Enter, and Esc or Ctrl+C stops the agent's
+turn. When the agent asks for approval or asks a question, its answers show up
+as buttons between the transcript and the box: an approval's answer goes as
+soon as you click it; for questions, pick an option (or type an answer where
+that is allowed) for each, then send them together. There is no "Focus in"
+button: T3 Code's window shows the thread its user picks. `?pane=w1:p1` in the URL
 opens a pane on load (`?pane=<floor>/w1:p1` for another floor; `?floor=<id>`
 just picks the floor).
 
@@ -164,6 +175,12 @@ a small form asks what to create:
 The new desk's terminal opens as soon as Herdr has the pane. Nothing is ever
 closed or removed from here.
 
+On a T3 Code floor a new desk is a new thread in the room, with the agent you
+pick (one of those T3 Code has enabled; there is no plain shell) and the model
+that agent last used; your first message sets it to work. A new git branch room
+is a worktree in T3 Code's worktrees folder, and a folder room adds the folder
+to T3 Code as a project unless it is one already.
+
 ## Keys
 
 `J`/`K` next/previous desk, `1`–`9` go to that floor, `PgUp`/`PgDn` one
@@ -178,8 +195,9 @@ anything), wheel to zoom.
 ## Demo
 
 `?demo` in the URL (or `kauak serve --demo`) swaps the bridge for a
-simulated one (`packages/web/src/bridge/demo.ts`): two floors of made-up agents that
-work, get blocked and finish on their own. The terminal panel works there too:
+simulated one (`packages/web/src/bridge/demo.ts`): two Herdr floors and a T3 Code
+floor of made-up agents that work, get blocked and finish on their own. A
+blocked agent on the T3 Code floor asks for approval with buttons. The terminal panel works there too:
 Enter or Esc answers a blocked agent, a typed task puts an idle one to work, a
 finished Claude suggests a next message, `/` lists a few made-up commands, and
 shell panes run a few commands (`help`, `git status`, `claude`…). "+ Add floor"

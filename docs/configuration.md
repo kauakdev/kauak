@@ -1,6 +1,7 @@
 # Configuration
 
-Kauak needs a running Herdr server (0.9.x, protocol 22) and Node 22+.
+Kauak needs Node 22+, and a running Herdr server (0.9.x, protocol 22) or T3
+Code server (0.0.45, orchestration protocol 1) to show; the demo needs neither.
 
 ## Command-line options
 
@@ -22,7 +23,7 @@ when the command line is wrong.
 - `KAUAK_PORT`: port of the bridge and the page it serves (default `7788`; `--port` sets it too)
 - `KAUAK_HOST`: interface the bridge listens on (default `127.0.0.1`, this computer only)
 - `KAUAK_ORIGINS`: extra page hostnames allowed to connect, comma separated (default: only `localhost`/`127.0.0.1`)
-- `KAUAK_CONFIG`: saved floors (default `~/.config/kauak/machines.json`)
+- `KAUAK_CONFIG`: saved floors (default `~/.config/kauak/machines.json`); T3 Code floors' tokens go in `tokens/` beside it
 - `KAUAK_APPEARANCES`: folder of appearance packages the bridge serves to the page (default `~/.config/kauak/appearances`; see the [appearance guide](appearance/README.md))
 - `KAUAK_SSH`: SSH executable (default `ssh`)
 - `VITE_BRIDGE_PORT`: port the page connects to (default: `7788` under `pnpm dev`, else the port the page was served from)
@@ -65,3 +66,35 @@ reconnects on its own with backoff. Floors are saved in
 
 `remoteSocket` skips the lookup on the remote machine; `socket` adds a local
 Herdr socket (another Herdr session on this machine) as its own floor.
+
+## T3 Code floors
+
+A [T3 Code](https://github.com/pingdotgg/t3code) server on this machine can be
+a floor too: its projects' folders and worktrees are rooms, and each thread
+still in play (not settled or archived) is a desk with its agent. The bridge
+reaches it at its address, `http://127.0.0.1:3773` for the desktop app (the
+port is in `~/.t3/userdata/server-runtime.json`), with a bearer token the
+server issued. Make one with T3 Code's CLI, the same version as the app:
+
+```sh
+npx t3@0.0.45 auth session issue --token-only --label kauak --ttl 30d
+```
+
+Then "+ Add floor", **T3 Code**, and paste it. The bridge keeps the token in
+`~/.config/kauak/tokens/<floor>.token`, readable only by you, and never in
+`machines.json`; removing the floor deletes it. T3 Code lists the session under
+its connected clients, where you can revoke it. A floor added by hand needs
+its token file:
+
+```json
+{ "machines": [
+  { "id": "t3-code", "label": "T3 Code", "runtime": "t3", "url": "http://127.0.0.1:3773" }
+] }
+```
+
+A thread has no terminal, so its desk shows a transcript of its latest turns,
+the message box sends a message (Esc stops the agent's turn), and an approval
+or a question the agent asks shows up as buttons under it. Kauak speaks T3
+Code's orchestration protocol 1; a server that speaks another (T3 Code's
+next releases) is shown as down, saying so. A T3 Code floor must be on this
+machine, as the printers and context meters read its rooms' files here.

@@ -173,6 +173,94 @@ body.resizing-panel * {
   /* xterm's hidden input box can sit outside the screen after a font change */
   overflow: hidden;
 }
+#panel-request {
+  flex: none;
+  max-height: 45%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--blocked) 6%, var(--card));
+}
+#panel-request[hidden] {
+  display: none;
+}
+#panel-request .q {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#panel-request .title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--blocked);
+}
+#panel-request .text {
+  margin: 0;
+  max-height: 9em;
+  overflow: auto;
+  font: 12px / 1.45 var(--mono);
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#panel-request .options,
+#panel-request .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+#panel-request button {
+  padding: 5px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: #232739;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+#panel-request button small {
+  display: block;
+  max-width: 36em;
+  color: var(--muted);
+  font-size: 11px;
+}
+#panel-request button:hover:not(:disabled) {
+  background: #2e3350;
+}
+#panel-request button.primary,
+#panel-request button[aria-pressed="true"] {
+  background: #3b4470;
+  border-color: #55609a;
+}
+#panel-request button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+#panel-request button:focus-visible,
+#panel-request input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+#panel-request input {
+  padding: 6px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--card-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+#panel-request .state {
+  font-size: 11px;
+  color: var(--muted);
+}
 #panel-input {
   position: relative;
   display: flex;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { KEY, MAX_INPUT_OPS, MAX_INPUT_TEXT, MAX_READ_LINES, parseClientMessage as parse } from "./index.ts";
+import { KEY, MAX_ANSWERS, MAX_INPUT_OPS, MAX_INPUT_TEXT, MAX_READ_LINES, parseClientMessage as parse } from "./index.ts";
 
 test("every message the page sends is accepted as it is", () => {
   const sent = [
@@ -21,6 +21,18 @@ test("every message the page sends is accepted as it is", () => {
     { type: "create_room", machine: "local", room: { kind: "folder", cwd: "/tmp" }, agent: null, id: 5 },
     { type: "remove_machine", machine: "gpu-box" },
     { type: "refresh", machine: "local" },
+    {
+      type: "answer",
+      machine: "t3",
+      pane_id: "6f1c",
+      request_id: "r1",
+      answers: [
+        { question_id: "db", options: ["sqlite"] },
+        { question_id: "notes", options: [], text: "keep it small" },
+      ],
+      id: 9,
+    },
+    { type: "add_machine", runtime: "t3", url: "http://127.0.0.1:3773", token: "abc.def", label: "T3" },
   ];
   for (const msg of sent) assert.deepEqual(parse(msg), msg);
   assert.deepEqual(parse({ type: "add_machine", ssh: " dev@gpu-box ", label: " GPU " }), {
@@ -54,7 +66,11 @@ test("what is not a Kauak message is dropped", () => {
     { type: "create_room", machine: "local", room: { kind: "worktree", cwd: "/tmp" } },
     { type: "create_room", machine: "local", room: "/tmp" },
     { type: "add_machine", ssh: 5 },
+    { type: "add_machine", runtime: "t3", url: "http://127.0.0.1:3773" },
+    { type: "add_machine", runtime: "t3", url: "", token: "abc" },
     { type: "remove_machine" },
+    { type: "answer", machine: "t3", pane_id: "p", answers: [] },
+    { type: "answer", machine: "t3", pane_id: "p", request_id: "r", answers: "accept" },
   ])
     assert.equal(parse(msg), null, JSON.stringify(msg));
 });
@@ -102,5 +118,23 @@ test("build requests keep what the bridge checks and answers itself", () => {
   assert.deepEqual(parse({ type: "create_room", machine: "local", room: { kind: "folder", cwd: "/tmp", branch: "x", extra: 1 } }).room, {
     kind: "folder",
     cwd: "/tmp",
+  });
+});
+
+test("answers keep a question's id, its options and a typed answer, within limits", () => {
+  const answers = (list) => parse({ type: "answer", machine: "t3", pane_id: "p", request_id: "r", answers: list }).answers;
+  assert.deepEqual(
+    answers([{ question_id: "q", options: ["a", 5, "", "b"] }, null, { options: ["a"] }, { question_id: "x", options: "a" }]),
+    [{ question_id: "q", options: ["a", "b"] }],
+  );
+  assert.equal(answers([{ question_id: "q", options: [], text: "x".repeat(MAX_INPUT_TEXT + 5) }])[0].text.length, MAX_INPUT_TEXT);
+  assert.equal(answers(Array.from({ length: MAX_ANSWERS + 3 }, (_, i) => ({ question_id: `q${i}`, options: [] }))).length, MAX_ANSWERS);
+  // A T3 Code floor's address and token are trimmed; the bridge checks the rest.
+  assert.deepEqual(parse({ type: "add_machine", runtime: "t3", url: " http://127.0.0.1:3773 ", token: " abc ", label: 3 }), {
+    type: "add_machine",
+    runtime: "t3",
+    url: "http://127.0.0.1:3773",
+    token: "abc",
+    label: "",
   });
 });

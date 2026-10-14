@@ -12,7 +12,9 @@ the protocol it imports, is TypeScript that Node runs by stripping its types
 from 22.18 on, so there is no build or watch step to run it or the tests. The
 npm package still runs on any Node 22, because it carries the bridge as plain
 JavaScript. To see real agents you also need [Herdr](https://herdr.dev)
-running; without it, the demo mode simulates everything.
+running, or [T3 Code](https://github.com/pingdotgg/t3code) 0.0.45 and a token
+it issued (docs/configuration.md); without them, the demo mode simulates
+everything.
 
 ```sh
 pnpm install
@@ -44,7 +46,8 @@ A pnpm workspace of five packages, each with its own `package.json` and README:
   `src/core/` is the bridge in Kauak terms, which knows a floor only through
   the ports in `src/ports/` (`Runtime`, `Enricher`), and `src/transport/` the
   WebSocket and the page it serves. `src/runtimes/herdr/` is the Herdr
-  adapter, the only code that speaks Herdr's API, and `src/enrichers/` what
+  adapter, the only code that speaks Herdr's API, `src/runtimes/t3/` the T3
+  Code adapter, the only code that speaks T3 Code's, and `src/enrichers/` what
   the bridge adds to a floor (context meters, printers, slash commands);
   `src/ssh/` runs their helpers on remote floors.
   `src/server.ts` puts them together. `scripts/bundle.js` bundles it for the
@@ -75,7 +78,7 @@ not compile until `parseClientMessage` has a parser for it), then a handler in
 `packages/bridge/src/core/handlers.ts` (nor until `HANDLERS` has one for it;
 what the bridge sends back is a `BridgeMessage`, checked as it compiles), then
 the page and `packages/web/src/bridge/demo.ts`, so the demo keeps working, and
-the reference. Herdr's own fields and methods stay in the adapter.
+the reference. Herdr's and T3 Code's own fields and methods stay in their adapters.
 
 ## Before you open a pull request
 
@@ -100,7 +103,9 @@ formatted by hand.
 
 `pnpm check:boundaries` (`scripts/check-boundaries.mjs`) keeps the pieces
 apart: only the Herdr adapter (`packages/bridge/src/runtimes/herdr/`) imports
-`herdr.ts` or names Herdr's methods, the bridge's core
+`herdr.ts` or names Herdr's methods, only the T3 Code adapter
+(`packages/bridge/src/runtimes/t3/`) imports `t3.ts` or its RPC client or
+names T3 Code's methods and commands, the bridge's core
 (`packages/bridge/src/core/`) imports the ports and never a runtime or an
 enricher, its transport (`src/transport/`) no runtime or enricher either, the
 ports and `src/ssh/` import none of the core, the runtimes or the enrichers, an
@@ -123,8 +128,9 @@ Vite resolves the page's imports as it does for the build. `pnpm --filter
 @kauak/web test` runs them alone. Everywhere else, tests are `*.test.mjs`, run
 by Node's built-in runner (`node --test`, with `node:test` and
 `node:assert/strict`). The bridge's tests run against a stand-in Herdr
-(`packages/bridge/src/runtimes/herdr/fixtures/fake-herdr.mjs`), so they need
-no Herdr installed.
+(`packages/bridge/src/runtimes/herdr/fixtures/fake-herdr.mjs`) and a stand-in
+T3 Code (`packages/bridge/src/runtimes/t3/fixtures/fake-t3.mjs`), so they need
+neither installed.
 
 `pnpm verify:pack` builds the npm package, installs it with `npm install`,
 `npm install -g` and `npx` in a temporary folder, and runs `kauak serve` from
@@ -141,8 +147,8 @@ CI (`.github/workflows/ci.yml`) runs all of them on Node 22 and 24, for every
 pull request and push to `main`, and `pnpm verify:pack` on Node 22.0.0 too,
 the oldest Node the package supports, since its "Node 22" is the latest 22.x.
 
-Then check the change in the browser: against Herdr if it touches the bridge,
-and in the demo.
+Then check the change in the browser: against Herdr (or T3 Code, for its
+adapter) if it touches the bridge, and in the demo.
 
 Some conventions:
 

@@ -28,7 +28,17 @@ export interface MachineInfo {
   /** Why it is connecting or down, in a few words fit to show. */
   message: string;
   /** What runs the machine's terminals and agents; `version` is known once connected. */
-  runtime: { name: string; version: string | null };
+  runtime: { name: string; version: string | null; features: RuntimeFeatures };
+}
+
+/** What the runtime behind a floor can do, so the page offers only that. */
+export interface RuntimeFeatures {
+  /** It can bring a pane to the front in its own window ("Focus in …"). */
+  focus: boolean;
+  /** A desk may be a plain shell, with no agent. */
+  shells: boolean;
+  /** The agent kinds build mode offers, the usual ones first; null for the page's own list. */
+  agent_kinds: string[] | null;
 }
 
 /** Everything on one floor right now. A new one replaces the last. */
@@ -81,8 +91,45 @@ export interface PaneInfo {
   screen: { rows: number; cols: number | null; exact: boolean } | null;
   /** There is history above the screen to read. */
   scrollback: boolean;
-  /** How full the agent's context window is, when the bridge could read it (the bridge's enrichers/context/). */
+  /** How full the agent's context window is, when the runtime reports it or the bridge could read it (the bridge's enrichers/context/). */
   context: ContextUsage | null;
+  /** What the agent is waiting for you to answer, when its runtime reports it; the page answers with `answer`. Null otherwise, and always on a runtime whose agents ask in the terminal. */
+  request: PaneRequest | null;
+}
+
+/** Something an agent waits for you to decide: allow what it wants to do, or answer its questions. */
+export interface PaneRequest {
+  id: string;
+  kind: "approval" | "question";
+  /** An approval has one. */
+  questions: RequestQuestion[];
+}
+
+export interface RequestQuestion {
+  id: string;
+  /** A few words on what it is about ("Run a command", "Database"). */
+  title: string;
+  /** The question, or what the approval is for (a command line, a file) in full. */
+  text: string;
+  options: RequestOption[];
+  /** More than one option may be picked. */
+  multiple: boolean;
+  /** An answer may be typed instead of picked. */
+  typed: boolean;
+}
+
+export interface RequestOption {
+  id: string;
+  label: string;
+  /** More about it, or a warning; may be empty. */
+  description: string;
+}
+
+/** The answer to one question: the options picked, or with `text` a typed answer. */
+export interface RequestAnswer {
+  question_id: string;
+  options: string[];
+  text?: string;
 }
 
 /** Tokens in the agent's context window as of its last model call, and the window's size. */
@@ -162,6 +209,8 @@ export type BridgeMessage =
   | ({ type: "uncommitted"; machine: string; root: string; id?: number } & Uncommitted)
   | { type: "pane_output"; machine: string; pane_id: string; text: string; seq?: number }
   | { type: "input_ack"; machine: string; pane_id: string; id?: number }
+  /** The answer to the pane's request reached its runtime. */
+  | { type: "answered"; machine: string; pane_id: string; id?: number }
   | { type: "commands"; machine: string; pane_id: string; agent: string | null; commands: SlashCommand[] }
   | { type: "created"; machine: string; id?: number; pane_id: string }
   /** A create request failed; `pane_id` is set when the desk exists but its agent did not start. */
@@ -170,13 +219,18 @@ export type BridgeMessage =
 
 /** Page → bridge, as parseClientMessage returns them. */
 export type ClientMessage =
+  /** A floor run by Herdr on another machine, reached over SSH. */
   | { type: "add_machine"; ssh: string; label: string }
+  /** A floor run by a T3 Code server on this machine, with a bearer token it issued (`t3 auth session issue`). */
+  | { type: "add_machine"; runtime: "t3"; url: string; token: string; label: string }
   | { type: "remove_machine"; machine: string }
   | { type: "refresh"; machine: string }
   | { type: "focus"; machine: string; pane_id: string }
   /** The pane's screen; with `lines`, the last `lines` rows of its history and screen. `seq` comes back on the reply. */
   | { type: "read"; machine: string; pane_id: string; lines: number | null; seq?: number }
   | { type: "input"; machine: string; pane_id: string; ops: InputOp[]; id?: number }
+  /** Answer the pane's request (`request_id`), one answer per question. */
+  | { type: "answer"; machine: string; pane_id: string; request_id: string; answers: RequestAnswer[]; id?: number }
   | { type: "commands"; machine: string; pane_id: string }
   | { type: "uncommitted"; machine: string; root: string; id?: number }
   | { type: "create_desk"; machine: string; workspace_id: string; agent: string | null; id?: number }
@@ -201,6 +255,8 @@ export const KEY = /^(?:(?:ctrl|alt|shift)\+){0,3}(?:enter|esc|tab|backspace|up|
 export const MAX_READ_LINES = 5000;
 export const MAX_INPUT_OPS = 256;
 export const MAX_INPUT_TEXT = 64 * 1024;
+// The most answers in one `answer`, and options picked in one answer.
+export const MAX_ANSWERS = 32;
 
 // Ids, and text fields (paths, labels, branches) the bridge checks further itself.
 const MAX_ID = 512;
@@ -215,8 +271,14 @@ type Fields = Record<string, unknown>;
  * until it has a parser.
  */
 const PARSERS: { [T in ClientMessage["type"]]: (m: Fields) => Extract<ClientMessage, { type: T }> | null } = {
-  add_machine: (m) =>
-    str(m.ssh, MAX_FIELD, true) ? { type: "add_machine", ssh: m.ssh.trim(), label: str(m.label, MAX_FIELD) ? m.label.trim() : "" } : null,
+  add_machine: (m) => {
+    const label = str(m.label, MAX_FIELD) ? m.label.trim() : "";
+    if (m.runtime === "t3")
+      return str(m.url, MAX_FIELD) && str(m.token, MAX_FIELD)
+        ? { type: "add_machine", runtime: "t3", url: m.url.trim(), token: m.token.trim(), label }
+        : null;
+    return str(m.ssh, MAX_FIELD, true) ? { type: "add_machine", ssh: m.ssh.trim(), label } : null;
+  },
   remove_machine: (m) => (str(m.machine) ? { type: "remove_machine", machine: m.machine } : null),
   refresh: (m) => (str(m.machine) ? { type: "refresh", machine: m.machine } : null),
   // Everything else is about something on one floor, named in `machine`.
@@ -230,6 +292,11 @@ const PARSERS: { [T in ClientMessage["type"]]: (m: Fields) => Extract<ClientMess
   input: (m) => {
     if (!str(m.machine) || !str(m.pane_id) || !Array.isArray(m.ops)) return null;
     return { type: "input", machine: m.machine, pane_id: m.pane_id, ops: inputOps(m.ops), ...idOf(m) };
+  },
+  answer: (m) => {
+    if (!str(m.machine) || !str(m.pane_id) || !str(m.request_id) || !Array.isArray(m.answers)) return null;
+    const answers = requestAnswers(m.answers);
+    return { type: "answer", machine: m.machine, pane_id: m.pane_id, request_id: m.request_id, answers, ...idOf(m) };
   },
   uncommitted: (m) =>
     str(m.machine) && str(m.root, MAX_FIELD) ? { type: "uncommitted", machine: m.machine, root: m.root, ...idOf(m) } : null,
@@ -273,6 +340,17 @@ function inputOps(list: unknown[]): InputOp[] {
     }
   }
   return ops;
+}
+
+/** At most MAX_ANSWERS answers, each to a question by its id, with option ids and an optional typed answer cut to MAX_INPUT_TEXT; others left out. */
+function requestAnswers(list: unknown[]): RequestAnswer[] {
+  const answers: RequestAnswer[] = [];
+  for (const a of list.slice(0, MAX_ANSWERS) as (Fields | null | undefined)[]) {
+    if (!isObject(a) || !str(a.question_id) || !Array.isArray(a.options)) continue;
+    const options = a.options.filter((o): o is string => str(o)).slice(0, MAX_ANSWERS);
+    answers.push({ question_id: a.question_id, options, ...(typeof a.text === "string" ? { text: a.text.slice(0, MAX_INPUT_TEXT) } : {}) });
+  }
+  return answers;
 }
 
 /** The agent to start: any non-empty string, which the bridge checks against AGENT_KIND (and says so); null for none. */

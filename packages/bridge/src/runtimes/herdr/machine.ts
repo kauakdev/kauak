@@ -23,11 +23,12 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import type { MachineInfo, RoomSpec, Snapshot } from "@kauak/protocol";
+import type { MachineInfo, RequestAnswer, RoomSpec, Snapshot } from "@kauak/protocol";
 import type { BridgeConfig } from "../../config.ts";
 import type { AgentSession, MachineConfig, Runtime } from "../../ports/runtime.ts";
 import { SSH_OPTS, lastLine } from "../../ssh/remote.ts";
 import {
+  FEATURES,
   type HerdrError,
   type HerdrMethod,
   type HerdrResults,
@@ -132,6 +133,8 @@ export class Machine extends EventEmitter implements Runtime {
   id: string;
   label: string;
   ssh: string | null;
+  /** Herdr knows nothing of agents' context windows: the context meters read their transcripts. */
+  readonly reportsContext = false;
   remoteSocket: string | null;
   socketPath: string;
   state: MachineInfo["state"];
@@ -175,7 +178,7 @@ export class Machine extends EventEmitter implements Runtime {
       ssh: this.ssh,
       state: this.state,
       message: this.message,
-      runtime: { name: RUNTIME, version: this.raw?.version ?? null },
+      runtime: { name: RUNTIME, version: this.raw?.version ?? null, features: FEATURES },
     };
   }
 
@@ -198,6 +201,11 @@ export class Machine extends EventEmitter implements Runtime {
     clearTimeout(this.refreshTimer as NodeJS.Timeout);
     this.sub?.destroy();
     this.closeTunnel();
+  }
+
+  /** Herdr keeps nothing of Kauak's on the machine. */
+  forget() {
+    this.stop();
   }
 
   request<M extends HerdrMethod>(method: M, params?: object): Promise<HerdrResults[M]> {
@@ -242,9 +250,9 @@ export class Machine extends EventEmitter implements Runtime {
    * pane's id. A tab rather than a split: a split pane gets only part of the
    * Herdr window, and the side panel mirrors a pane at its real size, so a
    * desk split off another came out as a narrow strip with the rest of the
-   * panel empty.
+   * panel empty. The agent starts once the tab's shell is up (startAgent).
    */
-  async createDesk(workspaceId: string): Promise<string> {
+  async createDesk(workspaceId: string, _agent: string | null): Promise<string> {
     const snap = this.raw;
     const room = snap?.workspaces.find((w) => w.workspace_id === workspaceId);
     if (!room) throw new Error("That room is gone.");
@@ -259,7 +267,7 @@ export class Machine extends EventEmitter implements Runtime {
    * git worktree on a new branch, or a workspace in a folder. Returns its
    * first pane's id.
    */
-  async createRoom(room: RoomSpec): Promise<string> {
+  async createRoom(room: RoomSpec, _agent: string | null): Promise<string> {
     const res =
       room.kind === "worktree"
         ? await this.call("worktree.create", {
@@ -286,6 +294,11 @@ export class Machine extends EventEmitter implements Runtime {
           throw new Error(errorMessage(err as HerdrError));
       }
     }
+  }
+
+  /** Herdr's agents ask in the terminal, so their panes never have a request to answer. */
+  async answer(_paneId: string, _requestId: string, _answers: RequestAnswer[]): Promise<void> {
+    throw new Error(`${RUNTIME} does not report agents' questions; answer in the terminal.`);
   }
 
   /** The agent session reported for the pane's agent (a transcript path or a session id), or null. */

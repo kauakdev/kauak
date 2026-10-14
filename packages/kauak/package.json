@@ -1,8 +1,8 @@
 {
   "name": "@kauakdev/kauak",
-  "version": "0.1.1",
-  "description": "A Sims-style isometric office that shows what your Herdr coding agents are doing, live",
-  "keywords": ["herdr", "coding-agents", "claude-code", "codex", "terminal", "multiplexer", "dashboard", "isometric", "pixijs"],
+  "version": "0.2.0",
+  "description": "A Sims-style isometric office that shows what your coding agents in Herdr and T3 Code are doing, live",
+  "keywords": ["herdr", "t3-code", "coding-agents", "claude-code", "codex", "terminal", "multiplexer", "dashboard", "isometric", "pixijs"],
   "homepage": "https://github.com/kauakdev/kauak#readme",
   "bugs": "https://github.com/kauakdev/kauak/issues",
   "repository": { "type": "git", "url": "git+https://github.com/kauakdev/kauak.git" },

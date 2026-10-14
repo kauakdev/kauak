@@ -285,13 +285,19 @@ export async function fakeT3({ protocol = 1, handlers = {} } = {}) {
     wss.handleUpgrade(req, socket, head, (ws) => serve(ws));
   });
 
-  /** Upsert a thread into the shell and stream it, as T3 Code does after a command. */
-  function upsertThread(t) {
+  /**
+   * Upsert a thread into the shell and stream it, as T3 Code does after a
+   * command. `held`: the shell has it, but the stream item is returned
+   * instead, to `stream` later, as when a fetch is ahead of the stream.
+   */
+  function upsertThread(t, { held = false } = {}) {
     state.shell.snapshotSequence++;
     const i = state.shell.threads.findIndex((x) => x.id === t.id);
     if (i === -1) state.shell.threads.push(t);
     else state.shell.threads[i] = t;
-    stream({ kind: "thread-upserted", sequence: state.shell.snapshotSequence, thread: t });
+    const item = { kind: "thread-upserted", sequence: state.shell.snapshotSequence, thread: t };
+    if (held) return item;
+    stream(item);
   }
   function upsertProject(p) {
     state.shell.snapshotSequence++;
@@ -453,6 +459,7 @@ export async function fakeT3({ protocol = 1, handlers = {} } = {}) {
     },
     commands: (type) => dispatched.filter((c) => !type || c.type === type),
     upsertThread,
+    stream,
     /** Drop every client, as a restarting server would. */
     drop: () => {
       for (const ws of wss.clients) ws.terminate();

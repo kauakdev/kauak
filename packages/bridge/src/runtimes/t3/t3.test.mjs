@@ -311,6 +311,8 @@ test("typing waits in a draft; Enter sends it as a message, Esc stops the turn, 
   const { t3, floor } = await liveFloor(t);
   await started(floor);
   await floor.sendText("t-work", "fix the \x1b[200~flaky\rtest\x1b[201~x");
+  // Keys and reports xterm sends go whole: arrows (normal and application mode), with a modifier, focus, Alt+b.
+  await floor.sendText("t-work", "\x1b[A\x1bOB\x1b[1;5C\x1b[I\x1bb");
   await floor.sendKeys("t-work", ["backspace", "up", "tab"]);
   assert.equal(t3.commands().length, 0);
   await floor.sendKeys("t-work", ["enter"]);
@@ -392,10 +394,13 @@ test("build mode: a desk is a new thread with the agent's model, a room a projec
   assert.ok(floor.snapshot.workspaces.some((w) => w.label === "feat/x" && w.repo?.linked));
 });
 
-test("a refused command rejects with T3 Code's sentence", async (t) => {
-  const { floor } = await liveFloor(t, {
+test("a refused command rejects with T3 Code's sentence; a refused message waits, shown, for the next Enter", async (t) => {
+  let busy = true;
+  const { t3, floor } = await liveFloor(t, {
     handlers: {
       "thread.turn.start": () => {
+        if (!busy) return;
+        busy = false;
         throw new Error("Thread is busy.\nWait for the current turn.");
       },
     },
@@ -403,7 +408,32 @@ test("a refused command rejects with T3 Code's sentence", async (t) => {
   await started(floor);
   await floor.sendText("t-done", "again");
   await assert.rejects(floor.sendKeys("t-done", ["enter"]), { message: "Wait for the current turn." });
+  assert.match(await floor.readPane("t-done", 1000), /again.*\r\n.*not sent/);
+  await floor.sendKeys("t-done", ["enter"]);
+  assert.deepEqual(
+    t3.commands("thread.turn.start").map((c) => c.message.text),
+    ["again", "again"],
+  );
+  assert.doesNotMatch(await floor.readPane("t-done", 1000), /not sent/);
   await assert.rejects(floor.focusPane("t-done"), /no way to show a thread/);
+});
+
+test("a shell fetched ahead of the stream still has the threads it changed read again", async (t) => {
+  const { t3, floor } = await liveFloor(t);
+  await started(floor);
+  await until(() => t3.reads.length >= 4, "every desk's latest turn");
+  await new Promise((r) => setTimeout(r, 300));
+  const before = t3.reads.length;
+  const held = t3.upsertThread({ ...t3.state.shell.threads.find((x) => x.id === "t-done"), title: "Renamed" }, { held: true });
+  await floor.refresh();
+  // Now a replay, left out.
+  t3.stream(held);
+  await until(() => t3.reads.length > before, "t-done's turns");
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepEqual(
+    t3.reads.slice(before).map((r) => r.id),
+    ["t-done"],
+  );
 });
 
 test("a wrong token, a server that is not there, or another protocol: the floor is down and says why", async (t) => {
@@ -431,6 +461,16 @@ test("a dropped connection is retried, and the floor comes back live", async (t)
   t3.drop();
   assert.equal((await down)[0].state, "down");
   await until(() => floor.state === "live", "the floor to come back", 5000);
+});
+
+test("the token is read once a connection, not on every request; stopping the floor ends its stream", async (t) => {
+  const { floor, tokenDir } = await liveFloor(t);
+  await started(floor);
+  fs.rmSync(path.join(tokenDir, "t3.token"));
+  assert.match(await floor.readPane("t-work", 1000), /Add refunds to the ledger/);
+  const { sub } = floor;
+  floor.stop();
+  await sub.done;
 });
 
 test("the token is kept in a file only you can read, never in the floor's config, and goes with the floor", async (t) => {

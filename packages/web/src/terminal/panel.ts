@@ -49,6 +49,8 @@ const WHEEL_LINE_PX = 16;
 // Once Herdr has the input, read right away, then again once the program has
 // had time to react.
 const AFTER_INPUT_READS_MS = [0, 120];
+// An answer the runtime took but the agent has not: after this long, its request can be answered again.
+const ANSWER_WAIT_MS = 10_000;
 // The pane is mirrored at its real size; the font shrinks so its full width
 // fits the panel, and a pane taller than the panel scrolls.
 const FONT_MAX = 13;
@@ -107,6 +109,7 @@ export class TerminalPanel {
   private typed = new Map<string, string>();
   private answerId = 0;
   private answering: number | null = null;
+  private answerTimer: number | null = null;
 
   onRead: (paneId: string, seq: number, lines: number) => void = () => {};
   onInput: (paneId: string, ops: InputOp[], id: number) => boolean = () => false;
@@ -320,6 +323,15 @@ export class TerminalPanel {
     if (!this.pane || paneId !== this.pane.pane_id || id !== this.answering) return;
     this.requestEl.querySelector(".state")!.textContent = "Sent. Waiting for the agent…";
     for (const ms of AFTER_INPUT_READS_MS) window.setTimeout(() => this.poll(), ms);
+    // A request still open by then (the agent did not take the answer) gets its buttons back.
+    if (this.answerTimer !== null) clearTimeout(this.answerTimer);
+    this.answerTimer = window.setTimeout(() => {
+      this.answerTimer = null;
+      if (this.answering !== id) return;
+      this.answering = null;
+      this.updateRequest();
+      this.flashHint("the agent has not taken the answer · you can answer again");
+    }, ANSWER_WAIT_MS);
   }
 
   private onKey(e: KeyboardEvent) {

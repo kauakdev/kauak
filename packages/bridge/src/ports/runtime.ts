@@ -49,6 +49,8 @@ export interface Runtime {
   readonly label: string;
   /** The SSH target of a remote floor; null on this machine. */
   readonly ssh: string | null;
+  /** The runtime puts each agent's context use on its panes itself, so the context meters (enrichers/context/) leave its floor alone. */
+  readonly reportsContext: boolean;
   /** What machines.json saves for it. */
   readonly config: MachineConfig;
   readonly info: MachineInfo;

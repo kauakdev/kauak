@@ -97,6 +97,8 @@ export class T3Floor extends EventEmitter implements Runtime {
   id: string;
   label: string;
   readonly ssh = null;
+  /** T3 Code reports each thread's context use (t3.ts); nothing ties a thread to a transcript on this machine. */
+  readonly reportsContext = true;
   url: string;
   tokenFile: string;
   state: MachineInfo["state"] = "connecting";
@@ -108,8 +110,12 @@ export class T3Floor extends EventEmitter implements Runtime {
   snapshot: Snapshot | null = null;
   /** What was last emitted, to leave out snapshots that change nothing. */
   sent = "";
+  /** The floor's token, read from its file on connecting, and again after the server refuses it (bearer). */
+  token: string | null = null;
   socket: RpcSocket | null = null;
   sub: RpcStream | null = null;
+  /** Called after each change to the shell, for waitFor. */
+  shellWaiters = new Set<() => void>();
   /** Text typed into each desk's message box, until Enter sends it. */
   drafts = new Map<string, string>();
   fetching = new Map<string, Promise<Detail>>();
@@ -171,7 +177,9 @@ export class T3Floor extends EventEmitter implements Runtime {
     this.retryTimer = null;
     if (this.stopped) return;
     try {
-      const token = readToken(this.tokenFile);
+      // Read again on each connection, so a token put in its file since is used.
+      this.token = null;
+      const token = this.bearer();
       this.env = await this.get<T3Environment>(ROUTES.environment, null);
       const protocol = this.env.orchestrationProtocolVersion;
       if (protocol !== PROTOCOL)
@@ -215,7 +223,12 @@ export class T3Floor extends EventEmitter implements Runtime {
       if (shown(item.thread)) this.scheduleDetail(item.thread.id);
       else this.details.delete(item.thread.id);
     } else if (item.kind === "thread-removed") this.details.delete(item.threadId);
+    this.shellChanged();
     this.scheduleEmit();
+  }
+
+  shellChanged() {
+    for (const waiter of this.shellWaiters) waiter();
   }
 
   /** Mark the floor down and retry. */
@@ -259,12 +272,28 @@ export class T3Floor extends EventEmitter implements Runtime {
     this.emit("snapshot", snapshot);
   }
 
-  /** Fetch the shell now (it is the stream's too) and emit it: build mode waits on this for a new desk. */
+  /** Fetch the shell now (it is the stream's too) and emit it. */
   async refresh() {
     clearTimeout(this.refreshTimer as NodeJS.Timeout);
     const shell = await this.get<T3Shell>(ROUTES.shell);
-    if (!this.shell || shell.snapshotSequence >= this.shell.snapshotSequence) this.shell = shell;
+    if (!this.shell || shell.snapshotSequence > this.shell.snapshotSequence) this.adopt(shell);
     this.emitSnapshot();
+  }
+
+  /**
+   * A fetched shell ahead of the stream. The stream's changes up to its
+   * sequence will be left out as replays, so the threads they changed have
+   * their turns fetched here, as apply() would have.
+   */
+  adopt(shell: T3Shell) {
+    const before = new Map((this.shell?.threads ?? []).map((t) => [t.id, JSON.stringify(t)]));
+    this.shell = shell;
+    for (const t of shell.threads) {
+      if (!shown(t)) this.details.delete(t.id);
+      else if (before.get(t.id) !== JSON.stringify(t)) this.scheduleDetail(t.id);
+    }
+    for (const id of this.details.keys()) if (!shell.threads.some((t) => t.id === id)) this.details.delete(id);
+    this.shellChanged();
   }
 
   scheduleRefresh() {
@@ -333,19 +362,20 @@ export class T3Floor extends EventEmitter implements Runtime {
       cached && cached.turns >= READ_TURNS && Date.now() - cached.at < READ_FRESH_MS
         ? cached
         : await this.call(this.fetchDetail(paneId, READ_TURNS));
-    const rows = transcript(detail.thread, detail.more);
+    const rows = transcript(detail.thread, detail.more, this.drafts.get(paneId));
     return rows.slice(-(lines ?? SCREEN_ROWS)).join("\r\n");
   }
 
   /**
    * Typed text waits in the desk's draft for Enter. What the message box
-   * adds for a terminal goes: bracketed paste's markers, and the page keys
-   * the mirror sends on a wheel turn.
+   * adds for a terminal goes, each escape sequence whole: bracketed paste's
+   * markers, the page keys the mirror sends on a wheel turn, and any other
+   * key or report xterm sends.
    */
   async sendText(paneId: string, text: string) {
     this.thread(paneId);
     const typed = text
-      .replace(/\x1b\[(?:200|201|5|6)~/g, "")
+      .replace(ESCAPES, "")
       .replace(/\r\n?/g, "\n")
       .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
     if (typed) this.drafts.set(paneId, (this.drafts.get(paneId) ?? "") + typed);
@@ -362,7 +392,13 @@ export class T3Floor extends EventEmitter implements Runtime {
       const draft = this.drafts.get(paneId) ?? "";
       if (key === "enter") {
         this.drafts.delete(paneId);
-        if (draft.trim()) await this.dispatch(turnStart(thread, draft.trim()));
+        // A message T3 Code refuses is the draft again, at the foot of the transcript, for the next Enter.
+        // A pane's input is queued (core/input.ts), so nothing was typed into it meanwhile.
+        if (draft.trim())
+          await this.dispatch(turnStart(thread, draft.trim())).catch((err) => {
+            this.drafts.set(paneId, draft);
+            throw err;
+          });
       } else if (key === "esc" || key === "ctrl+c") {
         this.drafts.delete(paneId);
         if (statusOf(thread) === "working") await this.dispatch(interrupt(thread));
@@ -470,19 +506,38 @@ export class T3Floor extends EventEmitter implements Runtime {
     }
   }
 
-  /** Resolves once `find` finds what a command made in the shell (the stream brings it, or a fetch). */
+  /** Resolves once `find` finds what a command made in the shell: the stream brings it, else a fetch at the end of the wait. */
   async waitFor<T>(find: () => T | undefined): Promise<T> {
-    for (const started = Date.now(); Date.now() - started < CREATED_WAIT_MS; ) {
-      const found = find();
-      if (found) return found;
-      await new Promise((r) => setTimeout(r, 150));
-      if (!find()) await this.refresh().catch(() => {});
-    }
-    throw new Error(`${RUNTIME} did not show it in time; check its window.`);
+    const streamed =
+      find() ??
+      (await new Promise<T | undefined>((resolve) => {
+        const done = (found: T | undefined) => {
+          clearTimeout(timer);
+          this.shellWaiters.delete(check);
+          resolve(found);
+        };
+        const check = () => {
+          const found = find();
+          if (found) done(found);
+        };
+        const timer = setTimeout(() => done(undefined), CREATED_WAIT_MS);
+        this.shellWaiters.add(check);
+      }));
+    if (streamed) return streamed;
+    await this.refresh().catch(() => {});
+    const found = find();
+    if (!found) throw new Error(`${RUNTIME} did not show it in time; check its window.`);
+    return found;
+  }
+
+  /** The floor's token, read from its file only when it is not in memory. */
+  bearer(): string {
+    this.token ??= readToken(this.tokenFile);
+    return this.token;
   }
 
   /** GET a path of the server, with the token unless `token` is null. */
-  async get<T>(route: string, token: string | null = readToken(this.tokenFile)): Promise<T> {
+  async get<T>(route: string, token: string | null = this.bearer()): Promise<T> {
     let res: Response;
     try {
       res = await fetch(new URL(route, this.url), {
@@ -493,11 +548,17 @@ export class T3Floor extends EventEmitter implements Runtime {
       const code = ((err as Error & { cause?: { code?: string } }).cause?.code ?? "") as string;
       throw new Error(code === "ECONNREFUSED" ? `${RUNTIME} is not running (ECONNREFUSED)` : `no reply from ${RUNTIME}`);
     }
-    if (res.status === 401) throw new Error(`${RUNTIME} refused the token (401)`);
+    if (res.status === 401) {
+      if (token && token === this.token) this.token = null;
+      throw new Error(`${RUNTIME} refused the token (401)`);
+    }
     if (!res.ok) throw new Error(`${RUNTIME} answered ${res.status}`);
     return (await res.json()) as T;
   }
 }
+
+// An escape sequence a terminal sends: CSI (keys with modifiers, paste markers, focus and mouse reports), SS3 (keys in application mode), or ESC and one character (Alt+key).
+const ESCAPES = /\x1b(?:\[[0-?]*[ -/]*[@-~]|O.|[^[O])/g;
 
 function noAgent() {
   return `Pick an agent: each desk in ${RUNTIME} is an agent's thread.`;

@@ -477,11 +477,12 @@ const RESET = "\x1b[0m";
  * A thread's latest turns drawn as a terminal would show them: your
  * messages after a prompt sign, the agent's replies, its tools one line
  * each, what it asked and was answered, and at the bottom what it is doing
- * now. Rows of ANSI text, `width` columns at most, oldest first. Text from
- * the thread has its control characters taken out, so it cannot move the
- * mirror's cursor or change its modes.
+ * now, then `draft`, what was typed and not sent. Rows of ANSI text,
+ * `width` columns at most, oldest first. Text from the thread has its
+ * control characters taken out, so it cannot move the mirror's cursor or
+ * change its modes.
  */
-export function transcript(thread: T3Thread, more: boolean, width = WIDTH): string[] {
+export function transcript(thread: T3Thread, more: boolean, draft = "", width = WIDTH): string[] {
   const rows: string[] = [];
   if (more) rows.push(`${DIM}… earlier turns are in T3 Code${RESET}`, "");
   const tools = toolLines(thread.activities);
@@ -493,7 +494,7 @@ export function transcript(thread: T3Thread, more: boolean, width = WIDTH): stri
   }
   entries.sort((x, y) => x.at.localeCompare(y.at) || x.order - y.order);
   for (const e of entries) rows.push(...e.draw());
-  rows.push(...footer(thread, width));
+  rows.push(...footer(thread, width), ...unsent(draft, width));
   // No blank rows at the top or two in a row: the mirror shows every one.
   return rows.filter((r, i) => r !== "" || (i > 0 && rows[i - 1] !== ""));
 }
@@ -579,6 +580,14 @@ function footer(thread: T3Thread, width: number): string[] {
   if (status === "blocked" && error) return ["", ...wrap(`✗ ${clean(error)}`, width).map((l) => `${RED}${l}${RESET}`)];
   if (status === "working") return [`${DIM}… working${RESET}`];
   return [];
+}
+
+/** A draft that is still here was not sent (floor.ts keeps it when T3 Code refuses it): dim, as an agent's prompt shows typed text it has not taken. */
+function unsent(draft: string, width: number): string[] {
+  const text = clean(draft).trim();
+  if (!text) return [];
+  const lines = wrap(text, width - 2).map((l, i) => `${DIM}${i === 0 ? "❯" : " "} ${l}${RESET}`);
+  return ["", ...lines, `${DIM}  not sent · Enter sends it · Esc drops it${RESET}`];
 }
 
 // C0 and C1 controls but newline and tab, and DEL: an agent's text must not drive the terminal it is shown in.

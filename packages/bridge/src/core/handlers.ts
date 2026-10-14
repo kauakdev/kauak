@@ -124,25 +124,34 @@ const HANDLERS: { [T in Type]: Handler<T> } = {
 // context meters but SSH, which a URL floor does not use.
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
-/** A floor run by a server on this machine that the bridge reaches by URL, with a token it issued (T3 Code). */
-function addServedFloor(msg: Extract<ClientMessage, { type: "add_machine"; runtime: string }>, page: Connection, bridge: Bridge) {
+/**
+ * The origin of a runtime served over HTTP on this machine, or why the
+ * address will not do. Both a page's floor and a saved one are checked here,
+ * so a token is only ever sent to this machine.
+ */
+export function servedOrigin(address: unknown): { origin: string } | { error: string } {
   let url: URL | null = null;
   try {
-    url = new URL(msg.url);
+    if (typeof address === "string") url = new URL(address);
   } catch {}
-  if (!url || (url.protocol !== "http:" && url.protocol !== "https:")) {
-    page.send({ type: "machine_error", message: "Enter the server's address, like http://127.0.0.1:3773." });
-    return;
-  }
-  if (!LOOPBACK.has(url.hostname)) {
-    page.send({ type: "machine_error", message: "Use a server on this machine, at http://127.0.0.1 and its port." });
+  if (!url || (url.protocol !== "http:" && url.protocol !== "https:"))
+    return { error: "Enter the server's address, like http://127.0.0.1:3773." };
+  if (!LOOPBACK.has(url.hostname)) return { error: "Use a server on this machine, at http://127.0.0.1 and its port." };
+  return { origin: url.origin };
+}
+
+/** A floor run by a server on this machine that the bridge reaches by URL, with a token it issued (T3 Code). */
+function addServedFloor(msg: Extract<ClientMessage, { type: "add_machine"; runtime: string }>, page: Connection, bridge: Bridge) {
+  const served = servedOrigin(msg.url);
+  if ("error" in served) {
+    page.send({ type: "machine_error", message: served.error });
     return;
   }
   if (/\s/.test(msg.token)) {
     page.send({ type: "machine_error", message: "Paste the token as one line, as `t3 auth session issue --token-only` prints it." });
     return;
   }
-  const address = url.origin;
+  const address = served.origin;
   if ([...bridge.machines.values()].some((m) => m.config.url === address)) {
     page.send({ type: "machine_error", message: `${address} already has a floor.` });
     return;

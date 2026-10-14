@@ -27,7 +27,7 @@ import type { BridgeConfig } from "../config.ts";
 import type { FloorEnrichers, SlashCommands } from "../ports/enricher.ts";
 import type { MachineConfig, Runtime } from "../ports/runtime.ts";
 import { type Connection, WsServer } from "../transport/ws.ts";
-import { handle } from "./handlers.ts";
+import { handle, servedOrigin } from "./handlers.ts";
 import { InputQueue } from "./input.ts";
 
 /** What the core uses of the bridge's config: the saved floors, and for its transport where it listens, which pages may connect, the page and the appearance packages. */
@@ -98,12 +98,16 @@ export class Bridge {
   addFloors() {
     this.addMachine({ id: "local", label: "local" });
     for (const c of this.loadConfig()) {
-      const reached = c?.runtime === "t3" ? typeof c.url === "string" : c?.ssh ? SSH_TARGET.test(c.ssh) : typeof c?.socket === "string";
+      // A served floor's URL is checked as a page's is (servedOrigin): only this machine gets its token.
+      const served = c?.runtime === "t3" ? servedOrigin(c.url) : null;
+      const url = served && "origin" in served ? served.origin : null;
+      const reached = served ? url !== null : c?.ssh ? SSH_TARGET.test(c.ssh) : typeof c?.socket === "string";
       if (typeof c?.label !== "string" || !reached || (c.runtime !== undefined && c.runtime !== "t3" && c.runtime !== "herdr")) {
         console.error(`[bridge] skipping machine in ${this.config.machinesFile}: ${JSON.stringify(c)}`);
         continue;
       }
-      this.addMachine({ ...c, id: typeof c.id === "string" && !this.machines.has(c.id) ? c.id : this.uniqueId(c.label) });
+      const id = typeof c.id === "string" && !this.machines.has(c.id) ? c.id : this.uniqueId(c.label);
+      this.addMachine({ ...c, id, ...(url ? { url } : {}) });
     }
   }
 

@@ -536,6 +536,20 @@ test("the appearance packages installed on this machine are served as /appearanc
   assert.equal(await status({ host: `localhost:${port}`, origin: `http://localhost:5178` }), 200);
 });
 
+test("a saved T3 Code floor is checked as a page's is: an address that is not one, or not this machine's, is skipped", async (t) => {
+  const { env } = await testEnv(t, "/nonexistent/kauak-test/herdr.sock");
+  const machines = [
+    { id: "typo", label: "typo", runtime: "t3", url: "127.0.0.1:3773" },
+    { id: "far", label: "far", runtime: "t3", url: "http://10.0.0.5:3773" },
+    { id: "here", label: "here", runtime: "t3", url: "http://localhost:3773/x" },
+  ];
+  fs.writeFileSync(env.KAUAK_CONFIG, JSON.stringify({ machines }));
+  const bridge = createBridge(resolveConfig(env));
+  t.after(() => bridge.close());
+  assert.deepEqual([...bridge.floors.keys()], ["local", "here"]);
+  assert.equal(bridge.floors.get("here").config.url, "http://localhost:3773");
+});
+
 test("a page adds a T3 Code floor with its token, sees its desks, and answers what an agent asks", async (t) => {
   const herdr = await fakeHerdr();
   t.after(() => herdr.close());

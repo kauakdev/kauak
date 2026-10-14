@@ -31,7 +31,7 @@ interface Pending {
   onChunk?: (values: unknown[]) => void;
 }
 
-/** A stream request; `close()` interrupts it. `done` settles when the server ends it or the connection drops. */
+/** A stream request; `close()` interrupts it. `done` settles when the server ends it, the connection drops, or it is closed. */
 export interface RpcStream {
   done: Promise<void>;
   close(): void;
@@ -153,7 +153,11 @@ export class RpcSocket extends EventEmitter {
     return {
       done,
       close: () => {
-        if (id && this.pending.delete(id)) this.send({ _tag: "Interrupt", requestId: id });
+        const p = id ? this.pending.get(id) : undefined;
+        if (!id || !p) return;
+        this.pending.delete(id);
+        this.send({ _tag: "Interrupt", requestId: id });
+        p.resolve(undefined);
       },
     };
   }

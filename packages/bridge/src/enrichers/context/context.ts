@@ -137,7 +137,9 @@ export class ContextTracker extends EventEmitter implements Enricher {
 
   async update() {
     const snap = this.m.snapshot;
-    if (!snap || this.m.state !== "live") return;
+    // A runtime that reports its agents' context (T3 Code) gets none from transcripts here, not even for a desk it has not
+    // reported yet: a transcript in that desk's folder is another session's.
+    if (!snap || this.m.state !== "live" || this.m.reportsContext) return;
     const panes: PaneToRead[] = [];
     const asked = new Set<string>(); // panes whose processes came from Herdr just now, not from the cache
     const sessionOf = (pane: PaneInfo) => this.m.paneSession(pane.pane_id);
@@ -148,8 +150,7 @@ export class ContextTracker extends EventEmitter implements Enricher {
       if (pane.agent === "codex" && !sessionOf(pane)) codexFolders.set(folderOf(pane), (codexFolders.get(folderOf(pane)) ?? 0) + 1);
     }
     for (const pane of snap.panes) {
-      // A runtime that reports the pane's context itself (T3 Code) knows it better than a transcript read here.
-      if (!KINDS.has(pane.agent) || pane.context) continue;
+      if (!KINDS.has(pane.agent)) continue;
       const session = sessionOf(pane);
       let pids: number[] = [];
       if (!session && (pane.agent === "claude" || codexFolders.get(folderOf(pane)) === 1)) {

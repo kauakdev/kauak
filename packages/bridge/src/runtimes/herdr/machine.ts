@@ -133,6 +133,8 @@ export class Machine extends EventEmitter implements Runtime {
   id: string;
   label: string;
   ssh: string | null;
+  /** Herdr knows nothing of agents' context windows: the context meters read their transcripts. */
+  readonly reportsContext = false;
   remoteSocket: string | null;
   socketPath: string;
   state: MachineInfo["state"];
